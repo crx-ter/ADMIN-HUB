@@ -1,11 +1,8 @@
 -- Admin Hub Pro v5 - Centro de Control iOS Style (Testing & Troll Tool)
 -- ╔══════════════════════════════════════════════════════════════════════════╗
--- ║       Admin Hub Pro v5 - Centro de Control iOS Style                    ║
--- ║       Herramienta de Testing Profesional para Desarrolladores           ║
--- ║       Equipo Senior · 6 Devs · 12 años experiencia · Ultra Complete     ║
+-- ║                              Admin Hub Pro                               ║
 -- ║                                                                          ║
--- ║  Tabs: Protección · Movimiento · Auto/Farm · Troll · Visual · Perfil    ║
--- ║  Toggle-aware: WalkSpeed/JumpPower respetan estado ON/OFF               ║
+-- ║  Tabs: Protección · Movimiento · Auto/Farm · Troll · Visual · Perfil     ║
 -- ╚══════════════════════════════════════════════════════════════════════════╝
 
 -- ═══════════════════════════════════════════
@@ -1923,8 +1920,7 @@ task.delay(0.5,function()
 end)
 
 print("╔════════════════════════════════════════╗")
-print("║   Admin Hub PRO v5 · iOS Style          ║")
-print("║   Centro de Control Profesional         ║")
-print("║   Toca el botón ⚙ para abrir            ║")
-print("║   [Insert] = toggle rápido              ║")
+print("║   Admin Hub PRO v5                     ║")
+print("║   Toca el botón ⚙ para abrir           ║")
+print("║   [Insert] = toggle rápido             ║")
 print("╚════════════════════════════════════════╝")
