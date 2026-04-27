@@ -1353,7 +1353,7 @@ emoteGrid.Size=UDim2.new(1,0,0,180); emoteGrid.BackgroundTransparency=1
 emoteGrid.BorderSizePixel=0; emoteGrid.ZIndex=43; emoteGrid.Parent=PAGES["troll"]
 
 local emoteGL=Instance.new("UIGridLayout")
-emoteGL.CellSize=UDim2.new(0.5,-6,0,42); emoteGL.CellPaddingSize=UDim2.new(0,6,0,6)
+emoteGL.CellSize=UDim2.new(0.5,-6,0,42); emoteGL.CellPadding=UDim2.new(0,6,0,6)
 emoteGL.Parent=emoteGrid
 
 for _,em in ipairs(emotes) do
