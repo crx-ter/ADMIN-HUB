@@ -925,6 +925,9 @@ task.spawn(function()
     end
 end)
 
+-- Forward declarations para que InputEnded pueda llamarlas
+local OpenWindow, CloseWindow, ToggleMinimize
+
 -- Drag del boton flotante (compatible movil)
 local btnDragging  = false
 local btnDragDist  = 0
@@ -2702,7 +2705,7 @@ end
 -- ============================================================
 local isMinimized = false
 
-local function OpenWindow()
+OpenWindow = function()
     State.IsOpen = true
     MainFrame.Visible = true
     MainFrame.Size = UDim2.new(0, 0, 0, 0)
@@ -2718,7 +2721,7 @@ local function OpenWindow()
     }, 0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 end
 
-local function CloseWindow()
+CloseWindow = function()
     State.IsOpen = false
     Tween(MainFrame, {
         Size     = UDim2.new(0, 0, 0, 0),
@@ -2732,7 +2735,7 @@ local function CloseWindow()
     task.delay(0.26, function() MainFrame.Visible = false end)
 end
 
-local function ToggleMinimize()
+ToggleMinimize = function()
     isMinimized = not isMinimized
     if isMinimized then
         Tween(MainFrame, {Size = UDim2.new(0, 420, 0, 62)}, 0.3, Enum.EasingStyle.Quart)
