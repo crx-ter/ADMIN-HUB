@@ -925,14 +925,17 @@ task.spawn(function()
     end
 end)
 
--- Drag del botón flotante
+-- Drag del boton flotante (compatible movil)
 local btnDragging  = false
+local btnDragDist  = 0
 local btnDragStart, btnStartPos
+local btnDragDist  = 0  -- distancia total arrastrada
 
 FloatBtn.InputBegan:Connect(function(inp)
     if inp.UserInputType == Enum.UserInputType.MouseButton1 or
        inp.UserInputType == Enum.UserInputType.Touch then
         btnDragging  = true
+        btnDragDist  = 0
         btnDragStart = inp.Position
         btnStartPos  = FloatBtn.Position
     end
@@ -941,7 +944,12 @@ end)
 FloatBtn.InputEnded:Connect(function(inp)
     if inp.UserInputType == Enum.UserInputType.MouseButton1 or
        inp.UserInputType == Enum.UserInputType.Touch then
+        -- Si apenas se movi (tap), abrir/cerrar
+        if btnDragDist < 12 then
+            if State.IsOpen then CloseWindow() else OpenWindow() end
+        end
         btnDragging = false
+        btnDragDist = 0
     end
 end)
 
@@ -949,6 +957,7 @@ UserInputService.InputChanged:Connect(function(inp)
     if btnDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or
                         inp.UserInputType == Enum.UserInputType.Touch) then
         local delta = inp.Position - btnDragStart
+        btnDragDist = math.abs(delta.X) + math.abs(delta.Y)
         FloatBtn.Position = UDim2.new(
             btnStartPos.X.Scale, btnStartPos.X.Offset + delta.X,
             btnStartPos.Y.Scale, btnStartPos.Y.Offset + delta.Y
