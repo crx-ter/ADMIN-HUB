@@ -208,20 +208,9 @@ local function MakePadding(parent, top, bottom, left, right)
 end
 
 local function MakeShadow(parent)
-    local shadow = Instance.new("ImageLabel")
-    shadow.Name = "Shadow"
-    shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-    shadow.BackgroundTransparency = 1
-    shadow.Position = UDim2.new(0.5, 0, 0.5, 4)
-    shadow.Size = UDim2.new(1, 24, 1, 24)
-    shadow.ZIndex = parent.ZIndex - 1
-    shadow.Image = "rbxassetid://5554236805"
-    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.ImageTransparency = 0.6
-    shadow.ScaleType = Enum.ScaleType.Slice
-    shadow.SliceCenter = Rect.new(23, 23, 277, 277)
-    shadow.Parent = parent
-    return shadow
+    -- Shadow desactivada para evitar problemas de ZIndex y clicks bloqueados
+    -- en algunos executors de Roblox Studio. No afecta la funcionalidad.
+    return nil
 end
 
 local function MakeGradient(parent, c0, c1, rotation)
@@ -280,6 +269,14 @@ local function GetGameContext()
 end
 
 -- ============================================================
+--  FPS TRACKER GLOBAL (no bloqueante)
+-- ============================================================
+local _kaelenFPS = 60
+RunService.Heartbeat:Connect(function(dt)
+    _kaelenFPS = math.floor(1 / math.max(dt, 0.001))
+end)
+
+-- ============================================================
 --  STATS EN TIEMPO REAL (datos para el panel)
 -- ============================================================
 local function GetRealtimeStats()
@@ -306,7 +303,7 @@ local function GetRealtimeStats()
         fly     = State.FlyEnabled,
         infjump = State.InfJumpEnabled,
         clicktp = State.ClickTPEnabled,
-        fps     = string.format("%.0f", 1 / RunService.RenderStepped:Wait()),
+        fps     = tostring(_kaelenFPS),
     }
 end
 
@@ -876,8 +873,15 @@ ScreenGui.ResetOnSpawn    = false
 ScreenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder    = 999
 ScreenGui.IgnoreGuiInset  = true
-pcall(function() ScreenGui.Parent = CoreGui end)
-if not ScreenGui.Parent then
+-- Intentar CoreGui primero; si falla usar PlayerGui (igual que AdminHub)
+local guiParented = false
+pcall(function()
+    if game:GetService("CoreGui") then
+        ScreenGui.Parent = game:GetService("CoreGui")
+        guiParented = true
+    end
+end)
+if not guiParented then
     ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
