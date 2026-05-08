@@ -10,9 +10,7 @@ local TweenService   = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService     = game:GetService("RunService")
 local HttpService    = game:GetService("HttpService")
-local CoreGui        = game:GetService("CoreGui")
 local Workspace      = game:GetService("Workspace")
-local StarterGui     = game:GetService("StarterGui")
 
 local LocalPlayer    = Players.LocalPlayer
 local Mouse          = LocalPlayer:GetMouse()
@@ -856,16 +854,9 @@ end
 -- ============================================================
 --  ELIMINAR GUI ANTERIOR Y CREAR SCREENGUI
 -- ============================================================
-pcall(function()
-    if CoreGui:FindFirstChild("KaelenUI_v23") then
-        CoreGui:FindFirstChild("KaelenUI_v23"):Destroy()
-    end
-end)
-pcall(function()
-    if CoreGui:FindFirstChild("KaelenUI") then
-        CoreGui:FindFirstChild("KaelenUI"):Destroy()
-    end
-end)
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local oldGui = PlayerGui:FindFirstChild("KaelenUI_v23")
+if oldGui then oldGui:Destroy() end
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name            = "KaelenUI_v23"
@@ -873,17 +864,7 @@ ScreenGui.ResetOnSpawn    = false
 ScreenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
 ScreenGui.DisplayOrder    = 999
 ScreenGui.IgnoreGuiInset  = true
--- Intentar CoreGui primero; si falla usar PlayerGui (igual que AdminHub)
-local guiParented = false
-pcall(function()
-    if game:GetService("CoreGui") then
-        ScreenGui.Parent = game:GetService("CoreGui")
-        guiParented = true
-    end
-end)
-if not guiParented then
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
+ScreenGui.Parent          = PlayerGui
 
 -- ============================================================
 --  BOTÓN FLOTANTE
