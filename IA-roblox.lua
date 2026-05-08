@@ -309,18 +309,34 @@ end
 --  HTTP / OPENROUTER
 -- ============================================================
 local function GetHTTPFunc()
+    -- Delta usa 'request' como funcion global
     local funcs = {
-        function() return syn and syn.request end,
-        function() return http and http.request end,
-        function() return http_request end,
         function() return request end,
+        function() return syn and syn.request end,
+        function() return http_request end,
+        function() return http and http.request end,
         function() return fluxus and fluxus.request end,
     }
     for _, f in ipairs(funcs) do
         local ok, fn = pcall(f)
         if ok and fn then return fn end
     end
-    return nil
+    -- Fallback: usar HttpService directamente
+    return function(opts)
+        local hs = game:GetService("HttpService")
+        local ok2, res = pcall(function()
+            return hs:RequestAsync({
+                Url = opts.Url,
+                Method = opts.Method or "GET",
+                Headers = opts.Headers or {},
+                Body = opts.Body or "",
+            })
+        end)
+        if ok2 then
+            return {StatusCode = res.StatusCode, Body = res.Body}
+        end
+        return nil
+    end
 end
 
 local function CallOpenRouter(model, messages, sysPrompt, maxTokens)
@@ -872,7 +888,7 @@ ScreenGui.Parent          = PlayerGui
 local FloatBtn = Instance.new("TextButton")
 FloatBtn.Name            = "FloatBtn"
 FloatBtn.Size            = UDim2.new(0, 60, 0, 60)
-FloatBtn.Position        = UDim2.new(1, -80, 0.5, -30)
+FloatBtn.Position        = UDim2.new(0, 14, 0.5, -30)
 FloatBtn.BackgroundColor3 = CONFIG.Colors.Accent
 FloatBtn.Text            = ""
 FloatBtn.ZIndex          = 200
@@ -973,8 +989,8 @@ end)
 -- ============================================================
 local MainFrame = Instance.new("Frame")
 MainFrame.Name             = "MainFrame"
-MainFrame.Size             = UDim2.new(0, 420, 0, 640)
-MainFrame.Position         = UDim2.new(0.5, -210, 0.5, -320)
+MainFrame.Size             = UDim2.new(0, 360, 0, 560)
+MainFrame.Position         = UDim2.new(0.5, -180, 0.5, -280)
 MainFrame.BackgroundColor3 = CONFIG.Colors.BG
 MainFrame.BackgroundTransparency = 0.02
 MainFrame.ClipsDescendants = true
@@ -2716,8 +2732,8 @@ OpenWindow = function()
         FloatBtn.Position.Y.Offset + 30
     )
     Tween(MainFrame, {
-        Size     = UDim2.new(0, 420, 0, 640),
-        Position = UDim2.new(0.5, -210, 0.5, -320),
+        Size     = UDim2.new(0, 360, 0, 560),
+        Position = UDim2.new(0.5, -180, 0.5, -280),
     }, 0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 end
 
@@ -2738,10 +2754,10 @@ end
 ToggleMinimize = function()
     isMinimized = not isMinimized
     if isMinimized then
-        Tween(MainFrame, {Size = UDim2.new(0, 420, 0, 62)}, 0.3, Enum.EasingStyle.Quart)
+        Tween(MainFrame, {Size = UDim2.new(0, 360, 0, 62)}, 0.3, Enum.EasingStyle.Quart)
         MinBtn.Text = "□"
     else
-        Tween(MainFrame, {Size = UDim2.new(0, 420, 0, 640)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        Tween(MainFrame, {Size = UDim2.new(0, 360, 0, 560)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
         MinBtn.Text = "─"
     end
 end
