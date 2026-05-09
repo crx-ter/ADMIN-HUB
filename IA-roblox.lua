@@ -1946,9 +1946,9 @@ local EngineInfoLabel = UI_TextLabel(
     UDim2.new(1, 0, 1, 0),
     UDim2.new(0, 0, 0, 0),
     "⚡ Kaelen v2.3 — Architecture Triple-Engine\n" ..
-    "🟢 Motor Fast: Gemma 3 (Latencia Cero)\n" ..
+    "🟢 Motor Fast: Liquid LFM 1.2B (Latencia Cero)\n" ..
     "🔵 Motor Coder: Qwen 3 (Lógica pura)\n" ..
-    "🟣 Motor Reason: Llama 3.3 (Revisión y Análisis)",
+    "🟣 Motor Reason: Hermes 3 405B (Análisis)",
     CFG.Colors.TextMuted,
     9,
     CFG.Fonts.Regular,
