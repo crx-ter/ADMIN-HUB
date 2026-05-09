@@ -2293,7 +2293,7 @@ end)
 -- ----------------------------------------------------------------------------
 -- Manejo de la Ventana Principal (Abrir/Cerrar)
 -- ----------------------------------------------------------------------------
-local function OpenKaelenWindow()
+OpenKaelenWindow = function()
     AppState.WindowOpen = true
     MainWindow.Visible = true
     
@@ -2313,7 +2313,7 @@ local function OpenKaelenWindow()
     CreateTween(MainWindow, { Size = targetSize, Position = targetPosition }, 0.40, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 end
 
-local function CloseKaelenWindow()
+CloseKaelenWindow = function()
     AppState.WindowOpen = false
     
     -- Calcular punto de retorno (Hacia el botón flotante)
