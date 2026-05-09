@@ -41,8 +41,9 @@ local CFG = {
     MaxTokens      = 1500,
     Temperature    = 0.72,
     MaxHistory     = 50,
-    WIN_W          = 410,
-    WIN_H          = 610,
+    -- [ADAPTACIÓN MOBILE: Tamaños reducidos para pantallas táctiles]
+    WIN_W          = 420,
+    WIN_H          = 280, 
     C = {
         BG          = Color3.fromRGB(8,   8,  18),
         Surface     = Color3.fromRGB(15, 14,  30),
@@ -597,29 +598,30 @@ ScreenGui.IgnoreGuiInset  = true
 
 local pgOk = pcall(function() ScreenGui.Parent = CoreGui end)
 if not pgOk then
+    -- [ADAPTACIÓN MOBILE: Fallback 100% seguro para Delta que bloquea CoreGui]
     ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
 -- ============================================================
---  BOTÓN FLOTANTE
+--  BOTÓN FLOTANTE [Adaptado para Mobile]
 -- ============================================================
 local FloatBtn        = Instance.new("ImageButton")
 FloatBtn.Name         = "FloatBtn"
-FloatBtn.Size         = UDim2.new(0, 62, 0, 62)
-FloatBtn.Position     = UDim2.new(1, -82, 0.6, -31)
+FloatBtn.Size         = UDim2.new(0, 48, 0, 48)
+FloatBtn.Position     = UDim2.new(1, -60, 0.6, -24)
 FloatBtn.BackgroundColor3 = CFG.C.Accent
 FloatBtn.Image        = ""
 FloatBtn.AutoButtonColor = false
 FloatBtn.ZIndex       = 500
 FloatBtn.BorderSizePixel = 0
 FloatBtn.Parent       = ScreenGui
-Corner(FloatBtn, 31)
+Corner(FloatBtn, 24)
 Stroke(FloatBtn, CFG.C.AccentGlow, 2)
 Gradient(FloatBtn, Color3.fromRGB(135, 92, 255), Color3.fromRGB(88, 48, 205), 135)
 
 local BtnGlow = Instance.new("ImageLabel")
-BtnGlow.Size              = UDim2.new(0, 104, 0, 104)
-BtnGlow.Position          = UDim2.new(0.5, -52, 0.5, -52)
+BtnGlow.Size              = UDim2.new(0, 80, 0, 80)
+BtnGlow.Position          = UDim2.new(0.5, -40, 0.5, -40)
 BtnGlow.BackgroundTransparency = 1
 BtnGlow.Image             = "rbxassetid://5028857084"
 BtnGlow.ImageColor3       = CFG.C.Accent
@@ -627,21 +629,21 @@ BtnGlow.ImageTransparency = 0.45
 BtnGlow.ZIndex            = 499
 BtnGlow.Parent            = FloatBtn
 
-local BtnK = Label(FloatBtn, UDim2.new(1,0,1,0), nil, "K", CFG.C.White, 26, CFG.Font, Enum.TextXAlignment.Center, 501)
+local BtnK = Label(FloatBtn, UDim2.new(1,0,1,0), nil, "K", CFG.C.White, 20, CFG.Font, Enum.TextXAlignment.Center, 501)
 
 -- Pulso del glow
 task.spawn(function()
     while FloatBtn and FloatBtn.Parent do
         Tween(BtnGlow, {
             ImageTransparency = 0.12,
-            Size = UDim2.new(0, 115, 0, 115),
-            Position = UDim2.new(0.5, -57.5, 0.5, -57.5),
+            Size = UDim2.new(0, 90, 0, 90),
+            Position = UDim2.new(0.5, -45, 0.5, -45),
         }, 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
         task.wait(1.5)
         Tween(BtnGlow, {
             ImageTransparency = 0.6,
-            Size = UDim2.new(0, 95, 0, 95),
-            Position = UDim2.new(0.5, -47.5, 0.5, -47.5),
+            Size = UDim2.new(0, 70, 0, 70),
+            Position = UDim2.new(0.5, -35, 0.5, -35),
         }, 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
         task.wait(1.5)
     end
@@ -715,7 +717,7 @@ UserInputService.InputEnded:Connect(function(inp)
 end)
 
 -- ============================================================
---  VENTANA PRINCIPAL
+--  VENTANA PRINCIPAL [Adaptado Mobile]
 -- ============================================================
 local W = CFG.WIN_W
 local H = CFG.WIN_H
@@ -723,7 +725,7 @@ local H = CFG.WIN_H
 local MainWin = Frame(ScreenGui, UDim2.new(0, W, 0, H), UDim2.new(0.5, -W/2, 0.5, -H/2), CFG.C.BG, 0, 400, "MainWin")
 MainWin.ClipsDescendants = true
 MainWin.Visible          = false
-Corner(MainWin, 22)
+Corner(MainWin, 18)
 Stroke(MainWin, Color3.fromRGB(65, 52, 128), 1.5)
 Gradient(MainWin, Color3.fromRGB(10, 9, 22), Color3.fromRGB(6, 6, 15), 155)
 
@@ -753,27 +755,27 @@ end
 -- ============================================================
 --  HEADER
 -- ============================================================
-local Header = Frame(MainWin, UDim2.new(1, 0, 0, 62), UDim2.new(0, 0, 0, 0), CFG.C.Surface, 0.2, 401, "Header")
-Corner(Header, 22)
+local Header = Frame(MainWin, UDim2.new(1, 0, 0, 45), UDim2.new(0, 0, 0, 0), CFG.C.Surface, 0.2, 401, "Header")
+Corner(Header, 18)
 Gradient(Header, Color3.fromRGB(26, 20, 58), Color3.fromRGB(12, 10, 28), 100)
 
 -- Logo círculo
-local LogoCircle = Frame(Header, UDim2.new(0, 40, 0, 40), UDim2.new(0, 14, 0.5, -20), CFG.C.Accent, 0, 402)
-Corner(LogoCircle, 20)
+local LogoCircle = Frame(Header, UDim2.new(0, 30, 0, 30), UDim2.new(0, 10, 0.5, -15), CFG.C.Accent, 0, 402)
+Corner(LogoCircle, 15)
 Gradient(LogoCircle, Color3.fromRGB(145, 95, 255), Color3.fromRGB(82, 42, 200), 135)
-Label(LogoCircle, UDim2.new(1,0,1,0), nil, "K", CFG.C.White, 20, CFG.Font, Enum.TextXAlignment.Center, 403)
+Label(LogoCircle, UDim2.new(1,0,1,0), nil, "K", CFG.C.White, 16, CFG.Font, Enum.TextXAlignment.Center, 403)
 
 -- Título y subtítulo
-local TitleLbl = Label(Header, UDim2.new(0, 200, 0, 22), UDim2.new(0, 62, 0, 10), "Kaelen", CFG.C.White, 19, CFG.Font, Enum.TextXAlignment.Left, 402)
-local SubLbl   = Label(Header, UDim2.new(0, 240, 0, 16), UDim2.new(0, 62, 0, 34), "AI Systems v2.1  •  " .. State.CurrentMode, CFG.C.TextMuted, 11, CFG.FontReg, Enum.TextXAlignment.Left, 402)
+local TitleLbl = Label(Header, UDim2.new(0, 200, 0, 18), UDim2.new(0, 48, 0, 6), "Kaelen", CFG.C.White, 15, CFG.Font, Enum.TextXAlignment.Left, 402)
+local SubLbl   = Label(Header, UDim2.new(0, 240, 0, 14), UDim2.new(0, 48, 0, 24), "AI Systems v2.1  •  " .. State.CurrentMode, CFG.C.TextMuted, 9, CFG.FontReg, Enum.TextXAlignment.Left, 402)
 
 -- Punto de status
-local StatusDot = Frame(Header, UDim2.new(0, 10, 0, 10), UDim2.new(1, -56, 0.5, -5), CFG.C.Red, 0, 402)
-Corner(StatusDot, 5)
+local StatusDot = Frame(Header, UDim2.new(0, 8, 0, 8), UDim2.new(1, -45, 0.5, -4), CFG.C.Red, 0, 402)
+Corner(StatusDot, 4)
 
 -- Botón cerrar
-local CloseBtn = Button(Header, UDim2.new(0, 36, 0, 36), UDim2.new(1, -50, 0.5, -18), Color3.fromRGB(198, 52, 72), "✕", CFG.C.White, 15, CFG.Font, 402)
-Corner(CloseBtn, 18)
+local CloseBtn = Button(Header, UDim2.new(0, 28, 0, 28), UDim2.new(1, -36, 0.5, -14), Color3.fromRGB(198, 52, 72), "✕", CFG.C.White, 13, CFG.Font, 402)
+Corner(CloseBtn, 14)
 
 -- Arrastre de la ventana desde el header
 Header.InputBegan:Connect(function(inp)
@@ -788,11 +790,11 @@ end)
 -- ============================================================
 --  BARRA DE TABS
 -- ============================================================
-local TabBar = Frame(MainWin, UDim2.new(1, -24, 0, 40), UDim2.new(0, 12, 0, 66), CFG.C.Card, 0.12, 401)
-Corner(TabBar, 12)
+local TabBar = Frame(MainWin, UDim2.new(1, -20, 0, 32), UDim2.new(0, 10, 0, 50), CFG.C.Card, 0.12, 401)
+Corner(TabBar, 10)
 Stroke(TabBar, CFG.C.Border, 1)
 HLayout(TabBar, 5, Enum.VerticalAlignment.Center)
-Pad(TabBar, 5, 5, 5, 5)
+Pad(TabBar, 3, 3, 4, 4)
 
 local TAB_NAMES = { "Chat", "Modos", "Config" }
 local TabBtns   = {}
@@ -813,10 +815,10 @@ local function SetTab(name)
 end
 
 for i, name in ipairs(TAB_NAMES) do
-    local btn = Button(TabBar, UDim2.new(0, 106, 1, 0), nil, CFG.C.Card, "", CFG.C.White, 12, CFG.Font, 402)
+    local btn = Button(TabBar, UDim2.new(0, 90, 1, 0), nil, CFG.C.Card, "", CFG.C.White, 11, CFG.Font, 402)
     btn.BackgroundTransparency = 0.6
-    Corner(btn, 9)
-    local lbl = Label(btn, UDim2.new(1,0,1,0), nil, name, CFG.C.TextMuted, 12, CFG.Font, Enum.TextXAlignment.Center, 403)
+    Corner(btn, 8)
+    local lbl = Label(btn, UDim2.new(1,0,1,0), nil, name, CFG.C.TextMuted, 11, CFG.Font, Enum.TextXAlignment.Center, 403)
     table.insert(TabBtns, {name=name, btn=btn, lbl=lbl})
     local capName = name
     btn.MouseButton1Click:Connect(function()
@@ -830,58 +832,58 @@ end
 -- ============================================================
 --  CONTENEDOR DE PANELES
 -- ============================================================
-local PanelBox = Frame(MainWin, UDim2.new(1, -24, 1, -118), UDim2.new(0, 12, 0, 112), Color3.fromRGB(0,0,0), 1, 400)
+local PanelBox = Frame(MainWin, UDim2.new(1, -20, 1, -90), UDim2.new(0, 10, 0, 86), Color3.fromRGB(0,0,0), 1, 400)
 
 -- ============================================================
 --  PANEL: KEY SYSTEM
 -- ============================================================
 local KeyPanel = Frame(PanelBox, UDim2.new(1,0,1,0), nil, Color3.fromRGB(0,0,0), 1, 401, "KeyPanel")
-VLayout(KeyPanel, 14, Enum.HorizontalAlignment.Center)
-Pad(KeyPanel, 20, 10, 0, 0)
+VLayout(KeyPanel, 8, Enum.HorizontalAlignment.Center)
+Pad(KeyPanel, 10, 10, 0, 0)
 
 -- Ícono lock
-local LockFrame = Frame(KeyPanel, UDim2.new(0, 78, 0, 78), nil, CFG.C.Card, 0.08, 402)
+local LockFrame = Frame(KeyPanel, UDim2.new(0, 50, 0, 50), nil, CFG.C.Card, 0.08, 402)
 LockFrame.LayoutOrder = 1
-Corner(LockFrame, 39)
+Corner(LockFrame, 25)
 Stroke(LockFrame, CFG.C.Accent, 2)
-Label(LockFrame, UDim2.new(1,0,1,0), nil, "🔑", CFG.C.White, 34, CFG.FontReg, Enum.TextXAlignment.Center, 403)
+Label(LockFrame, UDim2.new(1,0,1,0), nil, "🔑", CFG.C.White, 22, CFG.FontReg, Enum.TextXAlignment.Center, 403)
 
-local KTitle = Label(KeyPanel, UDim2.new(1,0,0,28), nil, "Activar Kaelen", CFG.C.White, 21, CFG.Font, Enum.TextXAlignment.Center, 402)
+local KTitle = Label(KeyPanel, UDim2.new(1,0,0,22), nil, "Activar Kaelen", CFG.C.White, 16, CFG.Font, Enum.TextXAlignment.Center, 402)
 KTitle.LayoutOrder = 2
 
-local KSub = Label(KeyPanel, UDim2.new(1,0,0,38), nil, "Introduce tu API Key de OpenRouter\npara desbloquear el asistente IA", CFG.C.TextMuted, 12, CFG.FontReg, Enum.TextXAlignment.Center, 402)
+local KSub = Label(KeyPanel, UDim2.new(1,0,0,30), nil, "Introduce tu API Key de OpenRouter\npara desbloquear el asistente IA", CFG.C.TextMuted, 10, CFG.FontReg, Enum.TextXAlignment.Center, 402)
 KSub.LayoutOrder = 3
 
 -- Input de key
 local KeyInput = Instance.new("TextBox")
-KeyInput.Size                 = UDim2.new(1, -8, 0, 48)
+KeyInput.Size                 = UDim2.new(1, -8, 0, 36)
 KeyInput.BackgroundColor3     = CFG.C.Card
 KeyInput.BackgroundTransparency = 0.08
 KeyInput.Text                 = ""
 KeyInput.PlaceholderText      = "sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx"
 KeyInput.TextColor3           = CFG.C.Text
 KeyInput.PlaceholderColor3    = CFG.C.TextDim
-KeyInput.TextSize             = 13
+KeyInput.TextSize             = 11
 KeyInput.Font                 = CFG.FontMon
 KeyInput.ClearTextOnFocus     = false
 KeyInput.ZIndex               = 402
 KeyInput.LayoutOrder          = 4
 KeyInput.BorderSizePixel      = 0
 KeyInput.Parent               = KeyPanel
-Corner(KeyInput, 12)
+Corner(KeyInput, 10)
 Stroke(KeyInput, CFG.C.Border, 1)
-Pad(KeyInput, 0, 0, 14, 14)
+Pad(KeyInput, 0, 0, 10, 10)
 
 -- Botón verificar
-local VerifyBtn = Button(KeyPanel, UDim2.new(1, -8, 0, 48), nil, CFG.C.Accent, "Verificar y Activar  ✦", CFG.C.White, 14, CFG.Font, 402)
+local VerifyBtn = Button(KeyPanel, UDim2.new(1, -8, 0, 36), nil, CFG.C.Accent, "Verificar y Activar  ✦", CFG.C.White, 12, CFG.Font, 402)
 VerifyBtn.LayoutOrder = 5
-Corner(VerifyBtn, 12)
+Corner(VerifyBtn, 10)
 Gradient(VerifyBtn, Color3.fromRGB(142, 92, 255), Color3.fromRGB(84, 44, 202), 135)
 
-local KStatus = Label(KeyPanel, UDim2.new(1,0,0,20), nil, "", CFG.C.TextMuted, 12, CFG.FontReg, Enum.TextXAlignment.Center, 402)
+local KStatus = Label(KeyPanel, UDim2.new(1,0,0,16), nil, "", CFG.C.TextMuted, 10, CFG.FontReg, Enum.TextXAlignment.Center, 402)
 KStatus.LayoutOrder = 6
 
-local KLink = Label(KeyPanel, UDim2.new(1,0,0,18), nil, "Obtén tu key gratis en openrouter.ai", CFG.C.TextDim, 11, CFG.FontReg, Enum.TextXAlignment.Center, 402)
+local KLink = Label(KeyPanel, UDim2.new(1,0,0,16), nil, "Obtén tu key gratis en openrouter.ai", CFG.C.TextDim, 9, CFG.FontReg, Enum.TextXAlignment.Center, 402)
 KLink.LayoutOrder = 7
 
 -- ============================================================
@@ -891,49 +893,49 @@ local ChatPanel = Frame(PanelBox, UDim2.new(1,0,1,0), nil, Color3.fromRGB(0,0,0)
 ChatPanel.Visible = false
 
 -- Área de mensajes
-local MsgScroll = Scroll(ChatPanel, UDim2.new(1, 0, 1, -98), UDim2.new(0,0,0,0), 402)
-VLayout(MsgScroll, 10, Enum.HorizontalAlignment.Left)
-Pad(MsgScroll, 8, 8, 6, 6)
+local MsgScroll = Scroll(ChatPanel, UDim2.new(1, 0, 1, -70), UDim2.new(0,0,0,0), 402)
+VLayout(MsgScroll, 8, Enum.HorizontalAlignment.Left)
+Pad(MsgScroll, 6, 6, 4, 4)
 
 -- Thinking indicator
-local ThinkFrame = Frame(MsgScroll, UDim2.new(0, 160, 0, 36), nil, CFG.C.AIBub, 0.05, 403, "ThinkFrame")
+local ThinkFrame = Frame(MsgScroll, UDim2.new(0, 140, 0, 28), nil, CFG.C.AIBub, 0.05, 403, "ThinkFrame")
 ThinkFrame.LayoutOrder = 9999
 ThinkFrame.Visible     = false
-Corner(ThinkFrame, 18)
+Corner(ThinkFrame, 14)
 Stroke(ThinkFrame, CFG.C.Border, 1)
-Pad(ThinkFrame, 0, 0, 14, 14)
-local ThinkLbl = Label(ThinkFrame, UDim2.new(1,0,1,0), nil, "Kaelen pensando ●○○", CFG.C.TextMuted, 12, CFG.FontReg, Enum.TextXAlignment.Left, 404)
+Pad(ThinkFrame, 0, 0, 10, 10)
+local ThinkLbl = Label(ThinkFrame, UDim2.new(1,0,1,0), nil, "Kaelen pensando ●○○", CFG.C.TextMuted, 11, CFG.FontReg, Enum.TextXAlignment.Left, 404)
 
 -- Barra de input
-local InputBar = Frame(ChatPanel, UDim2.new(1, 0, 0, 92), UDim2.new(0, 0, 1, -92), CFG.C.Surface, 0.18, 402)
-Corner(InputBar, 16)
+local InputBar = Frame(ChatPanel, UDim2.new(1, 0, 0, 66), UDim2.new(0, 0, 1, -66), CFG.C.Surface, 0.18, 402)
+Corner(InputBar, 12)
 Stroke(InputBar, CFG.C.Border, 1)
 
 local ChatInput = Instance.new("TextBox")
-ChatInput.Size                 = UDim2.new(1, -62, 0, 46)
-ChatInput.Position             = UDim2.new(0, 8, 0, 6)
+ChatInput.Size                 = UDim2.new(1, -44, 0, 34)
+ChatInput.Position             = UDim2.new(0, 6, 0, 6)
 ChatInput.BackgroundColor3     = CFG.C.Card
 ChatInput.BackgroundTransparency = 0.08
 ChatInput.Text                 = ""
 ChatInput.PlaceholderText      = "Pregúntale algo a Kaelen..."
 ChatInput.TextColor3           = CFG.C.Text
 ChatInput.PlaceholderColor3    = CFG.C.TextDim
-ChatInput.TextSize             = 13
+ChatInput.TextSize             = 11
 ChatInput.Font                 = CFG.FontReg
 ChatInput.MultiLine            = false
 ChatInput.ClearTextOnFocus     = false
 ChatInput.ZIndex               = 403
 ChatInput.BorderSizePixel      = 0
 ChatInput.Parent               = InputBar
-Corner(ChatInput, 10)
-Pad(ChatInput, 0, 0, 12, 12)
+Corner(ChatInput, 8)
+Pad(ChatInput, 0, 0, 10, 10)
 
-local SendBtn = Button(InputBar, UDim2.new(0, 46, 0, 46), UDim2.new(1, -54, 0, 6), CFG.C.Accent, "➤", CFG.C.White, 20, CFG.Font, 403)
-Corner(SendBtn, 10)
+local SendBtn = Button(InputBar, UDim2.new(0, 34, 0, 34), UDim2.new(1, -38, 0, 6), CFG.C.Accent, "➤", CFG.C.White, 14, CFG.Font, 403)
+Corner(SendBtn, 8)
 Gradient(SendBtn, Color3.fromRGB(142, 92, 255), Color3.fromRGB(84, 44, 202), 135)
 
 -- Quick commands bar
-local QuickBar = Frame(InputBar, UDim2.new(1, -8, 0, 30), UDim2.new(0, 4, 0, 58), Color3.fromRGB(0,0,0), 1, 403)
+local QuickBar = Frame(InputBar, UDim2.new(1, -8, 0, 22), UDim2.new(0, 4, 0, 42), Color3.fromRGB(0,0,0), 1, 403)
 HLayout(QuickBar, 5, Enum.VerticalAlignment.Center)
 
 local QUICK_CMDS = {
@@ -946,24 +948,25 @@ local QUICK_CMDS = {
 
 local QuickRefs = {}
 for _, qc in ipairs(QUICK_CMDS) do
-    local qb = Button(QuickBar, UDim2.new(0, 0, 1, 0), nil, CFG.C.Card, qc.icon .. " " .. qc.label, CFG.C.TextMuted, 10, CFG.FontReg, 404)
+    local qb = Button(QuickBar, UDim2.new(0, 0, 1, 0), nil, CFG.C.Card, qc.icon .. " " .. qc.label, CFG.C.TextMuted, 9, CFG.FontReg, 404)
     qb.AutomaticSize = Enum.AutomaticSize.X
     qb.BackgroundTransparency = 0.3
-    Corner(qb, 7)
-    Pad(qb, 2, 2, 7, 7)
+    Corner(qb, 5)
+    Pad(qb, 1, 1, 5, 5)
     table.insert(QuickRefs, { btn = qb, id = qc.id })
 end
 
 -- ============================================================
---  PANEL: MODOS
+--  PANEL: MODOS [Transformado a ScrollFrame para Mobile]
 -- ============================================================
-local ModesPanel = Frame(PanelBox, UDim2.new(1,0,1,0), nil, Color3.fromRGB(0,0,0), 1, 401, "ModesPanel")
+local ModesPanel = Scroll(PanelBox, UDim2.new(1,0,1,0), nil, 401)
+ModesPanel.Name = "ModesPanel"
 ModesPanel.Visible = false
-VLayout(ModesPanel, 10, Enum.HorizontalAlignment.Center)
-Pad(ModesPanel, 10, 10, 0, 0)
+VLayout(ModesPanel, 6, Enum.HorizontalAlignment.Center)
+Pad(ModesPanel, 4, 4, 0, 0)
 
-Label(ModesPanel, UDim2.new(1,0,0,26), nil, "Modo de Kaelen", CFG.C.White, 17, CFG.Font, Enum.TextXAlignment.Center, 402).LayoutOrder = 0
-Label(ModesPanel, UDim2.new(1,0,0,16), nil, "Elige cómo razona Kaelen", CFG.C.TextMuted, 11, CFG.FontReg, Enum.TextXAlignment.Center, 402).LayoutOrder = 1
+Label(ModesPanel, UDim2.new(1,0,0,20), nil, "Modo de Kaelen", CFG.C.White, 14, CFG.Font, Enum.TextXAlignment.Center, 402).LayoutOrder = 0
+Label(ModesPanel, UDim2.new(1,0,0,14), nil, "Elige cómo razona Kaelen", CFG.C.TextMuted, 9, CFG.FontReg, Enum.TextXAlignment.Center, 402).LayoutOrder = 1
 
 local MODE_LIST = {
     { name = "Programador", icon = "💻", col = Color3.fromRGB(78, 198, 255), desc = "Scripts Lua, optimización y debugging de nivel pro" },
@@ -975,21 +978,21 @@ local MODE_LIST = {
 local ModeRefs = {}
 for i, md in ipairs(MODE_LIST) do
     local active = (md.name == State.CurrentMode)
-    local card = Button(ModesPanel, UDim2.new(1, 0, 0, 70), nil, CFG.C.Card, "", CFG.C.White, 13, CFG.Font, 402)
+    local card = Button(ModesPanel, UDim2.new(1, 0, 0, 50), nil, CFG.C.Card, "", CFG.C.White, 13, CFG.Font, 402)
     card.BackgroundTransparency = active and 0.05 or 0.3
     card.LayoutOrder = i + 1
-    Corner(card, 14)
+    Corner(card, 10)
     local cardStroke = Stroke(card, active and CFG.C.Accent or CFG.C.Border, active and 1.5 or 1)
 
-    local iconCircle = Frame(card, UDim2.new(0, 46, 0, 46), UDim2.new(0, 12, 0.5, -23), md.col, 0.12, 403)
-    Corner(iconCircle, 23)
-    Label(iconCircle, UDim2.new(1,0,1,0), nil, md.icon, CFG.C.White, 24, CFG.FontReg, Enum.TextXAlignment.Center, 404)
+    local iconCircle = Frame(card, UDim2.new(0, 34, 0, 34), UDim2.new(0, 10, 0.5, -17), md.col, 0.12, 403)
+    Corner(iconCircle, 17)
+    Label(iconCircle, UDim2.new(1,0,1,0), nil, md.icon, CFG.C.White, 16, CFG.FontReg, Enum.TextXAlignment.Center, 404)
 
-    Label(card, UDim2.new(1, -76, 0, 22), UDim2.new(0, 66, 0, 14), md.name, CFG.C.White, 14, CFG.Font, Enum.TextXAlignment.Left, 403)
-    Label(card, UDim2.new(1, -76, 0, 18), UDim2.new(0, 66, 0, 38), md.desc, CFG.C.TextMuted, 10, CFG.FontReg, Enum.TextXAlignment.Left, 403)
+    Label(card, UDim2.new(1, -60, 0, 16), UDim2.new(0, 52, 0, 8), md.name, CFG.C.White, 12, CFG.Font, Enum.TextXAlignment.Left, 403)
+    Label(card, UDim2.new(1, -60, 0, 14), UDim2.new(0, 52, 0, 26), md.desc, CFG.C.TextMuted, 9, CFG.FontReg, Enum.TextXAlignment.Left, 403)
 
-    local badge = Frame(card, UDim2.new(0, 9, 0, 9), UDim2.new(1, -22, 0.5, -4.5), md.col, active and 0 or 1, 403)
-    Corner(badge, 5)
+    local badge = Frame(card, UDim2.new(0, 8, 0, 8), UDim2.new(1, -16, 0.5, -4), md.col, active and 0 or 1, 403)
+    Corner(badge, 4)
 
     table.insert(ModeRefs, { card = card, stroke = cardStroke, badge = badge, name = md.name, col = md.col })
 
@@ -1005,25 +1008,26 @@ for i, md in ipairs(MODE_LIST) do
 end
 
 -- ============================================================
---  PANEL: CONFIG
+--  PANEL: CONFIG [Transformado a ScrollFrame para Mobile]
 -- ============================================================
-local ConfigPanel = Frame(PanelBox, UDim2.new(1,0,1,0), nil, Color3.fromRGB(0,0,0), 1, 401, "ConfigPanel")
+local ConfigPanel = Scroll(PanelBox, UDim2.new(1,0,1,0), nil, 401)
+ConfigPanel.Name = "ConfigPanel"
 ConfigPanel.Visible = false
-VLayout(ConfigPanel, 12, Enum.HorizontalAlignment.Center)
-Pad(ConfigPanel, 10, 10, 0, 0)
+VLayout(ConfigPanel, 8, Enum.HorizontalAlignment.Center)
+Pad(ConfigPanel, 4, 4, 0, 0)
 
-Label(ConfigPanel, UDim2.new(1,0,0,26), nil, "Configuración", CFG.C.White, 17, CFG.Font, Enum.TextXAlignment.Center, 402).LayoutOrder = 0
-Label(ConfigPanel, UDim2.new(1,0,0,16), nil, "System Prompt personalizado:", CFG.C.TextMuted, 12, CFG.FontReg, Enum.TextXAlignment.Left, 402).LayoutOrder = 1
+Label(ConfigPanel, UDim2.new(1,0,0,20), nil, "Configuración", CFG.C.White, 14, CFG.Font, Enum.TextXAlignment.Center, 402).LayoutOrder = 0
+Label(ConfigPanel, UDim2.new(1,0,0,14), nil, "System Prompt personalizado:", CFG.C.TextMuted, 10, CFG.FontReg, Enum.TextXAlignment.Left, 402).LayoutOrder = 1
 
 local SysBox = Instance.new("TextBox")
-SysBox.Size                 = UDim2.new(1, 0, 0, 88)
+SysBox.Size                 = UDim2.new(1, 0, 0, 60)
 SysBox.BackgroundColor3     = CFG.C.Card
 SysBox.BackgroundTransparency = 0.08
 SysBox.Text                 = ""
 SysBox.PlaceholderText      = "Ej: Responde siempre en inglés técnico..."
 SysBox.TextColor3           = CFG.C.Text
 SysBox.PlaceholderColor3    = CFG.C.TextDim
-SysBox.TextSize             = 12
+SysBox.TextSize             = 10
 SysBox.Font                 = CFG.FontReg
 SysBox.MultiLine            = true
 SysBox.ClearTextOnFocus     = false
@@ -1031,35 +1035,35 @@ SysBox.ZIndex               = 402
 SysBox.LayoutOrder          = 2
 SysBox.BorderSizePixel      = 0
 SysBox.Parent               = ConfigPanel
-Corner(SysBox, 12)
+Corner(SysBox, 10)
 Stroke(SysBox, CFG.C.Border, 1)
-Pad(SysBox, 8, 8, 12, 12)
+Pad(SysBox, 6, 6, 10, 10)
 
-local SaveSysBtn = Button(ConfigPanel, UDim2.new(1, 0, 0, 42), nil, CFG.C.Accent, "Guardar System Prompt", CFG.C.White, 13, CFG.Font, 402)
+local SaveSysBtn = Button(ConfigPanel, UDim2.new(1, 0, 0, 32), nil, CFG.C.Accent, "Guardar System Prompt", CFG.C.White, 11, CFG.Font, 402)
 SaveSysBtn.LayoutOrder = 3
-Corner(SaveSysBtn, 12)
+Corner(SaveSysBtn, 10)
 Gradient(SaveSysBtn, Color3.fromRGB(142, 92, 255), Color3.fromRGB(84, 44, 202), 135)
 
 -- Info de modelos
-local InfoCard = Frame(ConfigPanel, UDim2.new(1,0,0,66), nil, CFG.C.Card, 0.18, 402)
+local InfoCard = Frame(ConfigPanel, UDim2.new(1,0,0,46), nil, CFG.C.Card, 0.18, 402)
 InfoCard.LayoutOrder = 4
-Corner(InfoCard, 12)
+Corner(InfoCard, 10)
 Stroke(InfoCard, CFG.C.Border, 1)
-Pad(InfoCard, 10, 10, 14, 14)
+Pad(InfoCard, 6, 6, 10, 10)
 Label(InfoCard, UDim2.new(1,0,1,0), nil,
     "⚡ Kaelen v2.1 — Dual-Model Orchestrator\n🔵 Qwen3-Coder  →  Scripts Lua\n🟣 Llama 3.3 70B  →  Análisis y razonamiento",
-    CFG.C.TextMuted, 11, CFG.FontReg, Enum.TextXAlignment.Left, 403)
+    CFG.C.TextMuted, 9, CFG.FontReg, Enum.TextXAlignment.Left, 403)
 
-local ClearHistBtn = Button(ConfigPanel, UDim2.new(1,0,0,42), nil, CFG.C.Card, "🗑  Borrar Historial de Chat", CFG.C.TextMuted, 13, CFG.Font, 402)
+local ClearHistBtn = Button(ConfigPanel, UDim2.new(1,0,0,32), nil, CFG.C.Card, "🗑  Borrar Historial de Chat", CFG.C.TextMuted, 11, CFG.Font, 402)
 ClearHistBtn.LayoutOrder = 5
 ClearHistBtn.BackgroundTransparency = 0.2
-Corner(ClearHistBtn, 12)
+Corner(ClearHistBtn, 10)
 Stroke(ClearHistBtn, CFG.C.Border, 1)
 
-local ResetKeyBtn = Button(ConfigPanel, UDim2.new(1,0,0,42), nil, CFG.C.Red, "⚠  Resetear API Key", CFG.C.White, 13, CFG.Font, 402)
+local ResetKeyBtn = Button(ConfigPanel, UDim2.new(1,0,0,32), nil, CFG.C.Red, "⚠  Resetear API Key", CFG.C.White, 11, CFG.Font, 402)
 ResetKeyBtn.LayoutOrder = 6
 ResetKeyBtn.BackgroundTransparency = 0.28
-Corner(ResetKeyBtn, 12)
+Corner(ResetKeyBtn, 10)
 
 -- ============================================================
 --  GESTIÓN DE PANELES (definición real)
@@ -1111,37 +1115,37 @@ local function AddMessage(role, content)
         isUser and CFG.C.UserBub or CFG.C.AIBub, 0.05, 404)
     bub.AutomaticSize = Enum.AutomaticSize.Y
     bub.Position      = isUser and UDim2.new(0.16, 0, 0, 0) or UDim2.new(0, 0, 0, 0)
-    Corner(bub, 16)
+    Corner(bub, 12)
     if not isUser then
         Stroke(bub, CFG.C.Border, 1)
     end
-    Pad(bub, 10, 10, 14, 14)
+    Pad(bub, 8, 8, 10, 10)
 
-    VLayout(bub, 5, isUser and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left)
+    VLayout(bub, 4, isUser and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left)
 
     -- Autor label
-    local authLbl = Label(bub, UDim2.new(1,0,0,14), nil,
+    local authLbl = Label(bub, UDim2.new(1,0,0,12), nil,
         isUser and ("🧑 " .. LocalPlayer.Name) or "⬡ Kaelen",
         isUser and Color3.fromRGB(185, 158, 255) or CFG.C.Accent,
-        10, CFG.Font,
+        9, CFG.Font,
         isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, 405)
     authLbl.LayoutOrder = 1
 
     -- Contenido del mensaje
     local contentLbl = Label(bub, UDim2.new(1,0,0,0), nil,
-        content, CFG.C.Text, 12, CFG.FontReg,
+        content, CFG.C.Text, 11, CFG.FontReg,
         isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, 405)
     contentLbl.AutomaticSize = Enum.AutomaticSize.Y
     contentLbl.LayoutOrder   = 2
 
     -- Botones de acción solo en mensajes de Kaelen
     if not isUser then
-        local actRow = Frame(bub, UDim2.new(1, 0, 0, 26), nil, Color3.fromRGB(0,0,0), 1, 405)
+        local actRow = Frame(bub, UDim2.new(1, 0, 0, 22), nil, Color3.fromRGB(0,0,0), 1, 405)
         actRow.LayoutOrder = 3
         HLayout(actRow, 6, Enum.VerticalAlignment.Center)
 
         -- Copiar
-        local copyBtn = Button(actRow, UDim2.new(0, 72, 1, 0), nil, CFG.C.Card, "📋 Copiar", CFG.C.TextMuted, 10, CFG.FontReg, 406)
+        local copyBtn = Button(actRow, UDim2.new(0, 60, 1, 0), nil, CFG.C.Card, "📋 Copiar", CFG.C.TextMuted, 9, CFG.FontReg, 406)
         copyBtn.BackgroundTransparency = 0.28
         Corner(copyBtn, 6)
         copyBtn.MouseButton1Click:Connect(function()
@@ -1153,7 +1157,7 @@ local function AddMessage(role, content)
         end)
 
         -- Regenerar
-        local regenBtn = Button(actRow, UDim2.new(0, 90, 1, 0), nil, CFG.C.Card, "🔄 Regenerar", CFG.C.TextMuted, 10, CFG.FontReg, 406)
+        local regenBtn = Button(actRow, UDim2.new(0, 76, 1, 0), nil, CFG.C.Card, "🔄 Regenerar", CFG.C.TextMuted, 9, CFG.FontReg, 406)
         regenBtn.BackgroundTransparency = 0.28
         Corner(regenBtn, 6)
         regenBtn.MouseButton1Click:Connect(function()
@@ -1419,8 +1423,8 @@ function OpenWindow()
     MainWin.Visible = true
 
     -- Posición de origen: el botón flotante
-    local ox = FloatBtn.Position.X.Offset + 31
-    local oy = FloatBtn.Position.Y.Offset + 31
+    local ox = FloatBtn.Position.X.Offset + 24 -- [Adaptado al nuevo radio]
+    local oy = FloatBtn.Position.Y.Offset + 24
     MainWin.Size     = UDim2.new(0, 0, 0, 0)
     MainWin.Position = UDim2.new(FloatBtn.Position.X.Scale, ox, FloatBtn.Position.Y.Scale, oy)
 
@@ -1434,8 +1438,8 @@ end
 function CloseWindow()
     State.IsOpen = false
 
-    local ox = FloatBtn.Position.X.Offset + 31
-    local oy = FloatBtn.Position.Y.Offset + 31
+    local ox = FloatBtn.Position.X.Offset + 24
+    local oy = FloatBtn.Position.Y.Offset + 24
 
     Tween(MainWin, {
         Size     = UDim2.new(0, 0, 0, 0),
@@ -1458,8 +1462,8 @@ ShowPanel("Key")
 SetTab("Chat")
 
 print("┌──────────────────────────────────────┐")
-print("│          KAELEN AI  v2.1             │")
-print("│   Qwen3-Coder + Llama 3.3 70B       │")
+print("│          KAELEN AI  v2.1  [Mobile]   │")
+print("│   Qwen3-Coder + Llama 3.3 70B        │")
 print("│   Dual-Model Orchestrator            │")
 print("│   Toca el botón K para abrir         │")
 print("└──────────────────────────────────────┘")
