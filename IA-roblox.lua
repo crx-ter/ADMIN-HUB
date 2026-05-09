@@ -1,1221 +1,1367 @@
 -- Kaelen --
 -- Asistente IA Premium para Roblox
--- Orquestador: Qwen3 Coder + Llama 3.3 70B via OpenRouter
--- Version: 2.0 | By: Kaelen Systems
+-- Orquestador: Qwen3-Coder + Llama 3.3 70B via OpenRouter
+-- Version: 2.1 | Kaelen Systems
+-- ============================================================
 
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
+-- ============================================================
+--  SERVICIOS
+-- ============================================================
+local Players          = game:GetService("Players")
+local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
-local CoreGui = game:GetService("CoreGui")
+local HttpService      = game:GetService("HttpService")
+local CoreGui          = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
 
 -- ============================================================
---  CONFIGURACIÓN GLOBAL
+--  LIMPIAR INSTANCIA ANTERIOR
 -- ============================================================
-local CONFIG = {
-    Version = "2.0",
-    AppName = "Kaelen",
-    Author = "Kaelen Systems",
-    OpenRouterBase = "https://openrouter.ai/api/v1/chat/completions",
-    Models = {
-        Coder  = "qwen/qwen3-coder",
-        Reason = "meta-llama/llama-3.3-70b-instruct",
-    },
-    MaxTokens = 1200,
-    Temperature = 0.7,
-    MaxHistory = 40,
-    -- Paleta
-    Colors = {
-        BG          = Color3.fromRGB(10, 10, 18),
-        Surface     = Color3.fromRGB(18, 18, 30),
-        Card        = Color3.fromRGB(24, 24, 40),
-        Border      = Color3.fromRGB(60, 60, 100),
-        Accent      = Color3.fromRGB(120, 80, 255),
-        AccentSoft  = Color3.fromRGB(80, 50, 180),
-        UserBubble  = Color3.fromRGB(100, 60, 240),
-        AIBubble    = Color3.fromRGB(28, 28, 48),
-        Text        = Color3.fromRGB(230, 230, 255),
-        TextMuted   = Color3.fromRGB(130, 130, 180),
-        Green       = Color3.fromRGB(80, 220, 140),
-        Red         = Color3.fromRGB(255, 80, 100),
+pcall(function()
+    if CoreGui:FindFirstChild("KaelenUI") then
+        CoreGui:FindFirstChild("KaelenUI"):Destroy()
+    end
+end)
+pcall(function()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg and pg:FindFirstChild("KaelenUI") then
+        pg:FindFirstChild("KaelenUI"):Destroy()
+    end
+end)
+
+-- ============================================================
+--  CONFIGURACIÓN
+-- ============================================================
+local CFG = {
+    Version        = "2.1",
+    OpenRouterURL  = "https://openrouter.ai/api/v1/chat/completions",
+    ModelCoder     = "qwen/qwen3-coder",
+    ModelReason    = "meta-llama/llama-3.3-70b-instruct",
+    MaxTokens      = 1500,
+    Temperature    = 0.72,
+    MaxHistory     = 50,
+    WIN_W          = 410,
+    WIN_H          = 610,
+    C = {
+        BG          = Color3.fromRGB(8,   8,  18),
+        Surface     = Color3.fromRGB(15, 14,  30),
+        Card        = Color3.fromRGB(21, 20,  40),
+        CardHi      = Color3.fromRGB(30, 27,  58),
+        Border      = Color3.fromRGB(52, 47, 100),
+        BorderHi    = Color3.fromRGB(100, 68, 222),
+        Accent      = Color3.fromRGB(112, 72, 255),
+        AccentDim   = Color3.fromRGB(72,  42, 175),
+        AccentGlow  = Color3.fromRGB(158, 118, 255),
+        UserBub     = Color3.fromRGB(92,  52, 232),
+        AIBub       = Color3.fromRGB(20,  19,  40),
+        Text        = Color3.fromRGB(226, 222, 255),
+        TextMuted   = Color3.fromRGB(118, 112, 172),
+        TextDim     = Color3.fromRGB(72,   68, 128),
+        Green       = Color3.fromRGB(68,  212, 132),
+        Red         = Color3.fromRGB(255,  72,  98),
+        Yellow      = Color3.fromRGB(255, 198,  68),
         White       = Color3.fromRGB(255, 255, 255),
     },
-    Font = Enum.Font.GothamBold,
+    Font    = Enum.Font.GothamBold,
     FontReg = Enum.Font.Gotham,
+    FontMon = Enum.Font.Code,
 }
 
 -- ============================================================
---  ESTADO
+--  ESTADO GLOBAL
 -- ============================================================
 local State = {
-    APIKey       = "",
-    KeyVerified  = false,
-    IsOpen       = false,
-    IsThinking   = false,
-    Messages     = {},          -- historial de chat
-    CurrentMode  = "Analista",  -- Programador | Analista | Creativo | Troll
+    APIKey          = "",
+    KeyVerified     = false,
+    IsOpen          = false,
+    IsThinking      = false,
+    Messages        = {},
+    CurrentMode     = "Analista",
     CustomSysPrompt = "",
-    CurrentTab   = "Chat",
-    ThinkDots    = 0,
-    DragOffset   = Vector2.new(0, 0),
-    IsDragging   = false,
+    ThinkTask       = nil,
+    MsgCount        = 0,
+    -- Arrastre botón flotante
+    BtnDragging     = false,
+    BtnDragOrigin   = Vector2.new(0, 0),
+    BtnPosOrigin    = UDim2.new(0, 0, 0, 0),
+    BtnTotalMoved   = 0,
+    -- Arrastre ventana
+    WinDragging     = false,
+    WinDragOrigin   = Vector2.new(0, 0),
+    WinPosOrigin    = UDim2.new(0, 0, 0, 0),
 }
 
 -- ============================================================
 --  SYSTEM PROMPTS POR MODO
 -- ============================================================
-local SYSTEM_PROMPTS = {
-    Programador = [[Eres Kaelen, un experto élite en Lua y Roblox scripting.
-Tu misión: generar, optimizar y debugear scripts Lua para Roblox con la máxima calidad.
-- Siempre usa código limpio, comentado y modular.
-- Detecta vulnerabilidades, memory leaks y race conditions.
-- Explica cada solución con claridad técnica.
-- Cuando generes scripts, usa bloques de código Lua correctamente formateados.
-- Actúa como desarrollador senior con 15 años de experiencia en Roblox.]],
+local PROMPTS = {
+    Programador = [[Eres Kaelen, el mejor experto en Roblox Lua del mundo con 15 años de experiencia.
+MISIÓN: Crear, optimizar, debugear y analizar scripts Lua para Roblox con calidad AAA.
+REGLAS ESTRICTAS:
+- Todo código debe ser limpio, modular, bien comentado y funcional en Roblox moderno.
+- Detecta y señala siempre: memory leaks, race conditions, yields innecesarios, vulnerabilidades de seguridad.
+- Usa patrones modernos: task.spawn, task.delay, Modules, RemoteEvents con validación server-side.
+- Cuando generes código usa bloques delimitados claramente.
+- Explica brevemente cada decisión técnica importante.
+- Si el usuario muestra código con errores, corrígelo línea por línea y explica el por qué.
+- Piensa siempre en rendimiento, escalabilidad y mantenibilidad.]],
 
-    Analista = [[Eres Kaelen, un analista de sistemas de juegos Roblox de élite.
-Tu misión: analizar mecánicas, detectar vulnerabilidades, evaluar rendimiento y dar insights profundos.
-- Analiza el contexto del juego cuando se te proporcione.
-- Detecta posibles exploits, problemas de balanceo y errores de diseño.
-- Da recomendaciones concretas y accionables.
-- Combina análisis técnico con visión de game design.
-- Sé directo, preciso y exhaustivo.]],
+    Analista = [[Eres Kaelen, analista de sistemas de juegos Roblox de élite.
+MISIÓN: Analizar en profundidad mecánicas, detectar vulnerabilidades, evaluar arquitectura y rendimiento.
+REGLAS ESTRICTAS:
+- Al recibir contexto de un juego, analiza: arquitectura general, RemoteEvents expuestos, posibles exploits.
+- Detecta específicamente: RemoteEvents sin validación server-side, valores no sanity-checked, physics exploits, duplication glitches.
+- Prioriza vulnerabilidades por severidad: CRÍTICA / ALTA / MEDIA / BAJA.
+- Da recomendaciones concretas y código de parche cuando sea posible.
+- Combina análisis técnico profundo con visión de game design.
+- Sé directo, exhaustivo y usa estructura de secciones clara.]],
 
-    Creativo = [[Eres Kaelen, un genio creativo especializado en diseño de juegos Roblox.
-Tu misión: generar ideas innovadoras, mecánicas únicas y conceptos originales.
-- Piensa fuera de la caja con propuestas sorprendentes.
-- Combina géneros, mecánicas y estilos de forma inesperada.
-- Da descripciones vívidas y detalladas de cada idea.
-- Inspírate en los mejores juegos del mundo para crear algo único en Roblox.]],
+    Creativo = [[Eres Kaelen, genio creativo especializado en diseño de experiencias Roblox únicas.
+MISIÓN: Generar ideas innovadoras, mecánicas originales y conceptos que nunca se han visto en Roblox.
+REGLAS ESTRICTAS:
+- Piensa completamente fuera de la caja, mezcla géneros inesperadamente.
+- Cada idea debe incluir: concepto principal, mecánica central, game loop, engagement hooks, monetización posible.
+- Inspírate en los mejores juegos del mundo y adáptalos creativamente a Roblox.
+- Da al menos 3 variaciones o evoluciones de cada idea.
+- Sé descriptivo, entusiasta y detallado.]],
 
-    Troll = [[Eres Kaelen en modo Troll, especialista en mecánicas de juego caóticas y divertidas.
-Tu misión: sugerir trolleos creativos, graciosos y SEGUROS (sin exploits, sin ban).
-- Solo mecánicas dentro del juego, sin modificaciones externas.
-- Enfócate en situaciones cómicas, sorpresas y reacciones divertidas.
-- Mantén todo en el espíritu de diversión sana.
-- Da ideas detalladas y ejecutables legítimamente.]],
+    Troll = [[Eres Kaelen en modo Troll, maestro del caos creativo DENTRO de los límites del juego.
+MISIÓN: Proponer trolleos ingeniosos, divertidos y 100% dentro de las mecánicas legítimas del juego.
+REGLAS ESTRICTAS:
+- SOLO mecánicas que existen dentro del juego. Cero exploits, cero cheats externos.
+- Los mejores trolleos son los que nadie ve venir: timing, misdirection, reacciones en cadena.
+- Cada idea debe ser ejecutable legítimamente por cualquier jugador con habilidad.
+- Añade contexto de cuándo, cómo y dónde ejecutarlo para efecto máximo.
+- Sé creativo, gracioso y específico.]],
 }
 
 -- ============================================================
---  UTILIDADES
+--  UTILIDADES UI
 -- ============================================================
-local function Tween(obj, props, duration, style, direction)
-    style = style or Enum.EasingStyle.Quart
-    direction = direction or Enum.EasingDirection.Out
-    local info = TweenInfo.new(duration or 0.3, style, direction)
-    local t = TweenService:Create(obj, info, props)
-    t:Play()
-    return t
+local function Tween(obj, props, t, style, dir)
+    local tw = TweenService:Create(
+        obj,
+        TweenInfo.new(t or 0.28, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out),
+        props
+    )
+    tw:Play()
+    return tw
 end
 
-local function MakeCorner(parent, radius)
+local function Corner(parent, radius)
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(0, radius or 12)
     c.Parent = parent
     return c
 end
 
-local function MakeStroke(parent, color, thickness)
+local function Stroke(parent, color, thickness)
     local s = Instance.new("UIStroke")
-    s.Color = color or CONFIG.Colors.Border
+    s.Color = color or CFG.C.Border
     s.Thickness = thickness or 1
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     s.Parent = parent
     return s
 end
 
-local function MakePadding(parent, top, bottom, left, right)
+local function Pad(parent, t, b, l, r)
     local p = Instance.new("UIPadding")
-    p.PaddingTop    = UDim.new(0, top    or 8)
-    p.PaddingBottom = UDim.new(0, bottom or 8)
-    p.PaddingLeft   = UDim.new(0, left   or 8)
-    p.PaddingRight  = UDim.new(0, right  or 8)
+    p.PaddingTop    = UDim.new(0, t or 8)
+    p.PaddingBottom = UDim.new(0, b or 8)
+    p.PaddingLeft   = UDim.new(0, l or 8)
+    p.PaddingRight  = UDim.new(0, r or 8)
     p.Parent = parent
     return p
 end
 
+local function VLayout(parent, padding, halign)
+    local l = Instance.new("UIListLayout")
+    l.FillDirection       = Enum.FillDirection.Vertical
+    l.HorizontalAlignment = halign or Enum.HorizontalAlignment.Left
+    l.VerticalAlignment   = Enum.VerticalAlignment.Top
+    l.Padding             = UDim.new(0, padding or 0)
+    l.SortOrder           = Enum.SortOrder.LayoutOrder
+    l.Parent = parent
+    return l
+end
+
+local function HLayout(parent, padding, valign)
+    local l = Instance.new("UIListLayout")
+    l.FillDirection       = Enum.FillDirection.Horizontal
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    l.VerticalAlignment   = valign or Enum.VerticalAlignment.Center
+    l.Padding             = UDim.new(0, padding or 0)
+    l.SortOrder           = Enum.SortOrder.LayoutOrder
+    l.Parent = parent
+    return l
+end
+
+local function Gradient(parent, c0, c1, rotation)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, c0),
+        ColorSequenceKeypoint.new(1, c1),
+    })
+    g.Rotation = rotation or 90
+    g.Parent = parent
+    return g
+end
+
+local function Frame(parent, size, pos, bg, bgTrans, zIndex, name)
+    local f = Instance.new("Frame")
+    f.Size                  = size or UDim2.new(1, 0, 1, 0)
+    f.Position              = pos  or UDim2.new(0, 0, 0, 0)
+    f.BackgroundColor3      = bg or CFG.C.Card
+    f.BackgroundTransparency = bgTrans or 0
+    f.ZIndex                = zIndex or 2
+    f.BorderSizePixel       = 0
+    if name then f.Name = name end
+    f.Parent = parent
+    return f
+end
+
+local function Label(parent, size, pos, text, color, textSize, font, halign, zIndex)
+    local l = Instance.new("TextLabel")
+    l.Size                  = size or UDim2.new(1, 0, 0, 20)
+    l.Position              = pos  or UDim2.new(0, 0, 0, 0)
+    l.BackgroundTransparency = 1
+    l.Text                  = text or ""
+    l.TextColor3            = color or CFG.C.Text
+    l.TextSize              = textSize or 13
+    l.Font                  = font or CFG.FontReg
+    l.TextXAlignment        = halign or Enum.TextXAlignment.Left
+    l.ZIndex                = zIndex or 2
+    l.TextWrapped           = true
+    l.BorderSizePixel       = 0
+    l.Parent = parent
+    return l
+end
+
+local function Button(parent, size, pos, bg, text, textColor, textSize, font, zIndex)
+    local b = Instance.new("TextButton")
+    b.Size                  = size or UDim2.new(1, 0, 0, 40)
+    b.Position              = pos  or UDim2.new(0, 0, 0, 0)
+    b.BackgroundColor3      = bg or CFG.C.Accent
+    b.Text                  = text or ""
+    b.TextColor3            = textColor or CFG.C.White
+    b.TextSize              = textSize or 13
+    b.Font                  = font or CFG.Font
+    b.ZIndex                = zIndex or 2
+    b.AutoButtonColor       = false
+    b.BorderSizePixel       = 0
+    b.Parent = parent
+    return b
+end
+
+local function Scroll(parent, size, pos, zIndex)
+    local s = Instance.new("ScrollingFrame")
+    s.Size                   = size or UDim2.new(1, 0, 1, 0)
+    s.Position               = pos  or UDim2.new(0, 0, 0, 0)
+    s.BackgroundTransparency = 1
+    s.ScrollBarThickness     = 3
+    s.ScrollBarImageColor3   = CFG.C.Accent
+    s.CanvasSize             = UDim2.new(0, 0, 0, 0)
+    s.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+    s.ZIndex                 = zIndex or 2
+    s.BorderSizePixel        = 0
+    s.Parent = parent
+    return s
+end
+
+-- ============================================================
+--  CONTEXTO DEL JUEGO (para análisis)
+-- ============================================================
 local function GetGameContext()
-    local info = {
-        GameName     = game.Name or "Desconocido",
-        PlaceId      = game.PlaceId or 0,
-        JobId        = game.JobId or "N/A",
-        PlayerCount  = #Players:GetPlayers(),
-        LocalPlayer  = LocalPlayer.Name,
-        Character    = LocalPlayer.Character and "Presente" or "Ausente",
-    }
-    local services = {}
-    for _, s in ipairs({"ReplicatedStorage","ServerStorage","Workspace","StarterGui","StarterPack"}) do
+    local ctx = {}
+    pcall(function() ctx.GameName    = game.Name end)
+    pcall(function() ctx.PlaceId     = tostring(game.PlaceId) end)
+    pcall(function() ctx.JobId       = game.JobId end)
+    pcall(function() ctx.PlayerCount = tostring(#Players:GetPlayers()) end)
+    pcall(function() ctx.MyName      = LocalPlayer.Name end)
+    pcall(function() ctx.MyUserId    = tostring(LocalPlayer.UserId) end)
+    pcall(function()
+        ctx.WorkspaceObjects = tostring(#game.Workspace:GetDescendants())
+    end)
+
+    -- Servicios con conteo de hijos
+    local svcs = {}
+    for _, n in ipairs({"ReplicatedStorage","StarterGui","StarterPack","Teams","SoundService","ReplicatedFirst"}) do
         pcall(function()
-            local svc = game:GetService(s)
-            if svc then table.insert(services, s..":"..#svc:GetChildren().." hijos") end
+            local s = game:GetService(n)
+            if s then table.insert(svcs, n .. "=" .. #s:GetChildren()) end
         end)
     end
-    info.Services = table.concat(services, ", ")
-    return HttpService:JSONEncode(info)
+    ctx.Services = table.concat(svcs, ", ")
+
+    -- RemoteEvents / RemoteFunctions detectados
+    local remotes = {}
+    pcall(function()
+        for _, v in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
+            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                table.insert(remotes, v.ClassName .. ":" .. v.Name)
+                if #remotes >= 20 then break end
+            end
+        end
+    end)
+    ctx.RemoteEvents = #remotes > 0 and table.concat(remotes, " | ") or "Ninguno encontrado en ReplicatedStorage"
+
+    -- GUIs del juego
+    local guis = {}
+    pcall(function()
+        for _, v in ipairs(game:GetService("StarterGui"):GetChildren()) do
+            table.insert(guis, v.Name .. "(" .. v.ClassName .. ")")
+        end
+    end)
+    ctx.StarterGUIs = #guis > 0 and table.concat(guis, ", ") or "Ninguno"
+
+    -- LocalScripts en el player
+    local scripts = {}
+    pcall(function()
+        for _, v in ipairs(LocalPlayer:GetDescendants()) do
+            if v:IsA("LocalScript") and v.Enabled then
+                table.insert(scripts, v.Name)
+                if #scripts >= 15 then break end
+            end
+        end
+    end)
+    ctx.ActiveLocalScripts = #scripts > 0 and table.concat(scripts, ", ") or "Ninguno"
+
+    -- Módulos en ReplicatedStorage
+    local modules = {}
+    pcall(function()
+        for _, v in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
+            if v:IsA("ModuleScript") then
+                table.insert(modules, v.Name)
+                if #modules >= 10 then break end
+            end
+        end
+    end)
+    ctx.Modules = #modules > 0 and table.concat(modules, ", ") or "Ninguno"
+
+    -- Character info
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char then
+            ctx.CharacterModel = char.Name
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                ctx.MaxHealth    = tostring(hum.MaxHealth)
+                ctx.WalkSpeed    = tostring(hum.WalkSpeed)
+                ctx.JumpPower    = tostring(hum.JumpPower)
+            end
+        end
+    end)
+
+    return HttpService:JSONEncode(ctx)
 end
 
 -- ============================================================
 --  HTTP / OPENROUTER
 -- ============================================================
-local function CallOpenRouter(model, messages, sysPrompt)
-    if not State.KeyVerified or State.APIKey == "" then
-        return nil, "API Key no verificada"
-    end
-    local body = {
-        model       = model,
-        max_tokens  = CONFIG.MaxTokens,
-        temperature = CONFIG.Temperature,
-        messages    = messages,
+local function FindRequestFunction()
+    local attempts = {
+        function() return syn and syn.request end,
+        function() return http and http.request end,
+        function() return http_request end,
+        function() return request end,
+        function() return KRNL_request end,
+        function() return fluxus and fluxus.request end,
+        function() return (getgenv and getgenv().request) end,
     }
-    if sysPrompt and sysPrompt ~= "" then
-        table.insert(body.messages, 1, {role="system", content=sysPrompt})
+    for _, fn in ipairs(attempts) do
+        local ok, f = pcall(fn)
+        if ok and type(f) == "function" then return f end
     end
-    local ok, res = pcall(function()
-        return syn and syn.request or (http and http.request) or
-               (request) or nil
-    end)
-    local reqFunc = ok and res or nil
-    if not reqFunc then
-        -- fallback HttpService (solo funciona en exploits con http habilitado)
-        return nil, "No se encontró función HTTP compatible"
-    end
-    local response = reqFunc({
-        Url = CONFIG.OpenRouterBase,
-        Method = "POST",
-        Headers = {
-            ["Content-Type"]  = "application/json",
-            ["Authorization"] = "Bearer " .. State.APIKey,
-            ["HTTP-Referer"]  = "https://roblox.com",
-            ["X-Title"]       = "Kaelen AI",
-        },
-        Body = HttpService:JSONEncode(body),
-    })
-    if not response or response.StatusCode ~= 200 then
-        local code = response and response.StatusCode or "sin respuesta"
-        return nil, "Error HTTP " .. tostring(code)
-    end
-    local data = HttpService:JSONDecode(response.Body)
-    if data and data.choices and data.choices[1] then
-        return data.choices[1].message.content, nil
-    end
-    return nil, "Respuesta inesperada del servidor"
+    return nil
 end
 
--- Verificar API Key (llamada ligera)
+local function CallAPI(model, messages, systemPrompt)
+    if not State.KeyVerified or State.APIKey == "" then
+        return nil, "API Key no verificada. Introduce tu key primero."
+    end
+    local reqFn = FindRequestFunction()
+    if not reqFn then
+        return nil, "No se encontró función HTTP en tu executor. Necesitas Synapse X, KRNL, Fluxus u otro que soporte 'request'."
+    end
+
+    -- Construir messages array con system prompt
+    local apiMsgs = {}
+    if systemPrompt and systemPrompt ~= "" then
+        table.insert(apiMsgs, { role = "system", content = systemPrompt })
+    end
+    for _, m in ipairs(messages) do
+        table.insert(apiMsgs, { role = m.role, content = m.content })
+    end
+
+    local payload = {
+        model       = model,
+        max_tokens  = CFG.MaxTokens,
+        temperature = CFG.Temperature,
+        messages    = apiMsgs,
+    }
+
+    local ok, resp = pcall(function()
+        return reqFn({
+            Url    = CFG.OpenRouterURL,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"]  = "application/json",
+                ["Authorization"] = "Bearer " .. State.APIKey,
+                ["HTTP-Referer"]  = "https://www.roblox.com",
+                ["X-Title"]       = "Kaelen AI v2.1",
+            },
+            Body = HttpService:JSONEncode(payload),
+        })
+    end)
+
+    if not ok then
+        return nil, "Error de red: " .. tostring(resp)
+    end
+    if not resp then
+        return nil, "Sin respuesta del servidor"
+    end
+    if resp.StatusCode ~= 200 then
+        local errMsg = "HTTP " .. tostring(resp.StatusCode)
+        pcall(function()
+            local d = HttpService:JSONDecode(resp.Body)
+            if d and d.error then
+                errMsg = errMsg .. " — " .. tostring(d.error.message or d.error)
+            end
+        end)
+        return nil, errMsg
+    end
+
+    local ok2, data = pcall(HttpService.JSONDecode, HttpService, resp.Body)
+    if not ok2 then return nil, "Error parseando JSON de respuesta" end
+    if data and data.choices and data.choices[1] and data.choices[1].message then
+        return data.choices[1].message.content, nil
+    end
+    return nil, "Respuesta del servidor con estructura inesperada"
+end
+
+-- Verificación de key (llamada mínima de prueba)
 local function VerifyAPIKey(key)
-    local tempKey = State.APIKey
-    State.APIKey = key
-    State.KeyVerified = true  -- temporal para que pase el check
-    local testMsg = {{role="user", content="Di solo: OK"}}
-    local res, err = CallOpenRouter(CONFIG.Models.Reason, testMsg, "Responde solo 'OK'.")
+    local prevKey      = State.APIKey
+    local prevVerified = State.KeyVerified
+    State.APIKey      = key
+    State.KeyVerified = true
+    local res, err = CallAPI(
+        CFG.ModelReason,
+        {{ role = "user", content = "Responde solo: OK" }},
+        "Eres un asistente. Responde SOLO la palabra OK."
+    )
     if err then
-        State.APIKey = tempKey
-        State.KeyVerified = false
+        State.APIKey      = prevKey
+        State.KeyVerified = prevVerified
         return false, err
     end
-    State.KeyVerified = true
     return true, nil
 end
 
--- Orquestador: combina Coder + Reason
+-- ============================================================
+--  ORQUESTADOR KAELEN
+-- ============================================================
+local CODE_KEYWORDS = {
+    "script","lua","código","codigo","función","funcion","module",
+    "crea","genera","optimiza","debug","arregla","mejora","fix",
+    "hub","farm","loop","while","for","pcall","coroutine","tween",
+    "remote","event","bindable","localscript","modulescript",
+    "gui","frame","label","button","instance","workspace",
+}
+local VULN_KEYWORDS = {
+    "vulnerabilidad","exploit","seguridad","hack","fallo",
+    "parche","proteg","sanitiz","validar","sanity","bypass",
+}
+
+local function MatchesAny(text, keywords)
+    local lower = text:lower()
+    for _, kw in ipairs(keywords) do
+        if lower:find(kw, 1, true) then return true end
+    end
+    return false
+end
+
+local function BuildApiHistory(messages)
+    -- Construye el array de mensajes para la API (sin system, eso va aparte)
+    local out = {}
+    for _, m in ipairs(messages) do
+        table.insert(out, { role = m.role, content = m.content })
+    end
+    return out
+end
+
 local function OrchestrateKaelen(userMessage, history)
-    local sysPrompt = State.CustomSysPrompt ~= "" and State.CustomSysPrompt
-                      or SYSTEM_PROMPTS[State.CurrentMode]
-    
-    -- Detectar si es petición de código
-    local isCode = userMessage:lower():match("script") or
-                   userMessage:lower():match("lua") or
-                   userMessage:lower():match("código") or
-                   userMessage:lower():match("codigo") or
-                   userMessage:lower():match("función") or
-                   userMessage:lower():match("funcion") or
-                   userMessage:lower():match("crea") or
-                   userMessage:lower():match("genera") or
-                   userMessage:lower():match("optimiza") or
-                   userMessage:lower():match("debug")
+    local sys = (State.CustomSysPrompt ~= "" and State.CustomSysPrompt)
+                or PROMPTS[State.CurrentMode]
+                or PROMPTS.Analista
 
-    -- Construir historial para la API
-    local apiMessages = {}
-    for _, m in ipairs(history) do
-        table.insert(apiMessages, {role = m.role, content = m.content})
-    end
-    table.insert(apiMessages, {role = "user", content = userMessage})
+    local apiHistory = BuildApiHistory(history)
 
-    local finalResponse = ""
+    local isCode = MatchesAny(userMessage, CODE_KEYWORDS) or State.CurrentMode == "Programador"
+    local isVuln = MatchesAny(userMessage, VULN_KEYWORDS) or State.CurrentMode == "Analista"
 
-    if isCode or State.CurrentMode == "Programador" then
-        -- Modo código: primero Coder, luego Reason refina
-        local coderSys = SYSTEM_PROMPTS.Programador .. "\n\nEres el componente de código de Kaelen. Genera el script Lua solicitado con calidad máxima."
-        local codeRes, codeErr = CallOpenRouter(CONFIG.Models.Coder, apiMessages, coderSys)
+    -- ──────────────────────────────
+    --  RUTA 1: Petición de código
+    -- ──────────────────────────────
+    if isCode then
+        local coderSys = PROMPTS.Programador ..
+            "\n\nEres el módulo CODER de Kaelen. " ..
+            "Genera el script Lua solicitado con máxima calidad profesional. " ..
+            "Incluye comentarios en cada sección importante. " ..
+            "Asegúrate de que funcione en Roblox moderno con las APIs actuales."
+
+        local codeResult, codeErr = CallAPI(CFG.ModelCoder, apiHistory, coderSys)
+
         if codeErr then
-            -- Fallback solo a Reason
-            local res, err = CallOpenRouter(CONFIG.Models.Reason, apiMessages, sysPrompt)
-            if err then return nil, err end
-            finalResponse = res
-        else
-            -- Reason refina y añade análisis
-            local refineMessages = {
-                {role = "user", content = "El componente Coder de Kaelen generó esto:\n\n" .. codeRes .. "\n\nPetición original del usuario: " .. userMessage .. "\n\nRefina, analiza vulnerabilidades si las hay, y presenta la respuesta final de forma clara y completa como Kaelen."}
-            }
-            local refinedRes, _ = CallOpenRouter(CONFIG.Models.Reason, refineMessages, sysPrompt)
-            finalResponse = refinedRes or codeRes
+            -- Fallback: Llama genera el código si Coder falla
+            local fallback, fbErr = CallAPI(CFG.ModelReason, apiHistory, sys)
+            if fbErr then
+                return nil, "Coder: " .. codeErr .. " | Reason: " .. fbErr
+            end
+            return "⚡ [Kaelen — Llama 3.3 Fallback]\n\n" .. fallback, nil
         end
-    else
-        -- Modo razonamiento/análisis: principalmente Reason con contexto
-        local res, err = CallOpenRouter(CONFIG.Models.Reason, apiMessages, sysPrompt)
-        if err then return nil, err end
-        finalResponse = res
-    end
 
-    return finalResponse, nil
+        -- Llama 3.3 revisa, mejora y presenta el resultado final
+        local reviewMsgs = {
+            {
+                role = "user",
+                content =
+                    "El módulo Qwen3-Coder de Kaelen generó este script Lua:\n\n```lua\n" ..
+                    codeResult .. "\n```\n\n" ..
+                    "Petición original del usuario: " .. userMessage .. "\n\n" ..
+                    "Como módulo de razonamiento de Kaelen, debes:\n" ..
+                    "1. Revisar si el código tiene errores, vulnerabilidades o memory leaks.\n" ..
+                    "2. Sugerir mejoras concretas si las hay.\n" ..
+                    "3. Presentar la versión final completa y corregida.\n" ..
+                    "4. Añadir una breve explicación de uso.\n" ..
+                    "Sé técnico, directo y completo."
+            }
+        }
+        local reviewed, revErr = CallAPI(CFG.ModelReason, reviewMsgs, sys)
+        if revErr then
+            -- Si falla el review, entrega el código del Coder directamente
+            return "⚡ [Qwen3-Coder]\n\n" .. codeResult, nil
+        end
+        return "⚡ [Kaelen Orquestador — Qwen3-Coder + Llama 3.3]\n\n" .. reviewed, nil
+
+    -- ──────────────────────────────────────────
+    --  RUTA 2: Análisis / Vulnerabilidades
+    -- ──────────────────────────────────────────
+    elseif isVuln then
+        local analysisResult, analysisErr = CallAPI(CFG.ModelReason, apiHistory, sys)
+        if analysisErr then return nil, analysisErr end
+
+        -- Si el análisis detectó problemas, Qwen3-Coder genera los parches
+        local patchMsgs = {
+            {
+                role = "user",
+                content =
+                    "Basándote en este análisis de seguridad de Roblox:\n\n" ..
+                    analysisResult .. "\n\n" ..
+                    "Genera snippets de código Lua que parcheen las vulnerabilidades identificadas. " ..
+                    "Ordénalos por severidad. Código limpio, comentado y listo para pegar en Roblox Studio."
+            }
+        }
+        local patches, patchErr = CallAPI(CFG.ModelCoder, patchMsgs, PROMPTS.Programador)
+        if patchErr or not patches then
+            return "🔍 [Kaelen Analista — Llama 3.3]\n\n" .. analysisResult, nil
+        end
+        return
+            "🔍 [Kaelen Analista — Llama 3.3 + Qwen3-Coder]\n\n" ..
+            analysisResult ..
+            "\n\n" .. string.rep("─", 40) .. "\n\n" ..
+            "💻 **Código de Parches:**\n\n" ..
+            patches,
+        nil
+
+    -- ──────────────────────────────────────
+    --  RUTA 3: General (Llama 3.3)
+    -- ──────────────────────────────────────
+    else
+        local result, err = CallAPI(CFG.ModelReason, apiHistory, sys)
+        if err then return nil, err end
+        return "⬡ [Kaelen — Llama 3.3 70B]\n\n" .. result, nil
+    end
 end
 
 -- ============================================================
---  CONSTRUCCIÓN DE UI
+--  SCREEN GUI
 -- ============================================================
+local ScreenGui       = Instance.new("ScreenGui")
+ScreenGui.Name        = "KaelenUI"
+ScreenGui.ResetOnSpawn    = false
+ScreenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder    = 9999
+ScreenGui.IgnoreGuiInset  = true
 
--- Limpiar instancia anterior si existe
-pcall(function()
-    if CoreGui:FindFirstChild("KaelenUI") then
-        CoreGui:FindFirstChild("KaelenUI"):Destroy()
-    end
-end)
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "KaelenUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder = 999
-ScreenGui.IgnoreGuiInset = true
-pcall(function() ScreenGui.Parent = CoreGui end)
-if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+local pgOk = pcall(function() ScreenGui.Parent = CoreGui end)
+if not pgOk then
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
 
 -- ============================================================
 --  BOTÓN FLOTANTE
 -- ============================================================
-local FloatBtn = Instance.new("TextButton")
-FloatBtn.Name = "FloatBtn"
-FloatBtn.Size = UDim2.new(0, 58, 0, 58)
-FloatBtn.Position = UDim2.new(1, -80, 0.5, -29)
-FloatBtn.BackgroundColor3 = CONFIG.Colors.Accent
-FloatBtn.Text = ""
-FloatBtn.ZIndex = 100
-FloatBtn.Parent = ScreenGui
+local FloatBtn        = Instance.new("ImageButton")
+FloatBtn.Name         = "FloatBtn"
+FloatBtn.Size         = UDim2.new(0, 62, 0, 62)
+FloatBtn.Position     = UDim2.new(1, -82, 0.6, -31)
+FloatBtn.BackgroundColor3 = CFG.C.Accent
+FloatBtn.Image        = ""
+FloatBtn.AutoButtonColor = false
+FloatBtn.ZIndex       = 500
+FloatBtn.BorderSizePixel = 0
+FloatBtn.Parent       = ScreenGui
+Corner(FloatBtn, 31)
+Stroke(FloatBtn, CFG.C.AccentGlow, 2)
+Gradient(FloatBtn, Color3.fromRGB(135, 92, 255), Color3.fromRGB(88, 48, 205), 135)
 
-MakeCorner(FloatBtn, 29)
-MakeStroke(FloatBtn, Color3.fromRGB(160, 120, 255), 2)
-
--- Glow del botón
 local BtnGlow = Instance.new("ImageLabel")
-BtnGlow.Size = UDim2.new(1.6, 0, 1.6, 0)
-BtnGlow.Position = UDim2.new(-0.3, 0, -0.3, 0)
+BtnGlow.Size              = UDim2.new(0, 104, 0, 104)
+BtnGlow.Position          = UDim2.new(0.5, -52, 0.5, -52)
 BtnGlow.BackgroundTransparency = 1
-BtnGlow.Image = "rbxassetid://5028857084"
-BtnGlow.ImageColor3 = CONFIG.Colors.Accent
-BtnGlow.ImageTransparency = 0.5
-BtnGlow.ZIndex = 99
-BtnGlow.Parent = FloatBtn
+BtnGlow.Image             = "rbxassetid://5028857084"
+BtnGlow.ImageColor3       = CFG.C.Accent
+BtnGlow.ImageTransparency = 0.45
+BtnGlow.ZIndex            = 499
+BtnGlow.Parent            = FloatBtn
 
-local BtnIcon = Instance.new("TextLabel")
-BtnIcon.Size = UDim2.new(1, 0, 1, 0)
-BtnIcon.BackgroundTransparency = 1
-BtnIcon.Text = "K"
-BtnIcon.TextColor3 = CONFIG.Colors.White
-BtnIcon.TextSize = 22
-BtnIcon.Font = CONFIG.Font
-BtnIcon.ZIndex = 101
-BtnIcon.Parent = FloatBtn
+local BtnK = Label(FloatBtn, UDim2.new(1,0,1,0), nil, "K", CFG.C.White, 26, CFG.Font, Enum.TextXAlignment.Center, 501)
 
--- Pulso animado del botón
-local function PulseButton()
-    while true do
-        Tween(BtnGlow, {ImageTransparency = 0.2}, 1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-        task.wait(1.2)
-        Tween(BtnGlow, {ImageTransparency = 0.7}, 1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-        task.wait(1.2)
-    end
-end
-task.spawn(PulseButton)
-
--- Arrastre del botón flotante
-local btnDragging = false
-local btnDragStart, btnStartPos
-
-FloatBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or
-       input.UserInputType == Enum.UserInputType.Touch then
-        btnDragging = true
-        btnDragStart = input.Position
-        btnStartPos = FloatBtn.Position
+-- Pulso del glow
+task.spawn(function()
+    while FloatBtn and FloatBtn.Parent do
+        Tween(BtnGlow, {
+            ImageTransparency = 0.12,
+            Size = UDim2.new(0, 115, 0, 115),
+            Position = UDim2.new(0.5, -57.5, 0.5, -57.5),
+        }, 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        task.wait(1.5)
+        Tween(BtnGlow, {
+            ImageTransparency = 0.6,
+            Size = UDim2.new(0, 95, 0, 95),
+            Position = UDim2.new(0.5, -47.5, 0.5, -47.5),
+        }, 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        task.wait(1.5)
     end
 end)
 
-FloatBtn.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or
-       input.UserInputType == Enum.UserInputType.Touch then
-        btnDragging = false
+-- ============================================================
+--  ARRASTRE BOTÓN FLOTANTE
+--  (Clave: distinguir drag vs click con BtnTotalMoved)
+-- ============================================================
+FloatBtn.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        State.BtnDragging   = true
+        State.BtnDragOrigin = Vector2.new(inp.Position.X, inp.Position.Y)
+        State.BtnPosOrigin  = FloatBtn.Position
+        State.BtnTotalMoved = 0
     end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if btnDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or
-                        input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - btnDragStart
-        FloatBtn.Position = UDim2.new(
-            btnStartPos.X.Scale,
-            btnStartPos.X.Offset + delta.X,
-            btnStartPos.Y.Scale,
-            btnStartPos.Y.Offset + delta.Y
+UserInputService.InputChanged:Connect(function(inp)
+    if State.BtnDragging and (
+        inp.UserInputType == Enum.UserInputType.MouseMovement or
+        inp.UserInputType == Enum.UserInputType.Touch)
+    then
+        local delta = Vector2.new(inp.Position.X, inp.Position.Y) - State.BtnDragOrigin
+        State.BtnTotalMoved = delta.Magnitude
+        if State.BtnTotalMoved > 7 then
+            FloatBtn.Position = UDim2.new(
+                State.BtnPosOrigin.X.Scale,
+                State.BtnPosOrigin.X.Offset + delta.X,
+                State.BtnPosOrigin.Y.Scale,
+                State.BtnPosOrigin.Y.Offset + delta.Y
+            )
+        end
+    end
+    -- Arrastre de ventana
+    if State.WinDragging and (
+        inp.UserInputType == Enum.UserInputType.MouseMovement or
+        inp.UserInputType == Enum.UserInputType.Touch)
+    then
+        local delta = Vector2.new(inp.Position.X, inp.Position.Y) - State.WinDragOrigin
+        MainWin.Position = UDim2.new(
+            State.WinPosOrigin.X.Scale,
+            State.WinPosOrigin.X.Offset + delta.X,
+            State.WinPosOrigin.Y.Scale,
+            State.WinPosOrigin.Y.Offset + delta.Y
         )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        -- Soltar arrastre de ventana
+        State.WinDragging = false
+        -- Procesar botón flotante
+        if State.BtnDragging then
+            local moved = State.BtnTotalMoved
+            State.BtnDragging   = false
+            State.BtnTotalMoved = 0
+            if moved <= 7 then
+                -- Es un CLICK real: toggle ventana
+                if State.IsOpen then
+                    CloseWindow()
+                else
+                    OpenWindow()
+                end
+            end
+        end
     end
 end)
 
 -- ============================================================
 --  VENTANA PRINCIPAL
 -- ============================================================
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 380, 0, 580)
-MainFrame.Position = UDim2.new(0.5, -190, 0.5, -290)
-MainFrame.BackgroundColor3 = CONFIG.Colors.BG
-MainFrame.BackgroundTransparency = 0.05
-MainFrame.ClipsDescendants = true
-MainFrame.Visible = false
-MainFrame.ZIndex = 50
-MainFrame.Parent = ScreenGui
+local W = CFG.WIN_W
+local H = CFG.WIN_H
 
-MakeCorner(MainFrame, 20)
-MakeStroke(MainFrame, Color3.fromRGB(80, 60, 140), 1.5)
+local MainWin = Frame(ScreenGui, UDim2.new(0, W, 0, H), UDim2.new(0.5, -W/2, 0.5, -H/2), CFG.C.BG, 0, 400, "MainWin")
+MainWin.ClipsDescendants = true
+MainWin.Visible          = false
+Corner(MainWin, 22)
+Stroke(MainWin, Color3.fromRGB(65, 52, 128), 1.5)
+Gradient(MainWin, Color3.fromRGB(10, 9, 22), Color3.fromRGB(6, 6, 15), 155)
 
--- Gradiente de fondo
-local BGGrad = Instance.new("UIGradient")
-BGGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 10, 25)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 8, 20)),
-})
-BGGrad.Rotation = 135
-BGGrad.Parent = MainFrame
+-- Línea accent superior
+local TopLine = Frame(MainWin, UDim2.new(1, 0, 0, 2), UDim2.new(0,0,0,0), CFG.C.Accent, 0, 401)
+Gradient(TopLine, Color3.fromRGB(165, 105, 255), Color3.fromRGB(78, 38, 198), 0)
 
--- Efecto gloss top
-local GlossTop = Instance.new("Frame")
-GlossTop.Size = UDim2.new(1, 0, 0, 2)
-GlossTop.Position = UDim2.new(0, 0, 0, 0)
-GlossTop.BackgroundColor3 = Color3.fromRGB(140, 100, 255)
-GlossTop.BackgroundTransparency = 0.3
-GlossTop.BorderSizePixel = 0
-GlossTop.ZIndex = 51
-GlossTop.Parent = MainFrame
+-- Partículas decorativas de fondo
+for i = 1, 8 do
+    local px = math.random(5, 95) / 100
+    local py = math.random(5, 95) / 100
+    local ps = math.random(2, 5)
+    local dot = Frame(MainWin, UDim2.new(0, ps, 0, ps), UDim2.new(px, 0, py, 0), CFG.C.Accent, 0.65, 400)
+    Corner(dot, ps)
+    local delay = math.random() * 3
+    task.spawn(function()
+        task.wait(delay)
+        while dot and dot.Parent do
+            Tween(dot, {BackgroundTransparency = 0.25}, math.random() * 2 + 1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+            task.wait(math.random() * 2 + 1)
+            Tween(dot, {BackgroundTransparency = 0.82}, math.random() * 2 + 1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+            task.wait(math.random() * 2 + 1)
+        end
+    end)
+end
 
 -- ============================================================
 --  HEADER
 -- ============================================================
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 56)
-Header.BackgroundColor3 = CONFIG.Colors.Surface
-Header.BackgroundTransparency = 0.3
-Header.ZIndex = 52
-Header.Parent = MainFrame
+local Header = Frame(MainWin, UDim2.new(1, 0, 0, 62), UDim2.new(0, 0, 0, 0), CFG.C.Surface, 0.2, 401, "Header")
+Corner(Header, 22)
+Gradient(Header, Color3.fromRGB(26, 20, 58), Color3.fromRGB(12, 10, 28), 100)
 
-MakeCorner(Header, 20)
-local HeaderStroke = MakeStroke(Header, Color3.fromRGB(70, 50, 120), 1)
+-- Logo círculo
+local LogoCircle = Frame(Header, UDim2.new(0, 40, 0, 40), UDim2.new(0, 14, 0.5, -20), CFG.C.Accent, 0, 402)
+Corner(LogoCircle, 20)
+Gradient(LogoCircle, Color3.fromRGB(145, 95, 255), Color3.fromRGB(82, 42, 200), 135)
+Label(LogoCircle, UDim2.new(1,0,1,0), nil, "K", CFG.C.White, 20, CFG.Font, Enum.TextXAlignment.Center, 403)
 
-local HeaderGrad = Instance.new("UIGradient")
-HeaderGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 20, 60)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 12, 35)),
-})
-HeaderGrad.Rotation = 90
-HeaderGrad.Parent = Header
+-- Título y subtítulo
+local TitleLbl = Label(Header, UDim2.new(0, 200, 0, 22), UDim2.new(0, 62, 0, 10), "Kaelen", CFG.C.White, 19, CFG.Font, Enum.TextXAlignment.Left, 402)
+local SubLbl   = Label(Header, UDim2.new(0, 240, 0, 16), UDim2.new(0, 62, 0, 34), "AI Systems v2.1  •  " .. State.CurrentMode, CFG.C.TextMuted, 11, CFG.FontReg, Enum.TextXAlignment.Left, 402)
 
--- Logo K
-local LogoCircle = Instance.new("Frame")
-LogoCircle.Size = UDim2.new(0, 34, 0, 34)
-LogoCircle.Position = UDim2.new(0, 12, 0.5, -17)
-LogoCircle.BackgroundColor3 = CONFIG.Colors.Accent
-LogoCircle.ZIndex = 53
-LogoCircle.Parent = Header
-MakeCorner(LogoCircle, 17)
-
-local LogoText = Instance.new("TextLabel")
-LogoText.Size = UDim2.new(1, 0, 1, 0)
-LogoText.BackgroundTransparency = 1
-LogoText.Text = "K"
-LogoText.TextColor3 = CONFIG.Colors.White
-LogoText.TextSize = 16
-LogoText.Font = CONFIG.Font
-LogoText.ZIndex = 54
-LogoText.Parent = LogoCircle
-
--- Título
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(0, 160, 0, 20)
-TitleLabel.Position = UDim2.new(0, 56, 0, 10)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Kaelen"
-TitleLabel.TextColor3 = CONFIG.Colors.White
-TitleLabel.TextSize = 17
-TitleLabel.Font = CONFIG.Font
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.ZIndex = 53
-TitleLabel.Parent = Header
-
-local SubLabel = Instance.new("TextLabel")
-SubLabel.Size = UDim2.new(0, 200, 0, 16)
-SubLabel.Position = UDim2.new(0, 56, 0, 30)
-SubLabel.BackgroundTransparency = 1
-SubLabel.Text = "AI Systems v2.0 • " .. State.CurrentMode
-SubLabel.TextColor3 = CONFIG.Colors.TextMuted
-SubLabel.TextSize = 11
-SubLabel.Font = CONFIG.FontReg
-SubLabel.TextXAlignment = Enum.TextXAlignment.Left
-SubLabel.ZIndex = 53
-SubLabel.Parent = Header
+-- Punto de status
+local StatusDot = Frame(Header, UDim2.new(0, 10, 0, 10), UDim2.new(1, -56, 0.5, -5), CFG.C.Red, 0, 402)
+Corner(StatusDot, 5)
 
 -- Botón cerrar
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 32, 0, 32)
-CloseBtn.Position = UDim2.new(1, -44, 0.5, -16)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 90)
-CloseBtn.BackgroundTransparency = 0.3
-CloseBtn.Text = "✕"
-CloseBtn.TextColor3 = CONFIG.Colors.White
-CloseBtn.TextSize = 13
-CloseBtn.Font = CONFIG.Font
-CloseBtn.ZIndex = 54
-CloseBtn.Parent = Header
-MakeCorner(CloseBtn, 16)
+local CloseBtn = Button(Header, UDim2.new(0, 36, 0, 36), UDim2.new(1, -50, 0.5, -18), Color3.fromRGB(198, 52, 72), "✕", CFG.C.White, 15, CFG.Font, 402)
+Corner(CloseBtn, 18)
 
--- Indicador de estado
-local StatusDot = Instance.new("Frame")
-StatusDot.Size = UDim2.new(0, 8, 0, 8)
-StatusDot.Position = UDim2.new(1, -56, 0.5, -4)
-StatusDot.BackgroundColor3 = CONFIG.Colors.Red
-StatusDot.ZIndex = 54
-StatusDot.Parent = Header
-MakeCorner(StatusDot, 4)
+-- Arrastre de la ventana desde el header
+Header.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        State.WinDragging  = true
+        State.WinDragOrigin = Vector2.new(inp.Position.X, inp.Position.Y)
+        State.WinPosOrigin  = MainWin.Position
+    end
+end)
 
 -- ============================================================
---  TABS
+--  BARRA DE TABS
 -- ============================================================
-local TabBar = Instance.new("Frame")
-TabBar.Size = UDim2.new(1, -24, 0, 36)
-TabBar.Position = UDim2.new(0, 12, 0, 60)
-TabBar.BackgroundColor3 = CONFIG.Colors.Card
-TabBar.BackgroundTransparency = 0.2
-TabBar.ZIndex = 52
-TabBar.Parent = MainFrame
-MakeCorner(TabBar, 10)
+local TabBar = Frame(MainWin, UDim2.new(1, -24, 0, 40), UDim2.new(0, 12, 0, 66), CFG.C.Card, 0.12, 401)
+Corner(TabBar, 12)
+Stroke(TabBar, CFG.C.Border, 1)
+HLayout(TabBar, 5, Enum.VerticalAlignment.Center)
+Pad(TabBar, 5, 5, 5, 5)
 
-local TabLayout = Instance.new("UIListLayout")
-TabLayout.FillDirection = Enum.FillDirection.Horizontal
-TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-TabLayout.Padding = UDim.new(0, 4)
-TabLayout.Parent = TabBar
-MakePadding(TabBar, 4, 4, 4, 4)
+local TAB_NAMES = { "Chat", "Modos", "Config" }
+local TabBtns   = {}
 
-local Tabs = {"Chat", "Modos", "Config"}
-local TabButtons = {}
+-- Definir antes para usarla en callbacks
+local function ShowPanel(name) end -- forward declaration sobreescrita abajo
 
-local function SetActiveTab(name)
-    State.CurrentTab = name
-    for _, info in pairs(TabButtons) do
-        if info.name == name then
-            Tween(info.btn, {BackgroundColor3 = CONFIG.Colors.Accent, BackgroundTransparency = 0}, 0.2)
-            Tween(info.lbl, {TextColor3 = CONFIG.Colors.White}, 0.2)
+local function SetTab(name)
+    for _, tb in pairs(TabBtns) do
+        if tb.name == name then
+            Tween(tb.btn, {BackgroundColor3 = CFG.C.Accent, BackgroundTransparency = 0}, 0.2)
+            Tween(tb.lbl, {TextColor3 = CFG.C.White}, 0.2)
         else
-            Tween(info.btn, {BackgroundColor3 = CONFIG.Colors.Card, BackgroundTransparency = 0.5}, 0.2)
-            Tween(info.lbl, {TextColor3 = CONFIG.Colors.TextMuted}, 0.2)
+            Tween(tb.btn, {BackgroundColor3 = CFG.C.Card, BackgroundTransparency = 0.6}, 0.2)
+            Tween(tb.lbl, {TextColor3 = CFG.C.TextMuted}, 0.2)
         end
     end
-    -- Mostrar/ocultar paneles
 end
 
-for _, tabName in ipairs(Tabs) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 90, 1, 0)
-    btn.BackgroundColor3 = CONFIG.Colors.Card
-    btn.BackgroundTransparency = 0.5
-    btn.Text = tabName
-    btn.TextColor3 = CONFIG.Colors.TextMuted
-    btn.TextSize = 12
-    btn.Font = CONFIG.Font
-    btn.ZIndex = 53
-    btn.Parent = TabBar
-    MakeCorner(btn, 8)
-    table.insert(TabButtons, {name = tabName, btn = btn, lbl = btn})
+for i, name in ipairs(TAB_NAMES) do
+    local btn = Button(TabBar, UDim2.new(0, 106, 1, 0), nil, CFG.C.Card, "", CFG.C.White, 12, CFG.Font, 402)
+    btn.BackgroundTransparency = 0.6
+    Corner(btn, 9)
+    local lbl = Label(btn, UDim2.new(1,0,1,0), nil, name, CFG.C.TextMuted, 12, CFG.Font, Enum.TextXAlignment.Center, 403)
+    table.insert(TabBtns, {name=name, btn=btn, lbl=lbl})
+    local capName = name
     btn.MouseButton1Click:Connect(function()
-        SetActiveTab(tabName)
-    end)
-end
-
--- ============================================================
---  PANEL KEY SYSTEM
--- ============================================================
-local KeyPanel = Instance.new("Frame")
-KeyPanel.Size = UDim2.new(1, -24, 1, -108)
-KeyPanel.Position = UDim2.new(0, 12, 0, 100)
-KeyPanel.BackgroundTransparency = 1
-KeyPanel.ZIndex = 52
-KeyPanel.Visible = true
-KeyPanel.Parent = MainFrame
-
-local KeyLayout = Instance.new("UIListLayout")
-KeyLayout.FillDirection = Enum.FillDirection.Vertical
-KeyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-KeyLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-KeyLayout.Padding = UDim.new(0, 14)
-KeyLayout.Parent = KeyPanel
-
--- Icono lock
-local LockIcon = Instance.new("TextLabel")
-LockIcon.Size = UDim2.new(0, 70, 0, 70)
-LockIcon.BackgroundColor3 = CONFIG.Colors.Card
-LockIcon.Text = "🔑"
-LockIcon.TextSize = 32
-LockIcon.Font = CONFIG.FontReg
-LockIcon.TextColor3 = CONFIG.Colors.White
-LockIcon.ZIndex = 53
-LockIcon.LayoutOrder = 1
-LockIcon.Parent = KeyPanel
-MakeCorner(LockIcon, 35)
-MakeStroke(LockIcon, CONFIG.Colors.Accent, 2)
-
-local KeyTitle = Instance.new("TextLabel")
-KeyTitle.Size = UDim2.new(1, 0, 0, 24)
-KeyTitle.BackgroundTransparency = 1
-KeyTitle.Text = "Activar Kaelen"
-KeyTitle.TextColor3 = CONFIG.Colors.White
-KeyTitle.TextSize = 18
-KeyTitle.Font = CONFIG.Font
-KeyTitle.ZIndex = 53
-KeyTitle.LayoutOrder = 2
-KeyTitle.Parent = KeyPanel
-
-local KeySub = Instance.new("TextLabel")
-KeySub.Size = UDim2.new(1, 0, 0, 32)
-KeySub.BackgroundTransparency = 1
-KeySub.Text = "Introduce tu API Key de OpenRouter\npara desbloquear Kaelen AI"
-KeySub.TextColor3 = CONFIG.Colors.TextMuted
-KeySub.TextSize = 12
-KeySub.Font = CONFIG.FontReg
-KeySub.TextWrapped = true
-KeySub.ZIndex = 53
-KeySub.LayoutOrder = 3
-KeySub.Parent = KeyPanel
-
-local KeyInput = Instance.new("TextBox")
-KeyInput.Size = UDim2.new(1, 0, 0, 44)
-KeyInput.BackgroundColor3 = CONFIG.Colors.Card
-KeyInput.BackgroundTransparency = 0.1
-KeyInput.Text = ""
-KeyInput.PlaceholderText = "sk-or-v1-xxxxxxxxxxxx"
-KeyInput.TextColor3 = CONFIG.Colors.Text
-KeyInput.PlaceholderColor3 = CONFIG.Colors.TextMuted
-KeyInput.TextSize = 13
-KeyInput.Font = CONFIG.FontReg
-KeyInput.ClearTextOnFocus = false
-KeyInput.ZIndex = 53
-KeyInput.LayoutOrder = 4
-KeyInput.Parent = KeyPanel
-MakeCorner(KeyInput, 10)
-MakeStroke(KeyInput, CONFIG.Colors.Border, 1)
-MakePadding(KeyInput, 0, 0, 12, 12)
-
-local VerifyBtn = Instance.new("TextButton")
-VerifyBtn.Size = UDim2.new(1, 0, 0, 44)
-VerifyBtn.BackgroundColor3 = CONFIG.Colors.Accent
-VerifyBtn.Text = "Verificar y Activar"
-VerifyBtn.TextColor3 = CONFIG.Colors.White
-VerifyBtn.TextSize = 14
-VerifyBtn.Font = CONFIG.Font
-VerifyBtn.ZIndex = 53
-VerifyBtn.LayoutOrder = 5
-VerifyBtn.Parent = KeyPanel
-MakeCorner(VerifyBtn, 10)
-
-local KeyStatusLabel = Instance.new("TextLabel")
-KeyStatusLabel.Size = UDim2.new(1, 0, 0, 20)
-KeyStatusLabel.BackgroundTransparency = 1
-KeyStatusLabel.Text = ""
-KeyStatusLabel.TextColor3 = CONFIG.Colors.TextMuted
-KeyStatusLabel.TextSize = 12
-KeyStatusLabel.Font = CONFIG.FontReg
-KeyStatusLabel.ZIndex = 53
-KeyStatusLabel.LayoutOrder = 6
-KeyStatusLabel.Parent = KeyPanel
-
--- ============================================================
---  PANEL CHAT
--- ============================================================
-local ChatPanel = Instance.new("Frame")
-ChatPanel.Size = UDim2.new(1, -24, 1, -110)
-ChatPanel.Position = UDim2.new(0, 12, 0, 100)
-ChatPanel.BackgroundTransparency = 1
-ChatPanel.ZIndex = 52
-ChatPanel.Visible = false
-ChatPanel.Parent = MainFrame
-
--- Scroll de mensajes
-local MsgScroll = Instance.new("ScrollingFrame")
-MsgScroll.Size = UDim2.new(1, 0, 1, -100)
-MsgScroll.BackgroundTransparency = 1
-MsgScroll.ScrollBarThickness = 3
-MsgScroll.ScrollBarImageColor3 = CONFIG.Colors.Accent
-MsgScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-MsgScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-MsgScroll.ZIndex = 53
-MsgScroll.Parent = ChatPanel
-
-local MsgLayout = Instance.new("UIListLayout")
-MsgLayout.FillDirection = Enum.FillDirection.Vertical
-MsgLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-MsgLayout.Padding = UDim.new(0, 8)
-MsgLayout.Parent = MsgScroll
-MakePadding(MsgScroll, 8, 8, 8, 8)
-
--- Thinking indicator
-local ThinkFrame = Instance.new("Frame")
-ThinkFrame.Size = UDim2.new(0, 120, 0, 32)
-ThinkFrame.BackgroundColor3 = CONFIG.Colors.AIBubble
-ThinkFrame.BackgroundTransparency = 0.1
-ThinkFrame.Visible = false
-ThinkFrame.ZIndex = 54
-ThinkFrame.LayoutOrder = 9999
-ThinkFrame.Parent = MsgScroll
-MakeCorner(ThinkFrame, 16)
-MakeStroke(ThinkFrame, CONFIG.Colors.Border, 1)
-
-local ThinkLabel = Instance.new("TextLabel")
-ThinkLabel.Size = UDim2.new(1, -8, 1, 0)
-ThinkLabel.Position = UDim2.new(0, 8, 0, 0)
-ThinkLabel.BackgroundTransparency = 1
-ThinkLabel.Text = "Kaelen pensando●●●"
-ThinkLabel.TextColor3 = CONFIG.Colors.TextMuted
-ThinkLabel.TextSize = 12
-ThinkLabel.Font = CONFIG.FontReg
-ThinkLabel.ZIndex = 55
-ThinkLabel.Parent = ThinkFrame
-
--- Input area
-local InputFrame = Instance.new("Frame")
-InputFrame.Size = UDim2.new(1, 0, 0, 88)
-InputFrame.Position = UDim2.new(0, 0, 1, -88)
-InputFrame.BackgroundColor3 = CONFIG.Colors.Surface
-InputFrame.BackgroundTransparency = 0.2
-InputFrame.ZIndex = 53
-InputFrame.Parent = ChatPanel
-MakeCorner(InputFrame, 14)
-MakeStroke(InputFrame, CONFIG.Colors.Border, 1)
-
-local ChatInput = Instance.new("TextBox")
-ChatInput.Size = UDim2.new(1, -56, 0, 42)
-ChatInput.Position = UDim2.new(0, 8, 0, 8)
-ChatInput.BackgroundColor3 = CONFIG.Colors.Card
-ChatInput.BackgroundTransparency = 0.1
-ChatInput.Text = ""
-ChatInput.PlaceholderText = "Pregúntale algo a Kaelen..."
-ChatInput.TextColor3 = CONFIG.Colors.Text
-ChatInput.PlaceholderColor3 = CONFIG.Colors.TextMuted
-ChatInput.TextSize = 13
-ChatInput.Font = CONFIG.FontReg
-ChatInput.MultiLine = false
-ChatInput.ClearTextOnFocus = false
-ChatInput.ZIndex = 54
-ChatInput.Parent = InputFrame
-MakeCorner(ChatInput, 10)
-MakePadding(ChatInput, 0, 0, 10, 10)
-
-local SendBtn = Instance.new("TextButton")
-SendBtn.Size = UDim2.new(0, 42, 0, 42)
-SendBtn.Position = UDim2.new(1, -50, 0, 8)
-SendBtn.BackgroundColor3 = CONFIG.Colors.Accent
-SendBtn.Text = "➤"
-SendBtn.TextColor3 = CONFIG.Colors.White
-SendBtn.TextSize = 18
-SendBtn.Font = CONFIG.Font
-SendBtn.ZIndex = 54
-SendBtn.Parent = InputFrame
-MakeCorner(SendBtn, 10)
-
--- Botones rápidos
-local QuickBtnFrame = Instance.new("Frame")
-QuickBtnFrame.Size = UDim2.new(1, 0, 0, 30)
-QuickBtnFrame.Position = UDim2.new(0, 0, 0, 54)
-QuickBtnFrame.BackgroundTransparency = 1
-QuickBtnFrame.ZIndex = 54
-QuickBtnFrame.Parent = InputFrame
-
-local QuickLayout = Instance.new("UIListLayout")
-QuickLayout.FillDirection = Enum.FillDirection.Horizontal
-QuickLayout.Padding = UDim.new(0, 4)
-QuickLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-QuickLayout.Parent = QuickBtnFrame
-MakePadding(QuickBtnFrame, 2, 2, 8, 8)
-
-local QuickCommands = {"🎮 Analizar Juego", "🔍 Vulnerabilidades", "📋 Exportar", "🗑 Limpiar"}
-
-for _, cmd in ipairs(QuickCommands) do
-    local qb = Instance.new("TextButton")
-    qb.Size = UDim2.new(0, 0, 1, 0)
-    qb.AutomaticSize = Enum.AutomaticSize.X
-    qb.BackgroundColor3 = CONFIG.Colors.Card
-    qb.BackgroundTransparency = 0.3
-    qb.Text = cmd
-    qb.TextColor3 = CONFIG.Colors.TextMuted
-    qb.TextSize = 10
-    qb.Font = CONFIG.FontReg
-    qb.ZIndex = 55
-    qb.Parent = QuickBtnFrame
-    MakeCorner(qb, 6)
-    MakePadding(qb, 2, 2, 6, 6)
-end
-
--- ============================================================
---  PANEL MODOS
--- ============================================================
-local ModesPanel = Instance.new("Frame")
-ModesPanel.Size = UDim2.new(1, -24, 1, -110)
-ModesPanel.Position = UDim2.new(0, 12, 0, 100)
-ModesPanel.BackgroundTransparency = 1
-ModesPanel.ZIndex = 52
-ModesPanel.Visible = false
-ModesPanel.Parent = MainFrame
-
-local ModesLayout = Instance.new("UIListLayout")
-ModesLayout.FillDirection = Enum.FillDirection.Vertical
-ModesLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-ModesLayout.Padding = UDim.new(0, 10)
-ModesLayout.Parent = ModesPanel
-MakePadding(ModesPanel, 12, 12, 0, 0)
-
-local ModeTitle = Instance.new("TextLabel")
-ModeTitle.Size = UDim2.new(1, 0, 0, 24)
-ModeTitle.BackgroundTransparency = 1
-ModeTitle.Text = "Modo de Kaelen"
-ModeTitle.TextColor3 = CONFIG.Colors.White
-ModeTitle.TextSize = 16
-ModeTitle.Font = CONFIG.Font
-ModeTitle.ZIndex = 53
-ModeTitle.Parent = ModesPanel
-
-local ModeConfigs = {
-    {name="Programador", icon="💻", desc="Scripts Lua, optimización y debugging"},
-    {name="Analista",    icon="🔍", desc="Análisis de juego y vulnerabilidades"},
-    {name="Creativo",    icon="🎨", desc="Ideas innovadoras y diseño de mecánicas"},
-    {name="Troll",       icon="😈", desc="Ideas de trolleo divertidas y seguras"},
-}
-
-local ModeBtns = {}
-for _, mc in ipairs(ModeConfigs) do
-    local mf = Instance.new("TextButton")
-    mf.Size = UDim2.new(1, 0, 0, 64)
-    mf.BackgroundColor3 = CONFIG.Colors.Card
-    mf.BackgroundTransparency = mc.name == State.CurrentMode and 0 or 0.3
-    mf.Text = ""
-    mf.ZIndex = 53
-    mf.Parent = ModesPanel
-    MakeCorner(mf, 12)
-    MakeStroke(mf, mc.name == State.CurrentMode and CONFIG.Colors.Accent or CONFIG.Colors.Border, 1.5)
-
-    local mIcon = Instance.new("TextLabel")
-    mIcon.Size = UDim2.new(0, 40, 0, 40)
-    mIcon.Position = UDim2.new(0, 12, 0.5, -20)
-    mIcon.BackgroundTransparency = 1
-    mIcon.Text = mc.icon
-    mIcon.TextSize = 24
-    mIcon.Font = CONFIG.FontReg
-    mIcon.ZIndex = 54
-    mIcon.Parent = mf
-
-    local mName = Instance.new("TextLabel")
-    mName.Size = UDim2.new(1, -60, 0, 20)
-    mName.Position = UDim2.new(0, 58, 0, 12)
-    mName.BackgroundTransparency = 1
-    mName.Text = mc.name
-    mName.TextColor3 = CONFIG.Colors.White
-    mName.TextSize = 14
-    mName.Font = CONFIG.Font
-    mName.TextXAlignment = Enum.TextXAlignment.Left
-    mName.ZIndex = 54
-    mName.Parent = mf
-
-    local mDesc = Instance.new("TextLabel")
-    mDesc.Size = UDim2.new(1, -60, 0, 16)
-    mDesc.Position = UDim2.new(0, 58, 0, 34)
-    mDesc.BackgroundTransparency = 1
-    mDesc.Text = mc.desc
-    mDesc.TextColor3 = CONFIG.Colors.TextMuted
-    mDesc.TextSize = 11
-    mDesc.Font = CONFIG.FontReg
-    mDesc.TextXAlignment = Enum.TextXAlignment.Left
-    mDesc.ZIndex = 54
-    mDesc.Parent = mf
-
-    table.insert(ModeBtns, {btn=mf, name=mc.name})
-
-    mf.MouseButton1Click:Connect(function()
-        State.CurrentMode = mc.name
-        SubLabel.Text = "AI Systems v2.0 • " .. State.CurrentMode
-        for _, mb in pairs(ModeBtns) do
-            if mb.name == mc.name then
-                Tween(mb.btn, {BackgroundTransparency = 0}, 0.2)
-                MakeStroke(mb.btn, CONFIG.Colors.Accent, 1.5)
-            else
-                Tween(mb.btn, {BackgroundTransparency = 0.3}, 0.2)
-                MakeStroke(mb.btn, CONFIG.Colors.Border, 1.5)
-            end
+        if State.KeyVerified then
+            SetTab(capName)
+            ShowPanel(capName)
         end
     end)
 end
 
 -- ============================================================
---  PANEL CONFIG
+--  CONTENEDOR DE PANELES
 -- ============================================================
-local ConfigPanel = Instance.new("Frame")
-ConfigPanel.Size = UDim2.new(1, -24, 1, -110)
-ConfigPanel.Position = UDim2.new(0, 12, 0, 100)
-ConfigPanel.BackgroundTransparency = 1
-ConfigPanel.ZIndex = 52
+local PanelBox = Frame(MainWin, UDim2.new(1, -24, 1, -118), UDim2.new(0, 12, 0, 112), Color3.fromRGB(0,0,0), 1, 400)
+
+-- ============================================================
+--  PANEL: KEY SYSTEM
+-- ============================================================
+local KeyPanel = Frame(PanelBox, UDim2.new(1,0,1,0), nil, Color3.fromRGB(0,0,0), 1, 401, "KeyPanel")
+VLayout(KeyPanel, 14, Enum.HorizontalAlignment.Center)
+Pad(KeyPanel, 20, 10, 0, 0)
+
+-- Ícono lock
+local LockFrame = Frame(KeyPanel, UDim2.new(0, 78, 0, 78), nil, CFG.C.Card, 0.08, 402)
+LockFrame.LayoutOrder = 1
+Corner(LockFrame, 39)
+Stroke(LockFrame, CFG.C.Accent, 2)
+Label(LockFrame, UDim2.new(1,0,1,0), nil, "🔑", CFG.C.White, 34, CFG.FontReg, Enum.TextXAlignment.Center, 403)
+
+local KTitle = Label(KeyPanel, UDim2.new(1,0,0,28), nil, "Activar Kaelen", CFG.C.White, 21, CFG.Font, Enum.TextXAlignment.Center, 402)
+KTitle.LayoutOrder = 2
+
+local KSub = Label(KeyPanel, UDim2.new(1,0,0,38), nil, "Introduce tu API Key de OpenRouter\npara desbloquear el asistente IA", CFG.C.TextMuted, 12, CFG.FontReg, Enum.TextXAlignment.Center, 402)
+KSub.LayoutOrder = 3
+
+-- Input de key
+local KeyInput = Instance.new("TextBox")
+KeyInput.Size                 = UDim2.new(1, -8, 0, 48)
+KeyInput.BackgroundColor3     = CFG.C.Card
+KeyInput.BackgroundTransparency = 0.08
+KeyInput.Text                 = ""
+KeyInput.PlaceholderText      = "sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx"
+KeyInput.TextColor3           = CFG.C.Text
+KeyInput.PlaceholderColor3    = CFG.C.TextDim
+KeyInput.TextSize             = 13
+KeyInput.Font                 = CFG.FontMon
+KeyInput.ClearTextOnFocus     = false
+KeyInput.ZIndex               = 402
+KeyInput.LayoutOrder          = 4
+KeyInput.BorderSizePixel      = 0
+KeyInput.Parent               = KeyPanel
+Corner(KeyInput, 12)
+Stroke(KeyInput, CFG.C.Border, 1)
+Pad(KeyInput, 0, 0, 14, 14)
+
+-- Botón verificar
+local VerifyBtn = Button(KeyPanel, UDim2.new(1, -8, 0, 48), nil, CFG.C.Accent, "Verificar y Activar  ✦", CFG.C.White, 14, CFG.Font, 402)
+VerifyBtn.LayoutOrder = 5
+Corner(VerifyBtn, 12)
+Gradient(VerifyBtn, Color3.fromRGB(142, 92, 255), Color3.fromRGB(84, 44, 202), 135)
+
+local KStatus = Label(KeyPanel, UDim2.new(1,0,0,20), nil, "", CFG.C.TextMuted, 12, CFG.FontReg, Enum.TextXAlignment.Center, 402)
+KStatus.LayoutOrder = 6
+
+local KLink = Label(KeyPanel, UDim2.new(1,0,0,18), nil, "Obtén tu key gratis en openrouter.ai", CFG.C.TextDim, 11, CFG.FontReg, Enum.TextXAlignment.Center, 402)
+KLink.LayoutOrder = 7
+
+-- ============================================================
+--  PANEL: CHAT
+-- ============================================================
+local ChatPanel = Frame(PanelBox, UDim2.new(1,0,1,0), nil, Color3.fromRGB(0,0,0), 1, 401, "ChatPanel")
+ChatPanel.Visible = false
+
+-- Área de mensajes
+local MsgScroll = Scroll(ChatPanel, UDim2.new(1, 0, 1, -98), UDim2.new(0,0,0,0), 402)
+VLayout(MsgScroll, 10, Enum.HorizontalAlignment.Left)
+Pad(MsgScroll, 8, 8, 6, 6)
+
+-- Thinking indicator
+local ThinkFrame = Frame(MsgScroll, UDim2.new(0, 160, 0, 36), nil, CFG.C.AIBub, 0.05, 403, "ThinkFrame")
+ThinkFrame.LayoutOrder = 9999
+ThinkFrame.Visible     = false
+Corner(ThinkFrame, 18)
+Stroke(ThinkFrame, CFG.C.Border, 1)
+Pad(ThinkFrame, 0, 0, 14, 14)
+local ThinkLbl = Label(ThinkFrame, UDim2.new(1,0,1,0), nil, "Kaelen pensando ●○○", CFG.C.TextMuted, 12, CFG.FontReg, Enum.TextXAlignment.Left, 404)
+
+-- Barra de input
+local InputBar = Frame(ChatPanel, UDim2.new(1, 0, 0, 92), UDim2.new(0, 0, 1, -92), CFG.C.Surface, 0.18, 402)
+Corner(InputBar, 16)
+Stroke(InputBar, CFG.C.Border, 1)
+
+local ChatInput = Instance.new("TextBox")
+ChatInput.Size                 = UDim2.new(1, -62, 0, 46)
+ChatInput.Position             = UDim2.new(0, 8, 0, 6)
+ChatInput.BackgroundColor3     = CFG.C.Card
+ChatInput.BackgroundTransparency = 0.08
+ChatInput.Text                 = ""
+ChatInput.PlaceholderText      = "Pregúntale algo a Kaelen..."
+ChatInput.TextColor3           = CFG.C.Text
+ChatInput.PlaceholderColor3    = CFG.C.TextDim
+ChatInput.TextSize             = 13
+ChatInput.Font                 = CFG.FontReg
+ChatInput.MultiLine            = false
+ChatInput.ClearTextOnFocus     = false
+ChatInput.ZIndex               = 403
+ChatInput.BorderSizePixel      = 0
+ChatInput.Parent               = InputBar
+Corner(ChatInput, 10)
+Pad(ChatInput, 0, 0, 12, 12)
+
+local SendBtn = Button(InputBar, UDim2.new(0, 46, 0, 46), UDim2.new(1, -54, 0, 6), CFG.C.Accent, "➤", CFG.C.White, 20, CFG.Font, 403)
+Corner(SendBtn, 10)
+Gradient(SendBtn, Color3.fromRGB(142, 92, 255), Color3.fromRGB(84, 44, 202), 135)
+
+-- Quick commands bar
+local QuickBar = Frame(InputBar, UDim2.new(1, -8, 0, 30), UDim2.new(0, 4, 0, 58), Color3.fromRGB(0,0,0), 1, 403)
+HLayout(QuickBar, 5, Enum.VerticalAlignment.Center)
+
+local QUICK_CMDS = {
+    { icon = "🎮", label = "Analizar",    id = "analyze" },
+    { icon = "🔍", label = "Exploits",    id = "vulns"   },
+    { icon = "💻", label = "Script",      id = "script"  },
+    { icon = "📋", label = "Exportar",    id = "export"  },
+    { icon = "🗑",  label = "Limpiar",    id = "clear"   },
+}
+
+local QuickRefs = {}
+for _, qc in ipairs(QUICK_CMDS) do
+    local qb = Button(QuickBar, UDim2.new(0, 0, 1, 0), nil, CFG.C.Card, qc.icon .. " " .. qc.label, CFG.C.TextMuted, 10, CFG.FontReg, 404)
+    qb.AutomaticSize = Enum.AutomaticSize.X
+    qb.BackgroundTransparency = 0.3
+    Corner(qb, 7)
+    Pad(qb, 2, 2, 7, 7)
+    table.insert(QuickRefs, { btn = qb, id = qc.id })
+end
+
+-- ============================================================
+--  PANEL: MODOS
+-- ============================================================
+local ModesPanel = Frame(PanelBox, UDim2.new(1,0,1,0), nil, Color3.fromRGB(0,0,0), 1, 401, "ModesPanel")
+ModesPanel.Visible = false
+VLayout(ModesPanel, 10, Enum.HorizontalAlignment.Center)
+Pad(ModesPanel, 10, 10, 0, 0)
+
+Label(ModesPanel, UDim2.new(1,0,0,26), nil, "Modo de Kaelen", CFG.C.White, 17, CFG.Font, Enum.TextXAlignment.Center, 402).LayoutOrder = 0
+Label(ModesPanel, UDim2.new(1,0,0,16), nil, "Elige cómo razona Kaelen", CFG.C.TextMuted, 11, CFG.FontReg, Enum.TextXAlignment.Center, 402).LayoutOrder = 1
+
+local MODE_LIST = {
+    { name = "Programador", icon = "💻", col = Color3.fromRGB(78, 198, 255), desc = "Scripts Lua, optimización y debugging de nivel pro" },
+    { name = "Analista",    icon = "🔍", col = Color3.fromRGB(112, 72, 255), desc = "Análisis de juego, vulnerabilidades y arquitectura" },
+    { name = "Creativo",    icon = "🎨", col = Color3.fromRGB(255, 138, 78), desc = "Ideas innovadoras y diseño de mecánicas únicas" },
+    { name = "Troll",       icon = "😈", col = Color3.fromRGB(255, 78, 128), desc = "Trolleos creativos y seguros dentro del juego" },
+}
+
+local ModeRefs = {}
+for i, md in ipairs(MODE_LIST) do
+    local active = (md.name == State.CurrentMode)
+    local card = Button(ModesPanel, UDim2.new(1, 0, 0, 70), nil, CFG.C.Card, "", CFG.C.White, 13, CFG.Font, 402)
+    card.BackgroundTransparency = active and 0.05 or 0.3
+    card.LayoutOrder = i + 1
+    Corner(card, 14)
+    local cardStroke = Stroke(card, active and CFG.C.Accent or CFG.C.Border, active and 1.5 or 1)
+
+    local iconCircle = Frame(card, UDim2.new(0, 46, 0, 46), UDim2.new(0, 12, 0.5, -23), md.col, 0.12, 403)
+    Corner(iconCircle, 23)
+    Label(iconCircle, UDim2.new(1,0,1,0), nil, md.icon, CFG.C.White, 24, CFG.FontReg, Enum.TextXAlignment.Center, 404)
+
+    Label(card, UDim2.new(1, -76, 0, 22), UDim2.new(0, 66, 0, 14), md.name, CFG.C.White, 14, CFG.Font, Enum.TextXAlignment.Left, 403)
+    Label(card, UDim2.new(1, -76, 0, 18), UDim2.new(0, 66, 0, 38), md.desc, CFG.C.TextMuted, 10, CFG.FontReg, Enum.TextXAlignment.Left, 403)
+
+    local badge = Frame(card, UDim2.new(0, 9, 0, 9), UDim2.new(1, -22, 0.5, -4.5), md.col, active and 0 or 1, 403)
+    Corner(badge, 5)
+
+    table.insert(ModeRefs, { card = card, stroke = cardStroke, badge = badge, name = md.name, col = md.col })
+
+    card.MouseButton1Click:Connect(function()
+        State.CurrentMode = md.name
+        SubLbl.Text = "AI Systems v2.1  •  " .. State.CurrentMode
+        for _, mr in pairs(ModeRefs) do
+            local isNow = (mr.name == md.name)
+            Tween(mr.card,  { BackgroundTransparency = isNow and 0.05 or 0.3 }, 0.22)
+            Tween(mr.badge, { BackgroundTransparency = isNow and 0    or 1   }, 0.22)
+        end
+    end)
+end
+
+-- ============================================================
+--  PANEL: CONFIG
+-- ============================================================
+local ConfigPanel = Frame(PanelBox, UDim2.new(1,0,1,0), nil, Color3.fromRGB(0,0,0), 1, 401, "ConfigPanel")
 ConfigPanel.Visible = false
-ConfigPanel.Parent = MainFrame
+VLayout(ConfigPanel, 12, Enum.HorizontalAlignment.Center)
+Pad(ConfigPanel, 10, 10, 0, 0)
 
-local ConfigLayout = Instance.new("UIListLayout")
-ConfigLayout.FillDirection = Enum.FillDirection.Vertical
-ConfigLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-ConfigLayout.Padding = UDim.new(0, 10)
-ConfigLayout.Parent = ConfigPanel
-MakePadding(ConfigPanel, 12, 12, 0, 0)
+Label(ConfigPanel, UDim2.new(1,0,0,26), nil, "Configuración", CFG.C.White, 17, CFG.Font, Enum.TextXAlignment.Center, 402).LayoutOrder = 0
+Label(ConfigPanel, UDim2.new(1,0,0,16), nil, "System Prompt personalizado:", CFG.C.TextMuted, 12, CFG.FontReg, Enum.TextXAlignment.Left, 402).LayoutOrder = 1
 
-local CfgTitle = Instance.new("TextLabel")
-CfgTitle.Size = UDim2.new(1, 0, 0, 24)
-CfgTitle.BackgroundTransparency = 1
-CfgTitle.Text = "Configuración"
-CfgTitle.TextColor3 = CONFIG.Colors.White
-CfgTitle.TextSize = 16
-CfgTitle.Font = CONFIG.Font
-CfgTitle.ZIndex = 53
-CfgTitle.Parent = ConfigPanel
+local SysBox = Instance.new("TextBox")
+SysBox.Size                 = UDim2.new(1, 0, 0, 88)
+SysBox.BackgroundColor3     = CFG.C.Card
+SysBox.BackgroundTransparency = 0.08
+SysBox.Text                 = ""
+SysBox.PlaceholderText      = "Ej: Responde siempre en inglés técnico..."
+SysBox.TextColor3           = CFG.C.Text
+SysBox.PlaceholderColor3    = CFG.C.TextDim
+SysBox.TextSize             = 12
+SysBox.Font                 = CFG.FontReg
+SysBox.MultiLine            = true
+SysBox.ClearTextOnFocus     = false
+SysBox.ZIndex               = 402
+SysBox.LayoutOrder          = 2
+SysBox.BorderSizePixel      = 0
+SysBox.Parent               = ConfigPanel
+Corner(SysBox, 12)
+Stroke(SysBox, CFG.C.Border, 1)
+Pad(SysBox, 8, 8, 12, 12)
 
-local SysPromptLabel = Instance.new("TextLabel")
-SysPromptLabel.Size = UDim2.new(1, 0, 0, 20)
-SysPromptLabel.BackgroundTransparency = 1
-SysPromptLabel.Text = "System Prompt personalizado:"
-SysPromptLabel.TextColor3 = CONFIG.Colors.TextMuted
-SysPromptLabel.TextSize = 12
-SysPromptLabel.Font = CONFIG.FontReg
-SysPromptLabel.TextXAlignment = Enum.TextXAlignment.Left
-SysPromptLabel.ZIndex = 53
-SysPromptLabel.Parent = ConfigPanel
+local SaveSysBtn = Button(ConfigPanel, UDim2.new(1, 0, 0, 42), nil, CFG.C.Accent, "Guardar System Prompt", CFG.C.White, 13, CFG.Font, 402)
+SaveSysBtn.LayoutOrder = 3
+Corner(SaveSysBtn, 12)
+Gradient(SaveSysBtn, Color3.fromRGB(142, 92, 255), Color3.fromRGB(84, 44, 202), 135)
 
-local SysPromptInput = Instance.new("TextBox")
-SysPromptInput.Size = UDim2.new(1, 0, 0, 80)
-SysPromptInput.BackgroundColor3 = CONFIG.Colors.Card
-SysPromptInput.BackgroundTransparency = 0.1
-SysPromptInput.Text = ""
-SysPromptInput.PlaceholderText = "Ej: Responde siempre en inglés técnico..."
-SysPromptInput.TextColor3 = CONFIG.Colors.Text
-SysPromptInput.PlaceholderColor3 = CONFIG.Colors.TextMuted
-SysPromptInput.TextSize = 12
-SysPromptInput.Font = CONFIG.FontReg
-SysPromptInput.MultiLine = true
-SysPromptInput.ClearTextOnFocus = false
-SysPromptInput.ZIndex = 53
-SysPromptInput.Parent = ConfigPanel
-MakeCorner(SysPromptInput, 10)
-MakeStroke(SysPromptInput, CONFIG.Colors.Border, 1)
-MakePadding(SysPromptInput, 8, 8, 10, 10)
+-- Info de modelos
+local InfoCard = Frame(ConfigPanel, UDim2.new(1,0,0,66), nil, CFG.C.Card, 0.18, 402)
+InfoCard.LayoutOrder = 4
+Corner(InfoCard, 12)
+Stroke(InfoCard, CFG.C.Border, 1)
+Pad(InfoCard, 10, 10, 14, 14)
+Label(InfoCard, UDim2.new(1,0,1,0), nil,
+    "⚡ Kaelen v2.1 — Dual-Model Orchestrator\n🔵 Qwen3-Coder  →  Scripts Lua\n🟣 Llama 3.3 70B  →  Análisis y razonamiento",
+    CFG.C.TextMuted, 11, CFG.FontReg, Enum.TextXAlignment.Left, 403)
 
-local SaveSysBtn = Instance.new("TextButton")
-SaveSysBtn.Size = UDim2.new(1, 0, 0, 38)
-SaveSysBtn.BackgroundColor3 = CONFIG.Colors.Accent
-SaveSysBtn.Text = "Guardar System Prompt"
-SaveSysBtn.TextColor3 = CONFIG.Colors.White
-SaveSysBtn.TextSize = 13
-SaveSysBtn.Font = CONFIG.Font
-SaveSysBtn.ZIndex = 53
-SaveSysBtn.Parent = ConfigPanel
-MakeCorner(SaveSysBtn, 10)
+local ClearHistBtn = Button(ConfigPanel, UDim2.new(1,0,0,42), nil, CFG.C.Card, "🗑  Borrar Historial de Chat", CFG.C.TextMuted, 13, CFG.Font, 402)
+ClearHistBtn.LayoutOrder = 5
+ClearHistBtn.BackgroundTransparency = 0.2
+Corner(ClearHistBtn, 12)
+Stroke(ClearHistBtn, CFG.C.Border, 1)
 
-local ResetKeyBtn = Instance.new("TextButton")
-ResetKeyBtn.Size = UDim2.new(1, 0, 0, 38)
-ResetKeyBtn.BackgroundColor3 = CONFIG.Colors.Red
-ResetKeyBtn.BackgroundTransparency = 0.3
-ResetKeyBtn.Text = "Resetear API Key"
-ResetKeyBtn.TextColor3 = CONFIG.Colors.White
-ResetKeyBtn.TextSize = 13
-ResetKeyBtn.Font = CONFIG.Font
-ResetKeyBtn.ZIndex = 53
-ResetKeyBtn.Parent = ConfigPanel
-MakeCorner(ResetKeyBtn, 10)
-
-local InfoLabel = Instance.new("TextLabel")
-InfoLabel.Size = UDim2.new(1, 0, 0, 60)
-InfoLabel.BackgroundTransparency = 1
-InfoLabel.Text = "Kaelen v2.0\nModelos: Qwen3-Coder + Llama 3.3 70B\nvía OpenRouter API"
-InfoLabel.TextColor3 = CONFIG.Colors.TextMuted
-InfoLabel.TextSize = 11
-InfoLabel.Font = CONFIG.FontReg
-InfoLabel.TextWrapped = true
-InfoLabel.ZIndex = 53
-InfoLabel.Parent = ConfigPanel
+local ResetKeyBtn = Button(ConfigPanel, UDim2.new(1,0,0,42), nil, CFG.C.Red, "⚠  Resetear API Key", CFG.C.White, 13, CFG.Font, 402)
+ResetKeyBtn.LayoutOrder = 6
+ResetKeyBtn.BackgroundTransparency = 0.28
+Corner(ResetKeyBtn, 12)
 
 -- ============================================================
---  LÓGICA DE TABS (SHOW/HIDE)
+--  GESTIÓN DE PANELES (definición real)
 -- ============================================================
-local PanelMap = {
+local PANEL_MAP = {
+    Key    = KeyPanel,
     Chat   = ChatPanel,
     Modos  = ModesPanel,
     Config = ConfigPanel,
 }
+local ALL_PANELS = { KeyPanel, ChatPanel, ModesPanel, ConfigPanel }
 
-local function ShowPanel(tabName)
-    for name, panel in pairs(PanelMap) do
-        panel.Visible = (name == tabName)
-    end
-    SetActiveTab(tabName)
+ShowPanel = function(name)
+    for _, p in ipairs(ALL_PANELS) do p.Visible = false end
+    local target = PANEL_MAP[name]
+    if target then target.Visible = true end
 end
 
-for _, info in pairs(TabButtons) do
-    info.btn.MouseButton1Click:Connect(function()
-        if State.KeyVerified then
-            ShowPanel(info.name)
+-- ============================================================
+--  SCROLL AL FONDO
+-- ============================================================
+local function ScrollBottom()
+    task.delay(0.06, function()
+        if MsgScroll and MsgScroll.Parent then
+            MsgScroll.CanvasPosition = Vector2.new(0, MsgScroll.AbsoluteCanvasSize.Y + 9999)
         end
     end)
 end
 
 -- ============================================================
---  FUNCIÓN AGREGAR MENSAJE AL CHAT
+--  AGREGAR MENSAJE AL CHAT
 -- ============================================================
 local function AddMessage(role, content)
-    -- Guardar en historial
-    table.insert(State.Messages, {role=role, content=content})
-    if #State.Messages > CONFIG.MaxHistory then
+    table.insert(State.Messages, { role = role, content = content })
+    if #State.Messages > CFG.MaxHistory then
         table.remove(State.Messages, 1)
     end
+    State.MsgCount = State.MsgCount + 1
 
-    -- Crear burbuja
     local isUser = (role == "user")
-    local bubble = Instance.new("Frame")
-    bubble.Size = UDim2.new(0.82, 0, 0, 0)
-    bubble.AutomaticSize = Enum.AutomaticSize.Y
-    bubble.BackgroundColor3 = isUser and CONFIG.Colors.UserBubble or CONFIG.Colors.AIBubble
-    bubble.BackgroundTransparency = 0.05
-    bubble.ZIndex = 54
-    bubble.LayoutOrder = #State.Messages
-    bubble.Parent = MsgScroll
-    if isUser then
-        bubble.Position = UDim2.new(0.18, 0, 0, 0)
-    end
-    MakeCorner(bubble, 14)
+
+    -- Fila contenedor
+    local row = Frame(MsgScroll, UDim2.new(1, 0, 0, 0), nil, Color3.fromRGB(0,0,0), 1, 403)
+    row.AutomaticSize = Enum.AutomaticSize.Y
+    row.LayoutOrder   = State.MsgCount
+
+    -- Burbuja
+    local bub = Frame(row, UDim2.new(0.84, 0, 0, 0), nil,
+        isUser and CFG.C.UserBub or CFG.C.AIBub, 0.05, 404)
+    bub.AutomaticSize = Enum.AutomaticSize.Y
+    bub.Position      = isUser and UDim2.new(0.16, 0, 0, 0) or UDim2.new(0, 0, 0, 0)
+    Corner(bub, 16)
     if not isUser then
-        MakeStroke(bubble, CONFIG.Colors.Border, 1)
+        Stroke(bub, CFG.C.Border, 1)
     end
-    MakePadding(bubble, 8, 8, 12, 12)
+    Pad(bub, 10, 10, 14, 14)
 
-    -- Header de la burbuja
-    local authorLabel = Instance.new("TextLabel")
-    authorLabel.Size = UDim2.new(1, 0, 0, 14)
-    authorLabel.BackgroundTransparency = 1
-    authorLabel.Text = isUser and ("🧑 " .. LocalPlayer.Name) or "⬡ Kaelen"
-    authorLabel.TextColor3 = isUser and Color3.fromRGB(200, 170, 255) or CONFIG.Colors.Accent
-    authorLabel.TextSize = 10
-    authorLabel.Font = CONFIG.Font
-    authorLabel.TextXAlignment = isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
-    authorLabel.ZIndex = 55
-    authorLabel.LayoutOrder = 1
-    authorLabel.Parent = bubble
+    VLayout(bub, 5, isUser and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left)
 
-    local msgLabel = Instance.new("TextLabel")
-    msgLabel.Size = UDim2.new(1, 0, 0, 0)
-    msgLabel.AutomaticSize = Enum.AutomaticSize.Y
-    msgLabel.BackgroundTransparency = 1
-    msgLabel.Text = content
-    msgLabel.TextColor3 = CONFIG.Colors.Text
-    msgLabel.TextSize = 13
-    msgLabel.Font = CONFIG.FontReg
-    msgLabel.TextWrapped = true
-    msgLabel.RichText = true
-    msgLabel.TextXAlignment = isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
-    msgLabel.ZIndex = 55
-    msgLabel.LayoutOrder = 2
-    msgLabel.Parent = bubble
+    -- Autor label
+    local authLbl = Label(bub, UDim2.new(1,0,0,14), nil,
+        isUser and ("🧑 " .. LocalPlayer.Name) or "⬡ Kaelen",
+        isUser and Color3.fromRGB(185, 158, 255) or CFG.C.Accent,
+        10, CFG.Font,
+        isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, 405)
+    authLbl.LayoutOrder = 1
 
-    -- Botón copiar (solo mensajes de Kaelen)
+    -- Contenido del mensaje
+    local contentLbl = Label(bub, UDim2.new(1,0,0,0), nil,
+        content, CFG.C.Text, 12, CFG.FontReg,
+        isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, 405)
+    contentLbl.AutomaticSize = Enum.AutomaticSize.Y
+    contentLbl.LayoutOrder   = 2
+
+    -- Botones de acción solo en mensajes de Kaelen
     if not isUser then
-        local copyBtn = Instance.new("TextButton")
-        copyBtn.Size = UDim2.new(0, 70, 0, 22)
-        copyBtn.BackgroundColor3 = CONFIG.Colors.Card
-        copyBtn.BackgroundTransparency = 0.2
-        copyBtn.Text = "📋 Copiar"
-        copyBtn.TextColor3 = CONFIG.Colors.TextMuted
-        copyBtn.TextSize = 10
-        copyBtn.Font = CONFIG.FontReg
-        copyBtn.ZIndex = 55
-        copyBtn.LayoutOrder = 3
-        copyBtn.Parent = bubble
-        MakeCorner(copyBtn, 6)
+        local actRow = Frame(bub, UDim2.new(1, 0, 0, 26), nil, Color3.fromRGB(0,0,0), 1, 405)
+        actRow.LayoutOrder = 3
+        HLayout(actRow, 6, Enum.VerticalAlignment.Center)
+
+        -- Copiar
+        local copyBtn = Button(actRow, UDim2.new(0, 72, 1, 0), nil, CFG.C.Card, "📋 Copiar", CFG.C.TextMuted, 10, CFG.FontReg, 406)
+        copyBtn.BackgroundTransparency = 0.28
+        Corner(copyBtn, 6)
         copyBtn.MouseButton1Click:Connect(function()
-            setclipboard(content)
+            pcall(function() setclipboard(content) end)
             copyBtn.Text = "✅ Copiado"
-            task.delay(2, function() copyBtn.Text = "📋 Copiar" end)
+            task.delay(2.5, function()
+                if copyBtn and copyBtn.Parent then copyBtn.Text = "📋 Copiar" end
+            end)
+        end)
+
+        -- Regenerar
+        local regenBtn = Button(actRow, UDim2.new(0, 90, 1, 0), nil, CFG.C.Card, "🔄 Regenerar", CFG.C.TextMuted, 10, CFG.FontReg, 406)
+        regenBtn.BackgroundTransparency = 0.28
+        Corner(regenBtn, 6)
+        regenBtn.MouseButton1Click:Connect(function()
+            if State.IsThinking then return end
+            -- Busca el último mensaje del user en el historial
+            local lastUser = ""
+            for i = #State.Messages, 1, -1 do
+                if State.Messages[i].role == "user" then
+                    lastUser = State.Messages[i].content
+                    break
+                end
+            end
+            if lastUser == "" then return end
+            SetThinking(true)
+            task.spawn(function()
+                local res, err = OrchestrateKaelen(lastUser, State.Messages)
+                SetThinking(false)
+                if err then
+                    AddMessage("assistant", "⚠️ Error al regenerar: " .. err)
+                else
+                    AddMessage("assistant", res or "(Sin respuesta)")
+                end
+            end)
         end)
     end
 
-    -- Layout vertical de la burbuja
-    local bubLayout = Instance.new("UIListLayout")
-    bubLayout.FillDirection = Enum.FillDirection.Vertical
-    bubLayout.Padding = UDim.new(0, 4)
-    bubLayout.HorizontalAlignment = isUser and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left
-    bubLayout.Parent = bubble
+    -- Animación de aparición
+    bub.BackgroundTransparency = 1
+    Tween(bub, { BackgroundTransparency = 0.05 }, 0.28)
 
-    -- Scroll al fondo
-    task.delay(0.05, function()
-        MsgScroll.CanvasPosition = Vector2.new(0, MsgScroll.AbsoluteCanvasSize.Y)
-    end)
-
-    -- Animación de entrada
-    bubble.BackgroundTransparency = 1
-    Tween(bubble, {BackgroundTransparency = 0.05}, 0.25)
+    ScrollBottom()
 end
 
 -- ============================================================
---  ANIMACIÓN THINKING
+--  THINKING ANIMATOR
 -- ============================================================
-local thinkCoroutine = nil
-
-local function ShowThinking(show)
-    State.IsThinking = show
-    ThinkFrame.Visible = show
-    if show then
-        ThinkFrame.LayoutOrder = #State.Messages + 1
-        if thinkCoroutine then task.cancel(thinkCoroutine) end
-        thinkCoroutine = task.spawn(function()
-            local dots = {"●○○", "●●○", "●●●", "○●●", "○○●", "○○○"}
+function SetThinking(active)
+    State.IsThinking  = active
+    ThinkFrame.Visible = active
+    if active then
+        ThinkFrame.LayoutOrder = State.MsgCount + 1
+        if State.ThinkTask then task.cancel(State.ThinkTask) end
+        State.ThinkTask = task.spawn(function()
+            local frames = { "●○○", "●●○", "●●●", "○●●", "○○●", "○○○" }
             local i = 1
             while State.IsThinking do
-                ThinkLabel.Text = "Kaelen pensando " .. dots[i]
-                i = (i % #dots) + 1
-                task.wait(0.3)
+                if ThinkLbl and ThinkLbl.Parent then
+                    ThinkLbl.Text = "Kaelen pensando " .. frames[i]
+                end
+                i = i % #frames + 1
+                task.wait(0.28)
             end
         end)
-        task.delay(0.05, function()
-            MsgScroll.CanvasPosition = Vector2.new(0, MsgScroll.AbsoluteCanvasSize.Y)
-        end)
+        ScrollBottom()
     else
-        if thinkCoroutine then task.cancel(thinkCoroutine) end
+        if State.ThinkTask then task.cancel(State.ThinkTask) State.ThinkTask = nil end
     end
 end
 
 -- ============================================================
 --  ENVIAR MENSAJE
 -- ============================================================
-local function SendMessage()
-    if State.IsThinking then return end
-    local text = ChatInput.Text
-    if text == "" or text == nil then return end
+local function DoSend(text)
+    text = (text or ""):match("^%s*(.-)%s*$")  -- trim
+    if text == "" or State.IsThinking then return end
     ChatInput.Text = ""
-
     AddMessage("user", text)
-    ShowThinking(true)
-
+    SetThinking(true)
     task.spawn(function()
         local response, err = OrchestrateKaelen(text, State.Messages)
-        ShowThinking(false)
+        SetThinking(false)
         if err then
-            AddMessage("assistant", "⚠️ Error: " .. tostring(err) .. "\n\nVerifica tu API Key en Configuración.")
+            AddMessage("assistant",
+                "⚠️ Error:\n" .. tostring(err) ..
+                "\n\n💡 Posibles causas:\n" ..
+                "• API Key incorrecta o sin saldo\n" ..
+                "• Tu executor no soporta HTTP requests\n" ..
+                "• Límite de rate de OpenRouter alcanzado"
+            )
         else
-            AddMessage("assistant", response or "Sin respuesta.")
+            AddMessage("assistant", response or "(Sin respuesta del servidor)")
         end
     end)
 end
 
-SendBtn.MouseButton1Click:Connect(SendMessage)
-ChatInput.FocusLost:Connect(function(enter)
-    if enter then SendMessage() end
-end)
+SendBtn.MouseButton1Click:Connect(function() DoSend(ChatInput.Text) end)
+ChatInput.FocusLost:Connect(function(enter) if enter then DoSend(ChatInput.Text) end end)
 
 -- ============================================================
---  BOTONES RÁPIDOS LÓGICA
+--  QUICK COMMANDS HANDLER
 -- ============================================================
-local function HandleQuickCmd(cmd)
-    if cmd:find("Analizar Juego") then
-        local ctx = GetGameContext()
-        local msg = "🎮 Analiza este juego de Roblox en profundidad:\n\n" .. ctx .. "\n\nDame un análisis completo de mecánicas, puntos fuertes y débiles."
-        ChatInput.Text = msg
-        SendMessage()
-    elseif cmd:find("Vulnerabilidades") then
-        local ctx = GetGameContext()
-        local msg = "🔍 Analiza posibles vulnerabilidades y exploits en este juego:\n\n" .. ctx .. "\n\nComo desarrollador del juego, necesito saber qué puntos débiles tiene mi juego para reforzarlos."
-        ChatInput.Text = msg
-        SendMessage()
-    elseif cmd:find("Exportar") then
-        local export = "=== Kaelen AI - Conversación Exportada ===\n"
-        export = export .. "Fecha: " .. os.date() .. "\n"
-        export = export .. "Modo: " .. State.CurrentMode .. "\n\n"
-        for _, m in ipairs(State.Messages) do
-            local rol = m.role == "user" and "Tú" or "Kaelen"
-            export = export .. "[" .. rol .. "]: " .. m.content .. "\n\n"
-        end
-        setclipboard(export)
-        AddMessage("assistant", "✅ Conversación copiada al portapapeles.")
-    elseif cmd:find("Limpiar") then
-        for _, child in ipairs(MsgScroll:GetChildren()) do
-            if child:IsA("Frame") and child ~= ThinkFrame then
-                child:Destroy()
+for _, qr in pairs(QuickRefs) do
+    qr.btn.MouseButton1Click:Connect(function()
+        local id = qr.id
+        if id == "analyze" then
+            DoSend(
+                "🎮 Analiza este juego de Roblox en profundidad:\n\n" ..
+                GetGameContext() ..
+                "\n\nNecesito:\n" ..
+                "1. Resumen de arquitectura detectada\n" ..
+                "2. Mecánicas principales inferidas\n" ..
+                "3. Puntos fuertes del diseño\n" ..
+                "4. Puntos débiles y áreas de mejora\n" ..
+                "5. Recomendaciones concretas para el desarrollador"
+            )
+
+        elseif id == "vulns" then
+            DoSend(
+                "🔍 Soy el DESARROLLADOR de este juego. Analiza vulnerabilidades de seguridad:\n\n" ..
+                GetGameContext() ..
+                "\n\nNecesito un análisis completo de:\n" ..
+                "1. Vulnerabilidades por severidad (CRÍTICA/ALTA/MEDIA/BAJA)\n" ..
+                "2. Cómo podría explotarse cada una\n" ..
+                "3. Código Lua de parche para cada vulnerabilidad\n" ..
+                "4. Buenas prácticas de seguridad para Roblox"
+            )
+
+        elseif id == "script" then
+            ChatInput.Text = "Crea un script Lua para Roblox que "
+            task.delay(0.1, function() ChatInput:CaptureFocus() end)
+
+        elseif id == "export" then
+            if #State.Messages == 0 then
+                AddMessage("assistant", "ℹ️ No hay mensajes que exportar todavía.")
+                return
             end
-        end
-        State.Messages = {}
-        AddMessage("assistant", "🗑 Historial limpiado. ¿En qué te puedo ayudar?")
-    end
-end
+            local lines = {
+                "════════════════════════════════════════",
+                "         KAELEN AI — EXPORT",
+                "════════════════════════════════════════",
+                "Fecha:    " .. os.date("%Y-%m-%d %H:%M:%S"),
+                "Modo:     " .. State.CurrentMode,
+                "Mensajes: " .. tostring(#State.Messages),
+                "════════════════════════════════════════",
+                "",
+            }
+            for _, m in ipairs(State.Messages) do
+                local who = m.role == "user" and ("[ " .. LocalPlayer.Name .. " ]") or "[ Kaelen ]"
+                table.insert(lines, who)
+                table.insert(lines, m.content)
+                table.insert(lines, "")
+            end
+            pcall(function() setclipboard(table.concat(lines, "\n")) end)
+            AddMessage("assistant", "✅ Conversación exportada al portapapeles.\n" .. #State.Messages .. " mensajes copiados.")
 
-for _, child in ipairs(QuickBtnFrame:GetChildren()) do
-    if child:IsA("TextButton") then
-        child.MouseButton1Click:Connect(function()
-            HandleQuickCmd(child.Text)
-        end)
-    end
+        elseif id == "clear" then
+            for _, child in ipairs(MsgScroll:GetChildren()) do
+                if child:IsA("Frame") and child.Name ~= "ThinkFrame" then
+                    child:Destroy()
+                end
+            end
+            State.Messages  = {}
+            State.MsgCount  = 0
+            AddMessage("assistant", "🗑 Historial limpiado. Nueva sesión lista.\n\n¿En qué te ayudo?")
+        end
+    end)
 end
 
 -- ============================================================
---  VERIFICACIÓN DE KEY
+--  VERIFICACIÓN DE API KEY
 -- ============================================================
 VerifyBtn.MouseButton1Click:Connect(function()
-    local key = KeyInput.Text
+    local key = KeyInput.Text:match("^%s*(.-)%s*$")
     if key == "" then
-        KeyStatusLabel.TextColor3 = CONFIG.Colors.Red
-        KeyStatusLabel.Text = "⚠️ Introduce tu API Key primero"
+        KStatus.TextColor3 = CFG.C.Yellow
+        KStatus.Text = "⚠️  Escribe tu API Key antes de continuar"
         return
     end
-    VerifyBtn.Text = "Verificando..."
-    VerifyBtn.BackgroundColor3 = CONFIG.Colors.AccentSoft
-    KeyStatusLabel.Text = ""
+    VerifyBtn.Text = "⏳  Conectando con OpenRouter..."
+    VerifyBtn.BackgroundTransparency = 0.3
+    KStatus.TextColor3 = CFG.C.TextMuted
+    KStatus.Text = "Verificando credenciales..."
 
     task.spawn(function()
         local ok, err = VerifyAPIKey(key)
         if ok then
-            State.APIKey = key
+            State.APIKey      = key
             State.KeyVerified = true
-            KeyStatusLabel.TextColor3 = CONFIG.Colors.Green
-            KeyStatusLabel.Text = "✅ API Key válida · Kaelen activado"
-            Tween(StatusDot, {BackgroundColor3 = CONFIG.Colors.Green}, 0.4)
-            task.wait(0.8)
-            -- Transición a chat
-            KeyPanel.Visible = false
-            ChatPanel.Visible = true
+
+            KStatus.TextColor3 = CFG.C.Green
+            KStatus.Text = "✅  Kaelen activado correctamente"
+            Tween(StatusDot, { BackgroundColor3 = CFG.C.Green }, 0.5)
+            VerifyBtn.Text = "✦  Activo"
+            VerifyBtn.BackgroundTransparency = 0.2
+
+            task.wait(0.85)
+
             ShowPanel("Chat")
-            AddMessage("assistant", "⬡ Hola, soy **Kaelen**.\n\nEstoy listo. Soy un orquestador IA que combina **Qwen3-Coder** y **Llama 3.3 70B** para darte la mejor asistencia posible.\n\nPuedo ayudarte a:\n• 🔍 Analizar tu juego y detectar vulnerabilidades\n• 💻 Crear y optimizar scripts Lua\n• 🎮 Estrategias y análisis de mecánicas\n• 🎨 Ideas creativas para tu juego\n\n¿Por dónde empezamos?")
+            SetTab("Chat")
+
+            AddMessage("assistant",
+                "⬡ Hola, soy Kaelen.\n\n" ..
+                "Soy un orquestador IA dual que combina:\n" ..
+                "⚡ Qwen3-Coder — el mejor modelo para Lua y scripting Roblox\n" ..
+                "🧠 Llama 3.3 70B — razonamiento avanzado y análisis profundo\n\n" ..
+                "Selecciona un modo en la pestaña Modos, o empieza directamente.\n\n" ..
+                "¿Qué quieres hacer?\n" ..
+                "• 🎮 Usar el botón Analizar para escanear tu juego\n" ..
+                "• 🔍 Usar Exploits para detectar vulnerabilidades\n" ..
+                "• 💻 Pedirme que cree un script Lua\n" ..
+                "• 🎨 Pedirme ideas de mecánicas nuevas"
+            )
         else
             State.KeyVerified = false
-            KeyStatusLabel.TextColor3 = CONFIG.Colors.Red
-            KeyStatusLabel.Text = "❌ Key inválida: " .. (err or "error desconocido")
-            VerifyBtn.Text = "Verificar y Activar"
-            VerifyBtn.BackgroundColor3 = CONFIG.Colors.Accent
+            KStatus.TextColor3 = CFG.C.Red
+            KStatus.Text = "❌  " .. (err or "Key inválida o sin saldo")
+            VerifyBtn.Text = "Verificar y Activar  ✦"
+            VerifyBtn.BackgroundTransparency = 0
         end
     end)
 end)
@@ -1224,78 +1370,96 @@ end)
 --  CONFIG HANDLERS
 -- ============================================================
 SaveSysBtn.MouseButton1Click:Connect(function()
-    State.CustomSysPrompt = SysPromptInput.Text
-    SaveSysBtn.Text = "✅ Guardado"
-    task.delay(2, function() SaveSysBtn.Text = "Guardar System Prompt" end)
+    State.CustomSysPrompt = SysBox.Text
+    local prev = SaveSysBtn.Text
+    SaveSysBtn.Text = "✅  Guardado"
+    task.delay(2.5, function()
+        if SaveSysBtn and SaveSysBtn.Parent then SaveSysBtn.Text = prev end
+    end)
+end)
+
+ClearHistBtn.MouseButton1Click:Connect(function()
+    State.Messages = {}
+    State.MsgCount = 0
+    for _, child in ipairs(MsgScroll:GetChildren()) do
+        if child:IsA("Frame") and child.Name ~= "ThinkFrame" then
+            child:Destroy()
+        end
+    end
+    local prev = ClearHistBtn.Text
+    ClearHistBtn.Text = "✅  Historial borrado"
+    task.delay(2.5, function()
+        if ClearHistBtn and ClearHistBtn.Parent then ClearHistBtn.Text = prev end
+    end)
 end)
 
 ResetKeyBtn.MouseButton1Click:Connect(function()
-    State.APIKey = ""
+    State.APIKey      = ""
     State.KeyVerified = false
-    State.Messages = {}
-    Tween(StatusDot, {BackgroundColor3 = CONFIG.Colors.Red}, 0.3)
-    KeyPanel.Visible = true
-    ChatPanel.Visible = false
-    ModesPanel.Visible = false
-    ConfigPanel.Visible = false
-    KeyInput.Text = ""
-    KeyStatusLabel.Text = ""
-    VerifyBtn.Text = "Verificar y Activar"
-    VerifyBtn.BackgroundColor3 = CONFIG.Colors.Accent
-end)
-
--- ============================================================
---  ABRIR / CERRAR VENTANA
--- ============================================================
-local function OpenWindow()
-    State.IsOpen = true
-    MainFrame.Visible = true
-    MainFrame.Size = UDim2.new(0, 0, 0, 0)
-    MainFrame.Position = UDim2.new(
-        FloatBtn.Position.X.Scale,
-        FloatBtn.Position.X.Offset + 29,
-        FloatBtn.Position.Y.Scale,
-        FloatBtn.Position.Y.Offset + 29
-    )
-    Tween(MainFrame, {
-        Size = UDim2.new(0, 380, 0, 580),
-        Position = UDim2.new(0.5, -190, 0.5, -290)
-    }, 0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-end
-
-local function CloseWindow()
-    State.IsOpen = false
-    Tween(MainFrame, {
-        Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(
-            FloatBtn.Position.X.Scale,
-            FloatBtn.Position.X.Offset + 29,
-            FloatBtn.Position.Y.Scale,
-            FloatBtn.Position.Y.Offset + 29
-        )
-    }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    task.delay(0.26, function() MainFrame.Visible = false end)
-end
-
-FloatBtn.MouseButton1Click:Connect(function()
-    if not btnDragging then
-        if State.IsOpen then CloseWindow() else OpenWindow() end
+    State.Messages    = {}
+    State.MsgCount    = 0
+    KeyInput.Text     = ""
+    KStatus.Text      = ""
+    VerifyBtn.Text    = "Verificar y Activar  ✦"
+    VerifyBtn.BackgroundTransparency = 0
+    Tween(StatusDot, { BackgroundColor3 = CFG.C.Red }, 0.4)
+    for _, child in ipairs(MsgScroll:GetChildren()) do
+        if child:IsA("Frame") and child.Name ~= "ThinkFrame" then
+            child:Destroy()
+        end
     end
+    ShowPanel("Key")
 end)
+
+-- ============================================================
+--  OPEN / CLOSE VENTANA
+-- ============================================================
+function OpenWindow()
+    State.IsOpen    = true
+    MainWin.Visible = true
+
+    -- Posición de origen: el botón flotante
+    local ox = FloatBtn.Position.X.Offset + 31
+    local oy = FloatBtn.Position.Y.Offset + 31
+    MainWin.Size     = UDim2.new(0, 0, 0, 0)
+    MainWin.Position = UDim2.new(FloatBtn.Position.X.Scale, ox, FloatBtn.Position.Y.Scale, oy)
+
+    -- Expandir al centro
+    Tween(MainWin, {
+        Size     = UDim2.new(0, W, 0, H),
+        Position = UDim2.new(0.5, -W/2, 0.5, -H/2),
+    }, 0.40, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+end
+
+function CloseWindow()
+    State.IsOpen = false
+
+    local ox = FloatBtn.Position.X.Offset + 31
+    local oy = FloatBtn.Position.Y.Offset + 31
+
+    Tween(MainWin, {
+        Size     = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(FloatBtn.Position.X.Scale, ox, FloatBtn.Position.Y.Scale, oy),
+    }, 0.26, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+
+    task.delay(0.28, function()
+        if MainWin and MainWin.Parent then
+            MainWin.Visible = false
+        end
+    end)
+end
+
 CloseBtn.MouseButton1Click:Connect(CloseWindow)
 
 -- ============================================================
 --  INICIALIZACIÓN
 -- ============================================================
-SetActiveTab("Chat")
+ShowPanel("Key")
+SetTab("Chat")
 
--- Iniciar con pantalla de key si no está verificado
-if not State.KeyVerified then
-    KeyPanel.Visible = true
-    ChatPanel.Visible = false
-    ModesPanel.Visible = false
-    ConfigPanel.Visible = false
-end
-
-print("[ Kaelen v2.0 ] Cargado correctamente. Toca el botón K para abrir.")
-print("[ Kaelen ] Modelos: " .. CONFIG.Models.Coder .. " + " .. CONFIG.Models.Reason)
+print("┌──────────────────────────────────────┐")
+print("│          KAELEN AI  v2.1             │")
+print("│   Qwen3-Coder + Llama 3.3 70B       │")
+print("│   Dual-Model Orchestrator            │")
+print("│   Toca el botón K para abrir         │")
+print("└──────────────────────────────────────┘")
