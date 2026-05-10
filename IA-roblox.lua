@@ -207,11 +207,16 @@ local function Crn(p, r)
 end
 
 local function Strk(p, col, th)
-    local s = Instance.new("UIStroke")
-    s.Color = col or C.Border
-    s.Thickness = th or 1
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    s.Parent = p; return s
+    -- UIStroke/ApplyStrokeMode wrapped in pcall for old Roblox compatibility
+    local s
+    local ok = pcall(function()
+        s = Instance.new("UIStroke")
+        s.Color = col or C.Border
+        s.Thickness = th or 1
+        pcall(function() s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
+        s.Parent = p
+    end)
+    return s
 end
 
 local function Pad(p, t, b, l, r)
@@ -234,12 +239,14 @@ local function LL(p, dir, sp, ha, va)
 end
 
 local function GL(p, cs, cps)
-    local g = Instance.new("UIGridLayout")
-    g.CellSize = cs or UDim2.new(0.48, -4, 0, 58)
-    g.CellPaddingSize = cps or UDim2.new(0, 6, 0, 6)
-    g.SortOrder = Enum.SortOrder.LayoutOrder
-    g.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    g.Parent = p; return g
+    -- UIGridLayout replaced with UIListLayout (CellPaddingSize not available on old Roblox)
+    -- Buttons will be full width but compact height
+    local l = Instance.new("UIListLayout")
+    l.FillDirection = Enum.FillDirection.Vertical
+    l.Padding = UDim.new(0, 5)
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.Parent = p; return l
 end
 
 local function Fr(p, sz, pos, bg, tr)
@@ -328,7 +335,7 @@ if oldHub then oldHub:Destroy() end
 local SG = Instance.new("ScreenGui")
 SG.Name             = "KaelenHubV2"
 SG.ResetOnSpawn     = false
-SG.ZIndexBehavior   = Enum.ZIndexBehavior.Sibling
+pcall(function() SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
 SG.DisplayOrder     = 999
 SG.IgnoreGuiInset   = true
 SG.Parent           = PGui
@@ -714,7 +721,7 @@ end
 local function Btn2(parent, text, onClick, col)
     col = col or C.Accent
     local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0,0,0,0) -- sized by UIGridLayout
+    b.Size = UDim2.new(1,0,0,54)
     b.BackgroundColor3 = col
     b.BackgroundTransparency = 0.2
     b.Text = text
@@ -1804,7 +1811,7 @@ do
     TargetPicker(TrollPanel, "Target", function(p) ST.TrollTarget = p end)
 
     Section(TrollPanel, "Fling Arsenal", C.Red)
-    local flingGrid = Fr(TrollPanel, UDim2.new(1,0,0,200), nil, C.BG, 1)
+    local flingGrid = Fr(TrollPanel, UDim2.new(1,0,0,500), nil, C.BG, 1)
     GL(flingGrid, UDim2.new(0.48,-4,0,56), UDim2.new(0,6,0,6))
     flingGrid.ZIndex = 12
 
@@ -1853,10 +1860,10 @@ do
     end, Color3.fromRGB(180,20,20))
 
     -- flingGrid has 8 buttons = 4 rows
-    flingGrid.Size = UDim2.new(1,0,0,260)
+    flingGrid.Size = UDim2.new(1,0,0,640)
 
     Section(TrollPanel, "Control & Position", C.Pink)
-    local ctrlGrid = Fr(TrollPanel, UDim2.new(1,0,0,260), nil, C.BG, 1)
+    local ctrlGrid = Fr(TrollPanel, UDim2.new(1,0,0,640), nil, C.BG, 1)
     GL(ctrlGrid, UDim2.new(0.48,-4,0,56), UDim2.new(0,6,0,6))
     ctrlGrid.ZIndex = 12
 
@@ -1947,7 +1954,7 @@ do
         else SetSize(nil, v) end
     end, C.Orange)
 
-    local sizeGrid = Fr(TrollPanel, UDim2.new(1,0,0,130), nil, C.BG, 1)
+    local sizeGrid = Fr(TrollPanel, UDim2.new(1,0,0,500), nil, C.BG, 1)
     GL(sizeGrid, UDim2.new(0.48,-4,0,56), UDim2.new(0,6,0,6))
     sizeGrid.ZIndex = 12
 
@@ -1974,7 +1981,7 @@ do
     Btn2(sizeGrid, "My Size: Big", function() SetSize(nil,5) end, C.Teal)
 
     Section(TrollPanel, "Freeze & Effects", C.Accent2)
-    local fxGrid = Fr(TrollPanel, UDim2.new(1,0,0,200), nil, C.BG, 1)
+    local fxGrid = Fr(TrollPanel, UDim2.new(1,0,0,500), nil, C.BG, 1)
     GL(fxGrid, UDim2.new(0.48,-4,0,56), UDim2.new(0,6,0,6))
     fxGrid.ZIndex = 12
 
@@ -2035,7 +2042,7 @@ do
     end, C.Accent)
 
     Section(TrollPanel, "Dance & Emotes", C.Green)
-    local danceGrid = Fr(TrollPanel, UDim2.new(1,0,0,200), nil, C.BG, 1)
+    local danceGrid = Fr(TrollPanel, UDim2.new(1,0,0,500), nil, C.BG, 1)
     GL(danceGrid, UDim2.new(0.31,-4,0,52), UDim2.new(0,4,0,4))
     danceGrid.ZIndex = 12
 
@@ -2043,7 +2050,7 @@ do
         Btn2(danceGrid, "Dance "..i, function() Dance(i) end, C.Green)
     end
 
-    local emoteGrid = Fr(TrollPanel, UDim2.new(1,0,0,130), nil, C.BG, 1)
+    local emoteGrid = Fr(TrollPanel, UDim2.new(1,0,0,500), nil, C.BG, 1)
     GL(emoteGrid, UDim2.new(0.31,-4,0,52), UDim2.new(0,4,0,4))
     emoteGrid.ZIndex = 12
     for name, _ in pairs(EmoteIDs) do
@@ -2132,7 +2139,7 @@ do
         if hum then hum.JumpPower = v end
     end, C.Green)
 
-    local speedGrid = Fr(MovePanel, UDim2.new(1,0,0,130), nil, C.BG, 1)
+    local speedGrid = Fr(MovePanel, UDim2.new(1,0,0,500), nil, C.BG, 1)
     GL(speedGrid, UDim2.new(0.48,-4,0,56), UDim2.new(0,6,0,6))
     speedGrid.ZIndex = 12
     local speedPresets = {{"Normal",16},{"Fast",50},{"Sprint",100},{"Sonic",250}}
@@ -2455,7 +2462,7 @@ do
     end, C.Green)
 
     Section(ProtectPanel, "Quick Actions", C.Yellow)
-    local qaGrid = Fr(ProtectPanel, UDim2.new(1,0,0,130), nil, C.BG, 1)
+    local qaGrid = Fr(ProtectPanel, UDim2.new(1,0,0,500), nil, C.BG, 1)
     GL(qaGrid, UDim2.new(0.48,-4,0,56), UDim2.new(0,6,0,6))
     qaGrid.ZIndex = 12
 
@@ -2650,7 +2657,7 @@ do
         workspace.Gravity = v
     end, C.Orange)
 
-    local worldGrid = Fr(UtilPanel, UDim2.new(1,0,0,130), nil, C.BG, 1)
+    local worldGrid = Fr(UtilPanel, UDim2.new(1,0,0,500), nil, C.BG, 1)
     GL(worldGrid, UDim2.new(0.31,-4,0,52), UDim2.new(0,4,0,4))
     worldGrid.ZIndex=12
     Btn2(worldGrid,"Night",function() Lighting.ClockTime=0 Lighting.Brightness=0.3 end, Color3.fromRGB(20,20,60))
