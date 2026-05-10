@@ -1,1459 +1,1785 @@
---[[
-╔══════════════════════════════════════════════════════════════════╗
-║                                                                  ║
-║   ██╗  ██╗ █████╗ ███████╗██╗     ███████╗███╗   ██╗           ║
-║   ██║ ██╔╝██╔══██╗██╔════╝██║     ██╔════╝████╗  ██║           ║
-║   █████╔╝ ███████║█████╗  ██║     █████╗  ██╔██╗ ██║           ║
-║   ██╔═██╗ ██╔══██║██╔══╝  ██║     ██╔══╝  ██║╚██╗██║           ║
-║   ██║  ██╗██║  ██║███████╗███████╗███████╗██║ ╚████║           ║
-║   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝           ║
-║                                                                  ║
-║   KAELEN AI  ·  VERSION 3.0 PHANTOM EDITION                     ║
-║   Triple-Engine Orchestrator  ·  Mobile-First Architecture      ║
-║                                                                  ║
-╚══════════════════════════════════════════════════════════════════╝
-]]
+-- Kaelen Hub --
+-- Version 1.0 | iOS Style | Mobile Optimized | Delta Compatible
+-- Features: Troll, Movement, Music, Protection, Utilities, ESP
 
--- ══════════════════════════════════════════════════════════════════
--- [1] SERVICIOS
--- ══════════════════════════════════════════════════════════════════
-local Players          = game:GetService("Players")
-local TweenService     = game:GetService("TweenService")
+local Players        = game:GetService("Players")
+local TweenService   = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local HttpService      = game:GetService("HttpService")
-local RunService       = game:GetService("RunService")
-local CoreGui          = game:GetService("CoreGui")
+local RunService     = game:GetService("RunService")
+local HttpService    = game:GetService("HttpService")
+local StarterGui     = game:GetService("StarterGui")
+local Lighting       = game:GetService("Lighting")
+local SoundService   = game:GetService("SoundService")
+local LocalPlayer    = Players.LocalPlayer
+local Mouse          = LocalPlayer:GetMouse()
+local Camera         = workspace.CurrentCamera
 
-local LocalPlayer = Players.LocalPlayer
-local Camera      = workspace.CurrentCamera
+-- ============================================================
+--  CONFIG & STATE
+-- ============================================================
+local CFG = {
+    Colors = {
+        BG         = Color3.fromRGB(10, 10, 18),
+        Panel      = Color3.fromRGB(18, 18, 30),
+        Card       = Color3.fromRGB(26, 26, 42),
+        CardHover  = Color3.fromRGB(34, 34, 54),
+        Accent     = Color3.fromRGB(120, 80, 255),
+        Accent2    = Color3.fromRGB(80, 180, 255),
+        AccentPink = Color3.fromRGB(255, 80, 180),
+        AccentGreen= Color3.fromRGB(80, 255, 160),
+        AccentRed  = Color3.fromRGB(255, 80, 80),
+        AccentOrange=Color3.fromRGB(255, 160, 60),
+        Text       = Color3.fromRGB(240, 240, 255),
+        TextDim    = Color3.fromRGB(140, 140, 180),
+        Border     = Color3.fromRGB(50, 50, 80),
+        ToggleOff  = Color3.fromRGB(50, 50, 70),
+        ToggleOn   = Color3.fromRGB(120, 80, 255),
+        Troll      = Color3.fromRGB(255, 100, 80),
+        Music      = Color3.fromRGB(80, 200, 255),
+        Move       = Color3.fromRGB(100, 255, 150),
+        Protect    = Color3.fromRGB(255, 200, 60),
+        Util       = Color3.fromRGB(180, 120, 255),
+    },
+    FloatSize   = UDim2.new(0, 72, 0, 72),
+    FrameSize   = UDim2.new(0.88, 0, 0.78, 0),
+    FramePos    = UDim2.new(0.5, 0, 0.5, 0),
+    CornerR     = UDim.new(0, 18),
+    BtnHeight   = 60,
+    AnimSpeed   = 0.35,
+}
 
--- ══════════════════════════════════════════════════════════════════
--- [2] LIMPIEZA ANTI-DUPLICACIÓN
--- ══════════════════════════════════════════════════════════════════
-for _, gui in ipairs({CoreGui, LocalPlayer:WaitForChild("PlayerGui", 3)}) do
-    if gui then
-        pcall(function()
-            local old = gui:FindFirstChild("KaelenUI_v3")
-            if old then old:Destroy() end
-        end)
+local State = {
+    IsOpen       = false,
+    IsMinimized  = false,
+    CurrentTab   = "Troll",
+    -- Movement
+    FlyEnabled   = false,
+    FlySpeed     = 50,
+    NoclipEnabled= false,
+    InfJump      = false,
+    ClickTP      = false,
+    WalkSpeed    = 16,
+    JumpPower    = 50,
+    GodMode      = false,
+    Invisible    = false,
+    Fullbright   = false,
+    -- Troll
+    SpinEnabled  = false,
+    SpinTarget   = nil,
+    AttachTarget = nil,
+    AttachEnabled= false,
+    FloatEnabled = false,
+    FloatTarget  = nil,
+    HeadsitTarget= nil,
+    HeadsitOn    = false,
+    -- Music
+    MusicPlaying = false,
+    MusicLoop    = false,
+    MusicVolume  = 0.8,
+    CurrentSongIdx = 1,
+    MusicID      = nil,
+    -- ESP
+    ESPEnabled   = false,
+    ESPBoxes     = {},
+    -- Checkpoints
+    Checkpoints  = {},
+    -- Misc
+    OrigBrightness = Lighting.Brightness,
+    OrigAmb      = Lighting.Ambient,
+}
+
+-- ============================================================
+--  SONG LIST (from your PDF)
+-- ============================================================
+local SONGS = {
+    -- My Favs / Electronic
+    {name="<3",                  id="109781016044674"},
+    {name="Dusk",                id="106475212474249"},
+    {name="I'll Go",             id="5410081298"},
+    {name="GateHouse",           id="137409529549092"},
+    {name="Sprite",              id="5410083814"},
+    {name="Stayin Alive",        id="132440988854807"},
+    {name="Crab Rave",           id="5410086218"},
+    {name="Cant See The Moonlight",id="137072588403399"},
+    {name="Sun Sprinting",       id="134698083808996"},
+    {name="BackOnTree",          id="95608981665777"},
+    {name="Deceptica",           id="79716563884770"},
+    {name="Am I Too Late",       id="89804818669338"},
+    {name="MovementRhythm",      id="77249446861960"},
+    -- Rave/EDM
+    {name="Hold On Sped Up",     id="71045969776776"},
+    {name="I Can't - Tony Romera",id="5410082805"},
+    {name="Never Be The One",    id="111990911956281"},
+    {name="Starfall",            id="101934851079098"},
+    {name="Run Away",            id="128118999630439"},
+    {name="Total Confusion",     id="103419239604004"},
+    {name="Jumpstyle",           id="1839246711"},
+    {name="Techno Rave",         id="125418384596720"},
+    {name="Fell It",             id="109475460178206"},
+    {name="TECHNO",              id="73520333282970"},
+    {name="MEMORIES",            id="98432184550661"},
+    {name="Hold On",             id="71045969776776"},
+    {name="Rave Romance",        id="80345427689122"},
+    {name="Hardstyle",           id="1839246774"},
+    {name="EDM Vegas",           id="1842683759"},
+    {name="Dreamraver",          id="138577643632319"},
+    -- Rock
+    {name="i didn't see it",     id="103902016839820"},
+    {name="Skylines",            id="85762528306791"},
+    {name="Right here in my arms",id="79627520866718"},
+    {name="Join me in death",    id="106344107023335"},
+    {name="InnerAwakening",      id="76585504240155"},
+    {name="Banana Bashin",       id="118231802185865"},
+    {name="Woo Woo Woo Woo",     id="77139878722989"},
+    {name="I Miss You",          id="125460168433130"},
+    -- Jazz/Lofi/Chill
+    {name="Lo-fi Chill A",       id="9043887091"},
+    {name="Relaxed Scene",       id="1848354536"},
+    {name="Piano In The Dark",   id="1836291588"},
+    {name="Moonlit Memories",    id="90866117181187"},
+    {name="Capybara",            id="99099326829992"},
+    {name="blossom",             id="136212040250804"},
+    {name="Crimson Vision",      id="105214146426572"},
+    {name="Ambient Blue",        id="139952467445591"},
+    {name="Claire De Lune",      id="1838457617"},
+    {name="Nocturne",            id="129108903964685"},
+    {name="Velvet Midnight",     id="82091048635749"},
+    -- Hip Hop/Rap
+    {name="Dear Lana",           id="119589412825080"},
+    {name="SAD!",                id="72320758533508"},
+    {name="plug do rj",          id="129154320419135"},
+    -- Phonk
+    {name="BRAZIL DO FUNK",      id="133498554139200"},
+    {name="CRYSTAL FUNK",        id="103445348511856"},
+    {name="MONTAGEM DANCE RAT",  id="112903678064836"},
+    {name="SEA OF PHONK",        id="130367831349871"},
+    {name="BAILE FUNK",          id="104880194210827"},
+    {name="GOTH FUNK",           id="140704128008979"},
+    {name="AURA DEFINED Slowed", id="109805678713575"},
+    {name="BRX PHONK",           id="17422074849"},
+    {name="YOTO HIME PHONK",     id="103183298894656"},
+    {name="BEM SOLTO BRAZIL",    id="119936139925486"},
+    {name="HOTAKFUNK",           id="79314929106323"},
+    {name="NEXOVA",              id="127388462601694"},
+    {name="PHONK ULTRA",         id="134839199346188"},
+    {name="Demon Phonk Drive",   id="72793675791485"},
+    {name="Din1c - Can you",     id="15689448519"},
+    {name="Din1c - INVASION",    id="15689453529"},
+    {name="Din1c - METAMORPHOSIS",id="15689451063"},
+    {name="Cowbell God",         id="16190760005"},
+    -- Salsa
+    {name="Mezcla Espanola 1",   id="124263849663656"},
+    {name="UNIVERSO",            id="95518661042892"},
+    {name="Cumbia De Los Cholos",id="77246411659544"},
+    {name="Aunque Ella No Lo llore",id="101010703654195"},
+    -- Memes
+    {name="Vine Boom",           id="6823153536"},
+    {name="Crab Rave",           id="5410086218"},
+    {name="Wii Sports R&B",      id="72697308378715"},
+    {name="THE POWER OF ANIME",  id="1226918619"},
+    {name="AUUUUUGH",            id="8893545897"},
+    {name="Better Call Saul",    id="9106904975"},
+    {name="oh my goodness SQUIDwarD",id="132575703"},
+    {name="HEHEHE HA",           id="8406005582"},
+    {name="Deja vu Initial D",   id="16831106636"},
+}
+
+-- ============================================================
+--  HELPERS
+-- ============================================================
+local function Tween(obj, props, dur, style, dir)
+    style = style or Enum.EasingStyle.Quart
+    dir   = dir   or Enum.EasingDirection.Out
+    local t = TweenService:Create(obj, TweenInfo.new(dur or CFG.AnimSpeed, style, dir), props)
+    t:Play(); return t
+end
+local function Corner(p, r) local c=Instance.new("UICorner") c.CornerRadius=r or CFG.CornerR c.Parent=p return c end
+local function Stroke(p, col, th) local s=Instance.new("UIStroke") s.Color=col or CFG.Colors.Border s.Thickness=th or 1 s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border s.Parent=p return s end
+local function Padding(p,t,b,l,r) local x=Instance.new("UIPadding") x.PaddingTop=UDim.new(0,t or 8) x.PaddingBottom=UDim.new(0,b or 8) x.PaddingLeft=UDim.new(0,l or 8) x.PaddingRight=UDim.new(0,r or 8) x.Parent=p return x end
+local function ListLayout(p, dir, spacing, align)
+    local l=Instance.new("UIListLayout")
+    l.FillDirection=dir or Enum.FillDirection.Vertical
+    l.Padding=UDim.new(0,spacing or 8)
+    l.HorizontalAlignment=align or Enum.HorizontalAlignment.Center
+    l.SortOrder=Enum.SortOrder.LayoutOrder
+    l.Parent=p return l
+end
+local function GridLayout(p, cellSize, spacing)
+    local g=Instance.new("UIGridLayout")
+    g.CellSize=cellSize or UDim2.new(0.48,0,0,60)
+    g.CellPaddingSize=UDim2.new(0,spacing or 8,0,spacing or 8)
+    g.SortOrder=Enum.SortOrder.LayoutOrder
+    g.Parent=p return g
+end
+local function Label(p, text, size, color, weight)
+    local l=Instance.new("TextLabel")
+    l.BackgroundTransparency=1
+    l.Text=text or ""
+    l.TextSize=size or 14
+    l.TextColor3=color or CFG.Colors.Text
+    l.Font=weight or Enum.Font.GothamBold
+    l.TextXAlignment=Enum.TextXAlignment.Left
+    l.Size=UDim2.new(1,0,0,size and size+6 or 20)
+    l.Parent=p return l
+end
+local function Frame(p, size, pos, color, transparency)
+    local f=Instance.new("Frame")
+    f.Size=size or UDim2.new(1,0,1,0)
+    f.Position=pos or UDim2.new(0,0,0,0)
+    f.BackgroundColor3=color or CFG.Colors.Card
+    f.BackgroundTransparency=transparency or 0
+    f.BorderSizePixel=0
+    f.Parent=p return f
+end
+local function ScrollFrame(p, size, pos, color)
+    local s=Instance.new("ScrollingFrame")
+    s.Size=size or UDim2.new(1,0,1,0)
+    s.Position=pos or UDim2.new(0,0,0,0)
+    s.BackgroundColor3=color or CFG.Colors.Panel
+    s.BackgroundTransparency=1
+    s.BorderSizePixel=0
+    s.ScrollBarThickness=3
+    s.ScrollBarImageColor3=CFG.Colors.Accent
+    s.CanvasSize=UDim2.new(0,0,0,0)
+    s.AutomaticCanvasSize=Enum.AutomaticCanvasSize.Y
+    s.Parent=p return s
+end
+
+local function GetChar()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
+local function GetRoot()
+    local c = GetChar()
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function GetHum()
+    local c = GetChar()
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+local function Notify(title, text, dur)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title=title, Text=text, Duration=dur or 3
+        })
+    end)
+end
+
+-- ============================================================
+--  GUI SETUP
+-- ============================================================
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local old = PlayerGui:FindFirstChild("KaelenHub")
+if old then old:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name            = "KaelenHub"
+ScreenGui.ResetOnSpawn    = false
+ScreenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder    = 999
+ScreenGui.IgnoreGuiInset  = true
+ScreenGui.Parent          = PlayerGui
+
+-- Floating Button
+local FloatBtn = Instance.new("ImageButton")
+FloatBtn.Name             = "FloatBtn"
+FloatBtn.Size             = CFG.FloatSize
+FloatBtn.Position         = UDim2.new(0, 14, 0.55, 0)
+FloatBtn.BackgroundColor3 = CFG.Colors.Accent
+FloatBtn.BorderSizePixel  = 0
+FloatBtn.ZIndex           = 10
+FloatBtn.Parent           = ScreenGui
+Corner(FloatBtn, UDim.new(1, 0))
+do
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, CFG.Colors.Accent),
+        ColorSequenceKeypoint.new(1, CFG.Colors.AccentPink),
+    })
+    g.Rotation = 135
+    g.Parent = FloatBtn
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1,0,1,0)
+    lbl.Text = "K"
+    lbl.TextSize = 28
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextColor3 = Color3.new(1,1,1)
+    lbl.Parent = FloatBtn
+    -- Pulse ring
+    local ring = Instance.new("Frame")
+    ring.Size = UDim2.new(1.4,0,1.4,0)
+    ring.Position = UDim2.new(-0.2,0,-0.2,0)
+    ring.BackgroundTransparency = 1
+    ring.BorderSizePixel = 0
+    ring.ZIndex = 9
+    ring.Parent = FloatBtn
+    Corner(ring, UDim.new(1,0))
+    Stroke(ring, CFG.Colors.Accent, 2)
+    local function pulseRing()
+        while FloatBtn.Parent do
+            Tween(ring, {Size=UDim2.new(1.6,0,1.6,0), Position=UDim2.new(-0.3,0,-0.3,0)}, 0.8, Enum.EasingStyle.Sine)
+            local stroke = ring:FindFirstChildOfClass("UIStroke")
+            if stroke then Tween(stroke, {Transparency=1}, 0.8, Enum.EasingStyle.Sine) end
+            task.wait(0.8)
+            ring.Size = UDim2.new(1.4,0,1.4,0)
+            ring.Position = UDim2.new(-0.2,0,-0.2,0)
+            if stroke then stroke.Transparency = 0.5 end
+            task.wait(0.5)
+        end
+    end
+    task.spawn(pulseRing)
+end
+
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name             = "MainFrame"
+MainFrame.AnchorPoint      = Vector2.new(0.5, 0.5)
+MainFrame.Size             = UDim2.new(0,0,0,0)
+MainFrame.Position         = CFG.FramePos
+MainFrame.BackgroundColor3 = CFG.Colors.BG
+MainFrame.BackgroundTransparency = 0.08
+MainFrame.BorderSizePixel  = 0
+MainFrame.Visible          = false
+MainFrame.ClipsDescendants = true
+MainFrame.ZIndex           = 5
+MainFrame.Parent           = ScreenGui
+Corner(MainFrame)
+Stroke(MainFrame, CFG.Colors.Border, 1)
+
+-- Gradient overlay
+local mainGrad = Instance.new("UIGradient")
+mainGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 18, 38)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 10, 20)),
+})
+mainGrad.Rotation = 135
+mainGrad.Parent = MainFrame
+
+-- Header
+local Header = Frame(MainFrame, UDim2.new(1,0,0,56), UDim2.new(0,0,0,0), CFG.Colors.Panel, 0)
+Header.ZIndex = 6
+do
+    local hGrad = Instance.new("UIGradient")
+    hGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(30,20,55)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(18,14,35)),
+    })
+    hGrad.Rotation = 90
+    hGrad.Parent = Header
+
+    local title = Label(Header, "Kaelen Hub", 18, CFG.Colors.Text, Enum.Font.GothamBold)
+    title.Size = UDim2.new(0,160,1,0)
+    title.Position = UDim2.new(0,16,0,0)
+    title.TextYAlignment = Enum.TextYAlignment.Center
+    title.ZIndex = 7
+
+    local subtitle = Label(Header, "by crx-ter", 11, CFG.Colors.TextDim, Enum.Font.Gotham)
+    subtitle.Size = UDim2.new(0,160,0,14)
+    subtitle.Position = UDim2.new(0,16,0,34)
+    subtitle.ZIndex = 7
+
+    -- Close button
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Size = UDim2.new(0,40,0,40)
+    CloseBtn.Position = UDim2.new(1,-50,0.5,-20)
+    CloseBtn.BackgroundColor3 = CFG.Colors.AccentRed
+    CloseBtn.BackgroundTransparency = 0.3
+    CloseBtn.Text = "X"
+    CloseBtn.TextColor3 = Color3.new(1,1,1)
+    CloseBtn.TextSize = 14
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.BorderSizePixel = 0
+    CloseBtn.ZIndex = 7
+    CloseBtn.Parent = Header
+    Corner(CloseBtn, UDim.new(0,10))
+
+    -- Min button
+    local MinBtn = Instance.new("TextButton")
+    MinBtn.Size = UDim2.new(0,40,0,40)
+    MinBtn.Position = UDim2.new(1,-96,0.5,-20)
+    MinBtn.BackgroundColor3 = CFG.Colors.AccentOrange
+    MinBtn.BackgroundTransparency = 0.3
+    MinBtn.Text = "-"
+    MinBtn.TextColor3 = Color3.new(1,1,1)
+    MinBtn.TextSize = 20
+    MinBtn.Font = Enum.Font.GothamBold
+    MinBtn.BorderSizePixel = 0
+    MinBtn.ZIndex = 7
+    MinBtn.Parent = Header
+    Corner(MinBtn, UDim.new(0,10))
+
+    local OpenWindow, CloseWindow, ToggleMinimize
+
+    CloseBtn.MouseButton1Click:Connect(function()
+        if CloseWindow then CloseWindow() end
+    end)
+    MinBtn.MouseButton1Click:Connect(function()
+        if ToggleMinimize then ToggleMinimize() end
+    end)
+
+    -- Header drag
+    local dragging, dragStart, startPos = false, nil, nil
+    local dragDist = 0
+    Header.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragDist = 0
+            dragStart = inp.Position
+            startPos = MainFrame.Position
+        end
+    end)
+    Header.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+        or inp.UserInputType == Enum.UserInputType.Touch) then
+            local vp = Camera.ViewportSize
+            local delta = inp.Position - dragStart
+            dragDist = math.abs(delta.X)+math.abs(delta.Y)
+            local nx = math.clamp(startPos.X.Scale + delta.X/vp.X, 0.05, 0.95)
+            local ny = math.clamp(startPos.Y.Scale + delta.Y/vp.Y, 0.05, 0.95)
+            MainFrame.Position = UDim2.new(nx, 0, ny, 0)
+        end
+    end)
+end
+
+-- ============================================================
+--  TAB BAR
+-- ============================================================
+local TABS = {
+    {name="Troll",    icon="", color=CFG.Colors.Troll},
+    {name="Move",     icon="", color=CFG.Colors.Move},
+    {name="Music",    icon="", color=CFG.Colors.Music},
+    {name="Protect",  icon="", color=CFG.Colors.Protect},
+    {name="Util",     icon="", color=CFG.Colors.Util},
+    {name="ESP",      icon="", color=CFG.Colors.Accent2},
+}
+
+local TabBar = Frame(MainFrame, UDim2.new(1,0,0,52), UDim2.new(0,0,0,56), CFG.Colors.Panel, 0)
+TabBar.ZIndex = 6
+
+local tabScroll = Instance.new("ScrollingFrame")
+tabScroll.Size = UDim2.new(1,0,1,0)
+tabScroll.BackgroundTransparency = 1
+tabScroll.BorderSizePixel = 0
+tabScroll.ScrollBarThickness = 0
+tabScroll.ScrollingDirection = Enum.ScrollingDirection.X
+tabScroll.CanvasSize = UDim2.new(0,0,0,0)
+tabScroll.AutomaticCanvasSize = Enum.AutomaticCanvasSize.X
+tabScroll.Parent = TabBar
+
+local tabList = Instance.new("UIListLayout")
+tabList.FillDirection = Enum.FillDirection.Horizontal
+tabList.Padding = UDim.new(0,4)
+tabList.VerticalAlignment = Enum.VerticalAlignment.Center
+tabList.SortOrder = Enum.SortOrder.LayoutOrder
+tabList.Parent = tabScroll
+Padding(tabScroll, 6, 6, 8, 8)
+
+local TabBtns = {}
+local PanelContainer = Frame(MainFrame, UDim2.new(1,0,1,-108), UDim2.new(0,0,0,108), CFG.Colors.BG, 1)
+
+local ActiveTabColor = CFG.Colors.Accent
+
+local function SetTab(name)
+    State.CurrentTab = name
+    for _, info in ipairs(TABS) do
+        local btn = TabBtns[info.name]
+        if not btn then continue end
+        if info.name == name then
+            Tween(btn, {BackgroundColor3=info.color, BackgroundTransparency=0.1}, 0.2)
+            btn.TextColor3 = Color3.new(1,1,1)
+            ActiveTabColor = info.color
+        else
+            Tween(btn, {BackgroundColor3=CFG.Colors.Card, BackgroundTransparency=0.3}, 0.2)
+            btn.TextColor3 = CFG.Colors.TextDim
+        end
+    end
+    for _, child in pairs(PanelContainer:GetChildren()) do
+        if child:IsA("Frame") or child:IsA("ScrollingFrame") then
+            child.Visible = child.Name == name
+        end
     end
 end
 
--- ══════════════════════════════════════════════════════════════════
--- [3] CONFIGURACIÓN GLOBAL
--- ══════════════════════════════════════════════════════════════════
-local CFG = {
-    Version      = "3.0 Phantom",
-    ApiURL       = "https://openrouter.ai/api/v1/chat/completions",
-    MaxTokens    = 2000,
-    Temperature  = 0.72,
-    MaxHistory   = 60,
-
-    -- Modelos
-    M = {
-        Fast   = "google/gemma-3-27b-it:free",
-        Coder  = "qwen/qwen3-coder:free",
-        Reason = "meta-llama/llama-3.3-70b-instruct:free",
-    },
-
-    -- Dimensiones de ventana
-    W = { W = 460, H = 520 },
-
-    -- Paleta de colores refinada
-    C = {
-        -- Fondos
-        BG          = Color3.fromRGB(6,   6,  14),
-        Surface     = Color3.fromRGB(11,  10,  24),
-        Card        = Color3.fromRGB(17,  16,  36),
-        CardHover   = Color3.fromRGB(24,  22,  48),
-
-        -- Bordes
-        Border      = Color3.fromRGB(40,  36,  82),
-        BorderHi    = Color3.fromRGB(90,  60, 200),
-
-        -- Acento principal (índigo eléctrico)
-        Accent      = Color3.fromRGB(100,  58, 248),
-        AccentDim   = Color3.fromRGB( 62,  34, 160),
-        AccentGlow  = Color3.fromRGB(148, 108, 255),
-        AccentSoft  = Color3.fromRGB( 30,  20,  70),
-
-        -- Burbujas de chat
-        UserBubble  = Color3.fromRGB( 78,  42, 220),
-        AIBubble    = Color3.fromRGB( 16,  15,  34),
-
-        -- Texto
-        Text        = Color3.fromRGB(230, 226, 255),
-        TextSub     = Color3.fromRGB(148, 140, 200),
-        TextDim     = Color3.fromRGB( 70,  64, 120),
-        White       = Color3.fromRGB(255, 255, 255),
-        Black       = Color3.fromRGB(  0,   0,   0),
-
-        -- Estados
-        Success     = Color3.fromRGB( 56, 210, 120),
-        Danger      = Color3.fromRGB(255,  60,  86),
-        Warning     = Color3.fromRGB(255, 190,  50),
-        Info        = Color3.fromRGB( 50, 180, 255),
-    },
-
-    -- Fuentes
-    F = {
-        Bold    = Enum.Font.GothamBold,
-        Semi    = Enum.Font.GothamSemibold,
-        Regular = Enum.Font.Gotham,
-        Mono    = Enum.Font.Code,
-    },
-}
-
--- ══════════════════════════════════════════════════════════════════
--- [4] ESTADO DE LA APLICACIÓN
--- ══════════════════════════════════════════════════════════════════
-local S = {
-    APIKey       = "",
-    Verified     = false,
-    WinOpen      = false,
-    Thinking     = false,
-    Messages     = {},
-    MsgCount     = 0,
-    Mode         = "Analista",
-    CustomSys    = "",
-    ThinkThread  = nil,
-    ActivePanel  = "Key",
-
-    -- Motor físico
-    Fly          = { Active = false, Conn = nil },
-    Noclip       = { Active = false, Conn = nil },
-
-    -- Drag botón flotante
-    BtnDrag = {
-        Active     = false,
-        Origin     = Vector2.zero,
-        PosOrigin  = UDim2.new(0,0,0,0),
-        TotalMoved = 0,
-    },
-
-    -- Drag ventana
-    WinDrag = {
-        Active    = false,
-        Origin    = Vector2.zero,
-        PosOrigin = UDim2.new(0,0,0,0),
-    },
-}
-
--- ══════════════════════════════════════════════════════════════════
--- [5] UTILIDADES DE UI  ──  Framework minimalista interno
--- ══════════════════════════════════════════════════════════════════
-
-local function Tween(obj, props, t, style, dir)
-    if not obj or not obj.Parent then return end
-    local ti = TweenInfo.new(
-        t     or 0.25,
-        style or Enum.EasingStyle.Quart,
-        dir   or Enum.EasingDirection.Out
-    )
-    local tw = TweenService:Create(obj, ti, props)
-    tw:Play()
-    return tw
+for i, info in ipairs(TABS) do
+    local btn = Instance.new("TextButton")
+    btn.Name = info.name
+    btn.Size = UDim2.new(0, 80, 0, 40)
+    btn.BackgroundColor3 = CFG.Colors.Card
+    btn.BackgroundTransparency = 0.3
+    btn.Text = info.icon .. " " .. info.name
+    btn.TextColor3 = CFG.Colors.TextDim
+    btn.TextSize = 13
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.LayoutOrder = i
+    btn.Parent = tabScroll
+    Corner(btn, UDim.new(0, 12))
+    TabBtns[info.name] = btn
+    btn.MouseButton1Click:Connect(function()
+        SetTab(info.name)
+    end)
 end
 
-local function Corner(p, r)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, r or 12)
-    c.Parent = p
-    return c
-end
-
-local function Stroke(p, col, thick)
-    local s = Instance.new("UIStroke")
-    s.Color              = col   or CFG.C.Border
-    s.Thickness          = thick or 1
-    s.ApplyStrokeMode    = Enum.ApplyStrokeMode.Border
-    s.Parent = p
+-- ============================================================
+--  UI HELPERS FOR PANELS
+-- ============================================================
+local function MakePanel(name)
+    local s = ScrollFrame(PanelContainer, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0))
+    s.Name = name
+    s.Visible = false
+    Padding(s, 10, 10, 10, 10)
+    ListLayout(s, Enum.FillDirection.Vertical, 8)
     return s
 end
 
-local function Pad(p, t, b, l, r)
-    local pad = Instance.new("UIPadding")
-    pad.PaddingTop    = UDim.new(0, t or 8)
-    pad.PaddingBottom = UDim.new(0, b or 8)
-    pad.PaddingLeft   = UDim.new(0, l or 8)
-    pad.PaddingRight  = UDim.new(0, r or 8)
-    pad.Parent = p
-    return pad
-end
-
-local function VList(p, gap, ha)
-    local l = Instance.new("UIListLayout")
-    l.FillDirection      = Enum.FillDirection.Vertical
-    l.HorizontalAlignment = ha or Enum.HorizontalAlignment.Left
-    l.VerticalAlignment  = Enum.VerticalAlignment.Top
-    l.Padding            = UDim.new(0, gap or 0)
-    l.SortOrder          = Enum.SortOrder.LayoutOrder
-    l.Parent = p
-    return l
-end
-
-local function HList(p, gap, va)
-    local l = Instance.new("UIListLayout")
-    l.FillDirection      = Enum.FillDirection.Horizontal
-    l.HorizontalAlignment = Enum.HorizontalAlignment.Left
-    l.VerticalAlignment  = va or Enum.VerticalAlignment.Center
-    l.Padding            = UDim.new(0, gap or 0)
-    l.SortOrder          = Enum.SortOrder.LayoutOrder
-    l.Parent = p
-    return l
-end
-
-local function Gradient(p, c0, c1, rot)
-    local g = Instance.new("UIGradient")
-    g.Color    = ColorSequence.new(c0, c1)
-    g.Rotation = rot or 90
-    g.Parent   = p
-    return g
-end
-
--- Constructores base
-local function Frame(parent, size, pos, bg, transp, z, name)
-    local f = Instance.new("Frame")
-    f.Size                  = size   or UDim2.new(1,0,1,0)
-    f.Position              = pos    or UDim2.new(0,0,0,0)
-    f.BackgroundColor3      = bg     or CFG.C.Card
-    f.BackgroundTransparency= transp or 0
-    f.ZIndex                = z      or 2
-    f.BorderSizePixel       = 0
-    if name then f.Name = name end
-    f.Parent = parent
+local function SectionLabel(parent, text, color)
+    local f = Frame(parent, UDim2.new(1,0,0,28), nil, CFG.Colors.Panel, 0)
+    Corner(f, UDim.new(0,8))
+    local line = Frame(f, UDim2.new(0,3,0.7,0), UDim2.new(0,0,0.15,0), color or CFG.Colors.Accent, 0)
+    Corner(line, UDim.new(1,0))
+    local lbl = Label(f, text, 13, color or CFG.Colors.Accent, Enum.Font.GothamBold)
+    lbl.Size = UDim2.new(1,-16,1,0)
+    lbl.Position = UDim2.new(0,10,0,0)
+    lbl.TextYAlignment = Enum.TextYAlignment.Center
     return f
 end
 
-local function Label(parent, size, pos, text, col, ts, font, xa, z)
-    local l = Instance.new("TextLabel")
-    l.Size                  = size  or UDim2.new(1,0,0,20)
-    l.Position              = pos   or UDim2.new(0,0,0,0)
-    l.BackgroundTransparency= 1
-    l.Text                  = text  or ""
-    l.TextColor3            = col   or CFG.C.Text
-    l.TextSize              = ts    or 13
-    l.Font                  = font  or CFG.F.Regular
-    l.TextXAlignment        = xa    or Enum.TextXAlignment.Left
-    l.ZIndex                = z     or 2
-    l.TextWrapped           = true
-    l.BorderSizePixel       = 0
-    l.Parent = parent
-    return l
-end
+local function MakeToggle(parent, text, defaultOn, onToggle, color)
+    color = color or CFG.Colors.Accent
+    local f = Frame(parent, UDim2.new(1,0,0,CFG.BtnHeight), nil, CFG.Colors.Card, 0)
+    Corner(f)
+    Stroke(f, CFG.Colors.Border, 1)
 
-local function Button(parent, size, pos, bg, text, tc, ts, font, z)
-    local b = Instance.new("TextButton")
-    b.Size                  = size  or UDim2.new(1,0,0,40)
-    b.Position              = pos   or UDim2.new(0,0,0,0)
-    b.BackgroundColor3      = bg    or CFG.C.Accent
-    b.Text                  = text  or ""
-    b.TextColor3            = tc    or CFG.C.White
-    b.TextSize              = ts    or 13
-    b.Font                  = font  or CFG.F.Bold
-    b.ZIndex                = z     or 2
-    b.AutoButtonColor       = false
-    b.BorderSizePixel       = 0
-    b.Parent = parent
-    return b
-end
+    local enabled = defaultOn or false
 
-local function Scroll(parent, size, pos, z)
-    local s = Instance.new("ScrollingFrame")
-    s.Size                  = size or UDim2.new(1,0,1,0)
-    s.Position              = pos  or UDim2.new(0,0,0,0)
-    s.BackgroundTransparency= 1
-    s.ScrollBarThickness    = 2
-    s.ScrollBarImageColor3  = CFG.C.Accent
-    s.CanvasSize            = UDim2.new(0,0,0,0)
-    s.AutomaticCanvasSize   = Enum.AutomaticSize.Y
-    s.ZIndex                = z or 2
-    s.BorderSizePixel       = 0
-    s.Parent = parent
-    return s
-end
+    local lbl = Label(f, text, 14, CFG.Colors.Text, Enum.Font.GothamSemibold)
+    lbl.Size = UDim2.new(1,-70,1,0)
+    lbl.Position = UDim2.new(0,14,0,0)
+    lbl.TextYAlignment = Enum.TextYAlignment.Center
 
-local function TextBox(parent, size, pos, placeholder, z)
-    local tb = Instance.new("TextBox")
-    tb.Size                   = size or UDim2.new(1,0,0,36)
-    tb.Position               = pos  or UDim2.new(0,0,0,0)
-    tb.BackgroundColor3       = CFG.C.Card
-    tb.BackgroundTransparency = 0.1
-    tb.Text                   = ""
-    tb.PlaceholderText        = placeholder or ""
-    tb.TextColor3             = CFG.C.Text
-    tb.PlaceholderColor3      = CFG.C.TextDim
-    tb.TextSize               = 11
-    tb.Font                   = CFG.F.Regular
-    tb.ClearTextOnFocus       = false
-    tb.ZIndex                 = z or 2
-    tb.BorderSizePixel        = 0
-    tb.Parent = parent
-    return tb
-end
+    -- Toggle pill
+    local pill = Frame(f, UDim2.new(0,52,0,28), UDim2.new(1,-64,0.5,-14), CFG.Colors.ToggleOff, 0)
+    Corner(pill, UDim.new(1,0))
+    local knob = Frame(pill, UDim2.new(0,22,0,22), UDim2.new(0,3,0.5,-11), Color3.new(1,1,1), 0)
+    Corner(knob, UDim.new(1,0))
 
--- ══════════════════════════════════════════════════════════════════
--- [6] MOTOR FÍSICO  ──  Fly · Noclip · Speed · Jump · Heal
--- ══════════════════════════════════════════════════════════════════
-
-local function SetFly(on)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    S.Fly.Active = on
-
-    if on then
-        if S.Fly.Conn then return end
-
-        local bv = Instance.new("BodyVelocity")
-        bv.Name      = "_KFlyV"
-        bv.Velocity  = Vector3.zero
-        bv.MaxForce  = Vector3.new(9e9, 9e9, 9e9)
-        bv.Parent    = hrp
-
-        local bg = Instance.new("BodyGyro")
-        bg.Name      = "_KFlyG"
-        bg.P         = 90000
-        bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-        bg.CFrame    = hrp.CFrame
-        bg.Parent    = hrp
-
-        S.Fly.Conn = RunService.RenderStepped:Connect(function()
-            local cam = Camera.CFrame
-            local mv  = Vector3.zero
-            local UIS = UserInputService
-
-            if UIS:IsKeyDown(Enum.KeyCode.W) then mv += cam.LookVector  end
-            if UIS:IsKeyDown(Enum.KeyCode.S) then mv -= cam.LookVector  end
-            if UIS:IsKeyDown(Enum.KeyCode.A) then mv -= cam.RightVector end
-            if UIS:IsKeyDown(Enum.KeyCode.D) then mv += cam.RightVector end
-
-            local vy = 0
-            if UIS:IsKeyDown(Enum.KeyCode.Space)       then vy =  1 end
-            if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then vy = -1 end
-
-            local dir = mv * Vector3.new(1,0,1)
-            if dir.Magnitude > 0 then dir = dir.Unit end
-
-            bv.Velocity = dir * 55 + Vector3.new(0, vy * 55, 0)
-            bg.CFrame   = cam
-        end)
-    else
-        if S.Fly.Conn then S.Fly.Conn:Disconnect(); S.Fly.Conn = nil end
-        for _, n in ipairs({"_KFlyV", "_KFlyG"}) do
-            local p = hrp:FindFirstChild(n)
-            if p then p:Destroy() end
+    local function updateVisual()
+        if enabled then
+            Tween(pill, {BackgroundColor3=color}, 0.2)
+            Tween(knob, {Position=UDim2.new(0,27,0.5,-11)}, 0.2)
+        else
+            Tween(pill, {BackgroundColor3=CFG.Colors.ToggleOff}, 0.2)
+            Tween(knob, {Position=UDim2.new(0,3,0.5,-11)}, 0.2)
         end
     end
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,0,1,0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.Parent = f
+    btn.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        updateVisual()
+        if onToggle then onToggle(enabled) end
+    end)
+
+    updateVisual()
+    return f, function() return enabled end, function(v) enabled=v updateVisual() end
 end
 
-local function SetNoclip(on)
-    S.Noclip.Active = on
+local function MakeButton(parent, text, onClick, color, icon)
+    color = color or CFG.Colors.Accent
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,0,0,CFG.BtnHeight)
+    btn.BackgroundColor3 = color
+    btn.BackgroundTransparency = 0.2
+    btn.Text = (icon and icon.." " or "") .. text
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.TextSize = 14
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+    Corner(btn)
 
-    if on then
-        if S.Noclip.Conn then return end
-        S.Noclip.Conn = RunService.Stepped:Connect(function()
-            local char = LocalPlayer.Character
-            if not char then return end
-            for _, p in ipairs(char:GetDescendants()) do
-                if p:IsA("BasePart") and p.CanCollide then
-                    p.CanCollide = false
-                end
-            end
-        end)
-    else
-        if S.Noclip.Conn then S.Noclip.Conn:Disconnect(); S.Noclip.Conn = nil end
+    btn.MouseButton1Click:Connect(function()
+        Tween(btn, {BackgroundTransparency=0}, 0.1)
+        task.wait(0.1)
+        Tween(btn, {BackgroundTransparency=0.2}, 0.2)
+        if onClick then onClick() end
+    end)
+    btn.MouseEnter:Connect(function() Tween(btn, {BackgroundTransparency=0.05}, 0.15) end)
+    btn.MouseLeave:Connect(function() Tween(btn, {BackgroundTransparency=0.2}, 0.15) end)
+    return btn
+end
+
+local function MakeSlider(parent, text, minV, maxV, defaultV, onChanged, color)
+    color = color or CFG.Colors.Accent
+    local f = Frame(parent, UDim2.new(1,0,0,70), nil, CFG.Colors.Card, 0)
+    Corner(f)
+    Stroke(f, CFG.Colors.Border, 1)
+
+    local valLabel = Label(f, text .. ": " .. tostring(math.floor(defaultV)), 13, CFG.Colors.Text, Enum.Font.GothamBold)
+    valLabel.Size = UDim2.new(1,-14,0,22)
+    valLabel.Position = UDim2.new(0,14,0,8)
+
+    local track = Frame(f, UDim2.new(1,-28,0,6), UDim2.new(0,14,0,42), CFG.Colors.ToggleOff, 0)
+    Corner(track, UDim.new(1,0))
+
+    local fill = Frame(track, UDim2.new((defaultV-minV)/(maxV-minV),0,1,0), nil, color, 0)
+    Corner(fill, UDim.new(1,0))
+
+    local knob = Frame(track, UDim2.new(0,18,0,18), UDim2.new((defaultV-minV)/(maxV-minV),0,0.5,-9), color, 0)
+    Corner(knob, UDim.new(1,0))
+    do local s=Instance.new("UIStroke") s.Color=Color3.new(1,1,1) s.Thickness=2 s.Parent=knob end
+
+    local value = defaultV
+    local sliding = false
+
+    local function updateSlider(inputPos)
+        local abs = track.AbsolutePosition
+        local sz  = track.AbsoluteSize
+        local ratio = math.clamp((inputPos.X - abs.X) / sz.X, 0, 1)
+        value = math.floor(minV + (maxV - minV) * ratio)
+        fill.Size = UDim2.new(ratio, 0, 1, 0)
+        knob.Position = UDim2.new(ratio, -9, 0.5, -9)
+        valLabel.Text = text .. ": " .. tostring(value)
+        if onChanged then onChanged(value) end
+    end
+
+    track.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            sliding = true
+            updateSlider(inp.Position)
+        end
+    end)
+    track.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            sliding = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if sliding and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            updateSlider(inp.Position)
+        end
+    end)
+
+    return f
+end
+
+local function MakePlayerPicker(parent, onPick)
+    local f = Frame(parent, UDim2.new(1,0,0,CFG.BtnHeight), nil, CFG.Colors.Card, 0)
+    Corner(f)
+    Stroke(f, CFG.Colors.Border, 1)
+
+    local lbl = Label(f, "Target: Everyone", 13, CFG.Colors.TextDim, Enum.Font.Gotham)
+    lbl.Size = UDim2.new(1,-70,1,0)
+    lbl.Position = UDim2.new(0,14,0,0)
+    lbl.TextYAlignment = Enum.TextYAlignment.Center
+
+    local idx = 0
+    local function getTargets()
+        local list = {"Everyone"}
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then table.insert(list, p.Name) end
+        end
+        return list
+    end
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0,60,0,36)
+    btn.Position = UDim2.new(1,-68,0.5,-18)
+    btn.BackgroundColor3 = CFG.Colors.Accent
+    btn.BackgroundTransparency = 0.3
+    btn.Text = "Next"
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.Parent = f
+    Corner(btn, UDim.new(0,10))
+
+    btn.MouseButton1Click:Connect(function()
+        local targets = getTargets()
+        idx = (idx % #targets) + 1
+        lbl.Text = "Target: " .. targets[idx]
+        local target = targets[idx] == "Everyone" and nil or Players:FindFirstChild(targets[idx])
+        if onPick then onPick(target) end
+    end)
+    return f
+end
+
+local function MakeInput(parent, placeholder, onSubmit, color)
+    color = color or CFG.Colors.Accent
+    local f = Frame(parent, UDim2.new(1,0,0,CFG.BtnHeight), nil, CFG.Colors.Card, 0)
+    Corner(f)
+    Stroke(f, CFG.Colors.Border, 1)
+
+    local input = Instance.new("TextBox")
+    input.Size = UDim2.new(1,-80,0,40)
+    input.Position = UDim2.new(0,10,0.5,-20)
+    input.BackgroundColor3 = CFG.Colors.BG
+    input.BackgroundTransparency = 0.3
+    input.Text = ""
+    input.PlaceholderText = placeholder or "Enter..."
+    input.PlaceholderColor3 = CFG.Colors.TextDim
+    input.TextColor3 = CFG.Colors.Text
+    input.TextSize = 13
+    input.Font = Enum.Font.Gotham
+    input.BorderSizePixel = 0
+    input.ClearTextOnFocus = false
+    input.Parent = f
+    Corner(input, UDim.new(0,10))
+    Padding(input, 0,0,8,8)
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0,58,0,40)
+    btn.Position = UDim2.new(1,-68,0.5,-20)
+    btn.BackgroundColor3 = color
+    btn.BackgroundTransparency = 0.2
+    btn.Text = "Go"
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.TextSize = 13
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.Parent = f
+    Corner(btn, UDim.new(0,10))
+
+    btn.MouseButton1Click:Connect(function()
+        if onSubmit then onSubmit(input.Text) end
+    end)
+    input.FocusLost:Connect(function(enter)
+        if enter and onSubmit then onSubmit(input.Text) end
+    end)
+    return f, input
+end
+
+-- ============================================================
+--  MOVEMENT MODULES
+-- ============================================================
+local FlyConn = {}
+local function StartFly()
+    local char = GetChar() if not char then return end
+    local root = GetRoot() if not root then return end
+    local hum  = GetHum()  if not hum  then return end
+    hum.PlatformStand = true
+    local bv = Instance.new("BodyVelocity") bv.Velocity=Vector3.zero bv.MaxForce=Vector3.new(1e9,1e9,1e9) bv.Parent=root
+    local bg = Instance.new("BodyGyro")     bg.MaxTorque=Vector3.new(1e9,1e9,1e9) bg.CFrame=root.CFrame bg.P=1e5 bg.Parent=root
+    FlyConn.rs = RunService.Heartbeat:Connect(function()
+        if not State.FlyEnabled then bv:Destroy() bg:Destroy() if hum then hum.PlatformStand=false end FlyConn.rs:Disconnect() return end
+        local cam = Camera
+        local cf = cam.CFrame
+        local vel = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + cf.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - cf.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - cf.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + cf.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vel = vel - Vector3.new(0,1,0) end
+        bv.Velocity = vel * State.FlySpeed
+        if vel.Magnitude > 0 then bg.CFrame = CFrame.lookAt(root.Position, root.Position + vel) end
+    end)
+end
+local function StopFly()
+    if FlyConn.rs then FlyConn.rs:Disconnect() end
+    local root = GetRoot()
+    if root then
+        local bv = root:FindFirstChildOfClass("BodyVelocity")
+        local bg = root:FindFirstChildOfClass("BodyGyro")
+        if bv then bv:Destroy() end
+        if bg then bg:Destroy() end
+    end
+    local hum = GetHum()
+    if hum then hum.PlatformStand = false end
+end
+
+local NoclipConn
+local function StartNoclip()
+    NoclipConn = RunService.Stepped:Connect(function()
+        if not State.NoclipEnabled then NoclipConn:Disconnect() return end
         local char = LocalPlayer.Character
         if char then
-            for _, n in ipairs({"HumanoidRootPart","UpperTorso","Torso","Head"}) do
-                local p = char:FindFirstChild(n)
-                if p and p:IsA("BasePart") then p.CanCollide = true end
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanCollide = false end
             end
         end
-    end
-end
-
-local function ParseAICommands(text)
-    if type(text) ~= "string" then return end
-    local char = LocalPlayer.Character
-    local hum  = char and char:FindFirstChildOfClass("Humanoid")
-
-    if text:match("%[FLY:on%]")    then SetFly(true)    end
-    if text:match("%[FLY:off%]")   then SetFly(false)   end
-    if text:match("%[NOCLIP:on%]") then SetNoclip(true)  end
-    if text:match("%[NOCLIP:off%]")then SetNoclip(false) end
-
-    if hum then
-        local spd = text:match("%[SPEED:(%d+)%]")
-        if spd then hum.WalkSpeed = tonumber(spd) end
-
-        local jmp = text:match("%[JUMP:(%d+)%]")
-        if jmp then
-            hum.UseJumpPower = true
-            hum.JumpPower    = tonumber(jmp)
-        end
-
-        if text:match("%[HEAL%]") then hum.Health = hum.MaxHealth end
-    end
-end
-
--- ══════════════════════════════════════════════════════════════════
--- [7] PROMPTS DEL SISTEMA
--- ══════════════════════════════════════════════════════════════════
-local CMD_BLOCK = [[
-
-══ CONTROL DIRECTO DEL JUEGO ══
-Tienes acceso al motor físico del juego. Cuando el usuario pida acciones sobre su personaje, incluye UNA de estas etiquetas exactas en tu respuesta:
-
-  [FLY:on]       → Activar vuelo
-  [FLY:off]      → Desactivar vuelo
-  [NOCLIP:on]    → Atravesar paredes
-  [NOCLIP:off]   → Restaurar colisiones
-  [SPEED:número] → Cambiar velocidad (ej: [SPEED:80])
-  [JUMP:número]  → Cambiar salto (ej: [JUMP:180])
-  [HEAL]         → Curar al jugador al máximo
-
-Confirma la acción con una respuesta breve y natural.
-]]
-
-local PROMPTS = {
-    Programador = [[
-Eres Kaelen, experto definitivo en Lua/Luau para Roblox.
-MISIÓN: Generar scripts limpios, modulares y robustos con calidad de producción.
-- Usa task.spawn/task.delay, evita wait() heredado.
-- Comenta el código de forma clara y concisa.
-- Detecta y corrige vulnerabilidades proactivamente.
-- Encapsula siempre el código en bloques ```lua.
-]] .. CMD_BLOCK,
-
-    Analista = [[
-Eres Kaelen, analista experto en arquitectura y seguridad de juegos Roblox.
-MISIÓN: Analizar profundamente mecánicas, detectar exploits y evaluar rendimiento.
-- Estructura: Arquitectura → Vulnerabilidades → Rendimiento → Recomendaciones.
-- Prioriza hallazgos por severidad: 🔴 Crítica · 🟠 Alta · 🟡 Media · 🟢 Baja.
-- Sé técnico, directo y proporciona soluciones concretas.
-]] .. CMD_BLOCK,
-
-    Creativo = [[
-Eres Kaelen, Game Designer especializado en experiencias únicas para Roblox.
-MISIÓN: Concebir mecánicas originales, sistemas de progresión y retención.
-- Detalla Core Game Loops y ganchos de jugabilidad.
-- Propón sistemas de economía y monetización ética.
-- Sé descriptivo, entusiasta y visionario.
-]] .. CMD_BLOCK,
-
-    Asistente = [[
-Eres Kaelen, asistente general inteligente integrado en Roblox.
-Responde preguntas, explica conceptos, ayuda con tareas generales.
-Sé claro, útil y conciso. Usa ejemplos cuando sea útil.
-]] .. CMD_BLOCK,
-}
-
--- ══════════════════════════════════════════════════════════════════
--- [8] RED  ──  HTTP / OpenRouter
--- ══════════════════════════════════════════════════════════════════
-
-local function GetHTTP()
-    local candidates = {
-        function() return request     end,
-        function() return http_request end,
-        function() return syn and syn.request end,
-        function() return fluxus and fluxus.request end,
-        function() return KRNL_request end,
-        function() return getgenv and getgenv().request end,
-        function() return http and http.request end,
-    }
-    for _, fn in ipairs(candidates) do
-        local ok, f = pcall(fn)
-        if ok and type(f) == "function" then return f end
-    end
-    return nil
-end
-
-local function CallAPI(model, messages, sysPrompt)
-    if not S.Verified or S.APIKey == "" then
-        return nil, "API Key no verificada."
-    end
-
-    local http = GetHTTP()
-    if not http then
-        return nil, "Tu ejecutor no soporta peticiones HTTP (request)."
-    end
-
-    -- Construir payload
-    local payload = { role = "system", content = sysPrompt }
-    local msgs = {}
-    if sysPrompt and #sysPrompt > 0 then
-        table.insert(msgs, payload)
-    end
-    for _, m in ipairs(messages) do
-        if m.role and m.content then
-            table.insert(msgs, { role = m.role, content = m.content })
-        end
-    end
-
-    local ok, body = pcall(HttpService.JSONEncode, HttpService, {
-        model       = model,
-        max_tokens  = CFG.MaxTokens,
-        temperature = CFG.Temperature,
-        messages    = msgs,
-    })
-    if not ok then return nil, "Error al codificar JSON." end
-
-    local ok2, res = pcall(http, {
-        Url     = CFG.ApiURL,
-        Method  = "POST",
-        Headers = {
-            ["Content-Type"]  = "application/json",
-            ["Authorization"] = "Bearer " .. S.APIKey,
-        },
-        Body = body,
-    })
-
-    if not ok2 then return nil, "Petición HTTP bloqueada: " .. tostring(res) end
-    if type(res) ~= "table" then return nil, "Respuesta inválida del servidor." end
-
-    if res.StatusCode ~= 200 then
-        local msg = "HTTP " .. tostring(res.StatusCode)
-        pcall(function()
-            local d = HttpService:JSONDecode(res.Body)
-            if d and d.error then msg = msg .. " · " .. tostring(d.error.message) end
-        end)
-        return nil, msg
-    end
-
-    local ok3, data = pcall(HttpService.JSONDecode, HttpService, res.Body)
-    if not ok3 then return nil, "JSON de respuesta corrupto." end
-
-    if data and data.choices and data.choices[1] then
-        local content = data.choices[1].message and data.choices[1].message.content
-        if content then return content, nil end
-    end
-
-    return nil, "La API no devolvió texto en la respuesta."
-end
-
-local function VerifyKey(key)
-    local bk, bv = S.APIKey, S.Verified
-    S.APIKey, S.Verified = key, true
-
-    local _, err = CallAPI(CFG.M.Fast,
-        {{ role = "user", content = "Responde solo: OK" }},
-        "Responde exactamente con: OK"
-    )
-
-    if err then
-        S.APIKey, S.Verified = bk, bv
-        return false, err
-    end
-    return true, nil
-end
-
--- ══════════════════════════════════════════════════════════════════
--- [9] ORQUESTADOR  ──  Routing inteligente de modelos
--- ══════════════════════════════════════════════════════════════════
-local KW_CODE   = {"script","lua","código","codigo","función","funcion","optimiza","debug","module","require","pcall"}
-local KW_ACTION = {"vuela","volar","fly","noclip","paredes","velocidad","speed","salto","jump","cura","heal","atraviesa","activa","pon mi","hazme","hazlo"}
-
-local function HasKeyword(text, list)
-    local t = text:lower()
-    for _, w in ipairs(list) do
-        if t:find(w, 1, true) then return true end
-    end
-    return false
-end
-
-local function Orchestrate(userText, history)
-    local sysPmt = (#S.CustomSys > 0) and S.CustomSys or (PROMPTS[S.Mode] or PROMPTS.Analista)
-
-    -- Ruta ACCIÓN → Gemma (rápido)
-    if HasKeyword(userText, KW_ACTION) then
-        local r, e = CallAPI(CFG.M.Fast, history, sysPmt)
-        if e then return nil, "Motor rápido: " .. e end
-        return "⚡ **Acción · Gemma-3**\n\n" .. r, nil
-    end
-
-    -- Ruta CÓDIGO → Qwen3 (generación) + Llama (revisión)
-    if HasKeyword(userText, KW_CODE) or S.Mode == "Programador" then
-        local r1, e1 = CallAPI(CFG.M.Coder, history,
-            sysPmt .. "\n\n[FASE GENERACIÓN]: Produce únicamente el código Lua solicitado.")
-        if e1 then return nil, "Generador de código: " .. e1 end
-
-        local reviewMsgs = {{
-            role    = "user",
-            content = "El usuario pidió:\n" .. userText ..
-                      "\n\nCódigo generado por Qwen3:\n```lua\n" .. r1 .. "\n```\n\n" ..
-                      "Revisa, corrige errores si los hay y presenta la versión final explicada."
-        }}
-        local r2, e2 = CallAPI(CFG.M.Reason, reviewMsgs,
-            "Eres el módulo supervisor. Revisa y mejora el código Lua presentado.")
-        if e2 then
-            return "⚡ **Qwen3-Coder** *(sin revisión)*\n\n" .. r1, nil
-        end
-        return "🔀 **Dual Engine · Qwen3 + Llama 3.3**\n\n" .. r2, nil
-    end
-
-    -- Ruta GENERAL → Llama 3.3
-    local r, e = CallAPI(CFG.M.Reason, history, sysPmt)
-    if e then return nil, "Motor de razonamiento: " .. e end
-    return "🧠 **Llama 3.3 70B**\n\n" .. r, nil
-end
-
--- ══════════════════════════════════════════════════════════════════
--- [10] CONTEXTO DEL JUEGO
--- ══════════════════════════════════════════════════════════════════
-local function GameContext()
-    local t = {}
-    pcall(function() t.game    = game.Name           end)
-    pcall(function() t.placeId = tostring(game.PlaceId) end)
-    pcall(function() t.players = tostring(#Players:GetPlayers()) end)
-    pcall(function() t.me      = LocalPlayer.Name    end)
-
-    local ok, j = pcall(HttpService.JSONEncode, HttpService, t)
-    return ok and j or "{}"
-end
-
--- ══════════════════════════════════════════════════════════════════
--- [11] CONSTRUCCIÓN DE LA INTERFAZ
--- ══════════════════════════════════════════════════════════════════
-print("[Kaelen v3] Construyendo interfaz...")
-
--- ScreenGui raíz
-local GUI = Instance.new("ScreenGui")
-GUI.Name             = "KaelenUI_v3"
-GUI.ResetOnSpawn     = false
-GUI.ZIndexBehavior   = Enum.ZIndexBehavior.Sibling
-GUI.DisplayOrder     = 9999
-GUI.IgnoreGuiInset   = true
-
--- Inyección segura
-if not pcall(function() GUI.Parent = CoreGui end) then
-    GUI.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
-
--- ─────────────────────────────────────────────────────────────────
--- BOTÓN FLOTANTE
--- ─────────────────────────────────────────────────────────────────
-local FAB = Instance.new("ImageButton")
-FAB.Name              = "FAB"
-FAB.Size              = UDim2.new(0, 52, 0, 52)
-FAB.Position          = UDim2.new(1, -66, 0.62, -26)
-FAB.BackgroundColor3  = CFG.C.Accent
-FAB.Image             = ""
-FAB.AutoButtonColor   = false
-FAB.ZIndex            = 600
-FAB.BorderSizePixel   = 0
-FAB.Parent            = GUI
-
-Corner(FAB, 26)
-Stroke(FAB, CFG.C.AccentGlow, 1.5)
-Gradient(FAB, Color3.fromRGB(128, 78, 255), Color3.fromRGB(76, 38, 196), 135)
-
--- Halo del botón
-local Halo = Frame(FAB, UDim2.new(0,86,0,86), UDim2.new(0.5,-43,0.5,-43),
-    CFG.C.Accent, 0.75, 599, "Halo")
-Corner(Halo, 43)
-
--- Letra K
-local FabK = Label(FAB, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0),
-    "K", CFG.C.White, 22, CFG.F.Bold, Enum.TextXAlignment.Center, 601)
-
--- Animación del halo
-task.spawn(function()
-    while FAB and FAB.Parent do
-        Tween(Halo, {BackgroundTransparency=0.55, Size=UDim2.new(0,96,0,96), Position=UDim2.new(0.5,-48,0.5,-48)}, 1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-        task.wait(1.6)
-        Tween(Halo, {BackgroundTransparency=0.88, Size=UDim2.new(0,72,0,72), Position=UDim2.new(0.5,-36,0.5,-36)}, 1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-        task.wait(1.6)
-    end
-end)
-
--- ─────────────────────────────────────────────────────────────────
--- VENTANA PRINCIPAL
--- ─────────────────────────────────────────────────────────────────
-local WIN = Frame(GUI,
-    UDim2.new(0, CFG.W.W, 0, CFG.W.H),
-    UDim2.new(0.5, -CFG.W.W/2, 0.5, -CFG.W.H/2),
-    CFG.C.BG, 0, 400, "MainWindow")
-WIN.ClipsDescendants = true
-WIN.Visible          = false
-
-Corner(WIN, 20)
-Stroke(WIN, Color3.fromRGB(52, 42, 110), 1)
-
--- Degradado de fondo sutil
-do
-    local bg = Frame(WIN, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), CFG.C.BG, 0, 399, "BG")
-    Gradient(bg, Color3.fromRGB(9,8,22), Color3.fromRGB(5,5,12), 145)
-end
-
--- Barra superior de color
-local TopBar = Frame(WIN, UDim2.new(1,0,0,2), UDim2.new(0,0,0,0),
-    CFG.C.Accent, 0, 401, "TopBar")
-Gradient(TopBar, Color3.fromRGB(160, 100, 255), Color3.fromRGB(70, 30, 190), 0)
-
--- Partículas de fondo
-for i = 1, 10 do
-    local sz = math.random(2, 4)
-    local dot = Frame(WIN,
-        UDim2.new(0,sz,0,sz),
-        UDim2.new(math.random(3,97)/100, 0, math.random(3,97)/100, 0),
-        CFG.C.Accent, 0.7, 398, "Dot")
-    Corner(dot, sz)
-    task.spawn(function()
-        task.wait(math.random() * 4)
-        while dot and dot.Parent do
-            local d1 = math.random() * 2.5 + 0.8
-            Tween(dot, {BackgroundTransparency=0.2}, d1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-            task.wait(d1)
-            local d2 = math.random() * 2.5 + 0.8
-            Tween(dot, {BackgroundTransparency=0.85}, d2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-            task.wait(d2)
-        end
     end)
 end
 
--- ─────────────────────────────────────────────────────────────────
--- HEADER
--- ─────────────────────────────────────────────────────────────────
-local Header = Frame(WIN, UDim2.new(1,0,0,52), UDim2.new(0,0,0,0),
-    CFG.C.Surface, 0.15, 401, "Header")
-Corner(Header, 20)
-Gradient(Header, Color3.fromRGB(22,16,52), Color3.fromRGB(10,8,24), 110)
-
--- Logo círculo
-local LogoCirc = Frame(Header, UDim2.new(0,34,0,34), UDim2.new(0,12,0.5,-17),
-    CFG.C.Accent, 0, 402, "Logo")
-Corner(LogoCirc, 17)
-Gradient(LogoCirc, Color3.fromRGB(150,90,255), Color3.fromRGB(80,36,205), 135)
-Label(LogoCirc, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), "K",
-    CFG.C.White, 17, CFG.F.Bold, Enum.TextXAlignment.Center, 403)
-
--- Títulos
-local HTitle = Label(Header, UDim2.new(0,220,0,20), UDim2.new(0,54,0,8),
-    "Kaelen AI  ·  Phantom", CFG.C.White, 14, CFG.F.Bold, Enum.TextXAlignment.Left, 402)
-local HSubt  = Label(Header, UDim2.new(0,260,0,14), UDim2.new(0,54,0,28),
-    "v3.0  ·  " .. S.Mode, CFG.C.TextSub, 9, CFG.F.Regular, Enum.TextXAlignment.Left, 402)
-
--- Indicador de estado
-local StatusDot = Frame(Header, UDim2.new(0,8,0,8), UDim2.new(1,-50,0.5,-4),
-    CFG.C.Danger, 0, 402, "StatusDot")
-Corner(StatusDot, 4)
-
--- Botón cerrar
-local BtnClose = Button(Header, UDim2.new(0,30,0,30), UDim2.new(1,-40,0.5,-15),
-    Color3.fromRGB(200,50,68), "✕", CFG.C.White, 13, CFG.F.Bold, 402)
-Corner(BtnClose, 15)
-
--- ─────────────────────────────────────────────────────────────────
--- BARRA DE TABS
--- ─────────────────────────────────────────────────────────────────
-local TabBar = Frame(WIN, UDim2.new(1,-20,0,34), UDim2.new(0,10,0,57),
-    CFG.C.Card, 0.1, 401, "TabBar")
-Corner(TabBar, 10)
-Stroke(TabBar, CFG.C.Border, 1)
-HList(TabBar, 4)
-Pad(TabBar, 3, 3, 4, 4)
-
-local TAB_NAMES   = {"Chat", "Modos", "Config"}
-local TabRefs     = {}
-
-local function HighlightTab(name)
-    for _, td in ipairs(TabRefs) do
-        local active = td.name == name
-        Tween(td.btn, {BackgroundColor3 = active and CFG.C.Accent or CFG.C.Card,
-            BackgroundTransparency = active and 0 or 0.55}, 0.2)
-        Tween(td.lbl, {TextColor3 = active and CFG.C.White or CFG.C.TextSub}, 0.2)
-    end
-end
-
--- ─────────────────────────────────────────────────────────────────
--- CONTENEDOR DE PANELES
--- ─────────────────────────────────────────────────────────────────
-local PanelHost = Frame(WIN, UDim2.new(1,-20,1,-100), UDim2.new(0,10,0,96),
-    CFG.C.Black, 1, 400, "PanelHost")
-
--- ══════════════════════════════════════════════════════════════════
--- PANEL: KEY SYSTEM
--- ══════════════════════════════════════════════════════════════════
-local PanelKey = Frame(PanelHost, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0),
-    CFG.C.Black, 1, 401, "PanelKey")
-VList(PanelKey, 10, Enum.HorizontalAlignment.Center)
-Pad(PanelKey, 16, 10, 4, 4)
-
--- Ícono candado
-local LockWrap = Frame(PanelKey, UDim2.new(0,56,0,56), UDim2.new(0,0,0,0),
-    CFG.C.AccentSoft, 0, 402, "LockWrap")
-LockWrap.LayoutOrder = 1
-Corner(LockWrap, 28)
-Stroke(LockWrap, CFG.C.Accent, 1.5)
-Label(LockWrap, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), "🔑",
-    CFG.C.White, 24, CFG.F.Regular, Enum.TextXAlignment.Center, 403)
-
--- Textos
-local KeyTitle = Label(PanelKey, UDim2.new(1,0,0,22), UDim2.new(0,0,0,0),
-    "Activar Kaelen Premium", CFG.C.White, 16, CFG.F.Bold,
-    Enum.TextXAlignment.Center, 402)
-KeyTitle.LayoutOrder = 2
-
-local KeySub = Label(PanelKey, UDim2.new(1,0,0,28), UDim2.new(0,0,0,0),
-    "Introduce tu API Key de OpenRouter para continuar.", CFG.C.TextSub, 10,
-    CFG.F.Regular, Enum.TextXAlignment.Center, 402)
-KeySub.LayoutOrder = 3
-
--- Input
-local KeyInput = TextBox(PanelKey, UDim2.new(1,-8,0,38), UDim2.new(0,0,0,0),
-    "sk-or-v1-...", 402)
-KeyInput.LayoutOrder    = 4
-KeyInput.Font           = CFG.F.Mono
-KeyInput.TextSize       = 10
-Corner(KeyInput, 10)
-Stroke(KeyInput, CFG.C.Border, 1)
-Pad(KeyInput, 0, 0, 12, 12)
-
--- Botón verificar
-local BtnVerify = Button(PanelKey, UDim2.new(1,-8,0,38), UDim2.new(0,0,0,0),
-    CFG.C.Accent, "Conectar y Activar", CFG.C.White, 12, CFG.F.Bold, 402)
-BtnVerify.LayoutOrder = 5
-Corner(BtnVerify, 10)
-Gradient(BtnVerify, Color3.fromRGB(138,85,255), Color3.fromRGB(82,38,200), 135)
-
--- Botón bypass (oculto por defecto)
-local BtnBypass = Button(PanelKey, UDim2.new(1,-8,0,26), UDim2.new(0,0,0,0),
-    CFG.C.Warning, "⚠ Guardar sin verificar (bypass de red)", CFG.C.Black, 9, CFG.F.Bold, 402)
-BtnBypass.LayoutOrder = 6
-BtnBypass.Visible     = false
-Corner(BtnBypass, 6)
-
--- Log de estado
-local KeyLog = Label(PanelKey, UDim2.new(1,0,0,44), UDim2.new(0,0,0,0),
-    "", CFG.C.TextSub, 10, CFG.F.Regular, Enum.TextXAlignment.Center, 402)
-KeyLog.LayoutOrder = 7
-
--- ══════════════════════════════════════════════════════════════════
--- PANEL: CHAT
--- ══════════════════════════════════════════════════════════════════
-local PanelChat = Frame(PanelHost, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0),
-    CFG.C.Black, 1, 401, "PanelChat")
-PanelChat.Visible = false
-
--- Área de mensajes con scroll
-local MsgScroll = Scroll(PanelChat, UDim2.new(1,0,1,-72), UDim2.new(0,0,0,0), 402)
-VList(MsgScroll, 8)
-Pad(MsgScroll, 6, 6, 4, 4)
-
--- Indicador de "pensando"
-local ThinkFr = Frame(MsgScroll, UDim2.new(0,160,0,30), UDim2.new(0,0,0,0),
-    CFG.C.AIBubble, 0.05, 403, "ThinkFr")
-ThinkFr.LayoutOrder = 99999
-ThinkFr.Visible     = false
-Corner(ThinkFr, 15)
-Stroke(ThinkFr, CFG.C.Border, 1)
-Pad(ThinkFr, 0, 0, 12, 12)
-local ThinkLbl = Label(ThinkFr, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0),
-    "Procesando...", CFG.C.TextSub, 10, CFG.F.Regular, Enum.TextXAlignment.Left, 404)
-
--- Barra de entrada
-local InputBar = Frame(PanelChat, UDim2.new(1,0,0,68), UDim2.new(0,0,1,-68),
-    CFG.C.Surface, 0.12, 402, "InputBar")
-Corner(InputBar, 14)
-Stroke(InputBar, CFG.C.Border, 1)
-
-local ChatInput = TextBox(InputBar, UDim2.new(1,-48,0,36), UDim2.new(0,6,0,6),
-    "Escribe un mensaje o comando...", 403)
-ChatInput.MultiLine = false
-Corner(ChatInput, 8)
-Pad(ChatInput, 0, 0, 10, 10)
-
-local BtnSend = Button(InputBar, UDim2.new(0,36,0,36), UDim2.new(1,-42,0,6),
-    CFG.C.Accent, "➤", CFG.C.White, 14, CFG.F.Bold, 403)
-Corner(BtnSend, 8)
-Gradient(BtnSend, Color3.fromRGB(140,88,255), Color3.fromRGB(80,36,200), 135)
-
--- Quick action bar
-local QBar = Frame(InputBar, UDim2.new(1,-8,0,22), UDim2.new(0,4,0,44),
-    CFG.C.Black, 1, 403, "QBar")
-HList(QBar, 5)
-
-local QUICK_CMDS = {
-    { icon = "🎮", label = "Analizar", id = "analyze" },
-    { icon = "🚀", label = "Volar",    id = "fly"     },
-    { icon = "👻", label = "Noclip",   id = "noclip"  },
-    { icon = "⚡", label = "Speed×2",  id = "speed2"  },
-    { icon = "🗑", label = "Limpiar",  id = "clear"   },
-}
-local QBtnRefs = {}
-for _, qd in ipairs(QUICK_CMDS) do
-    local qb = Button(QBar, UDim2.new(0,0,1,0), UDim2.new(0,0,0,0),
-        CFG.C.Card, qd.icon .. " " .. qd.label, CFG.C.TextSub, 9, CFG.F.Regular, 404)
-    qb.AutomaticSize          = Enum.AutomaticSize.X
-    qb.BackgroundTransparency = 0.3
-    Corner(qb, 5)
-    Pad(qb, 1, 1, 5, 5)
-    table.insert(QBtnRefs, { btn = qb, id = qd.id })
-end
-
--- ══════════════════════════════════════════════════════════════════
--- PANEL: MODOS
--- ══════════════════════════════════════════════════════════════════
-local PanelModes = Scroll(PanelHost, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), 401)
-PanelModes.Name    = "PanelModes"
-PanelModes.Visible = false
-VList(PanelModes, 6, Enum.HorizontalAlignment.Center)
-Pad(PanelModes, 8, 8, 0, 0)
-
-local ModesTitle = Label(PanelModes, UDim2.new(1,0,0,20), UDim2.new(0,0,0,0),
-    "Personalidad del Orquestador", CFG.C.White, 13, CFG.F.Bold,
-    Enum.TextXAlignment.Center, 402)
-ModesTitle.LayoutOrder = 0
-
-local MODES_DATA = {
-    { name = "Programador", icon = "💻", col = Color3.fromRGB(60, 190, 255),  desc = "Scripts Lua, optimización y debug." },
-    { name = "Analista",    icon = "🔍", col = Color3.fromRGB(100, 72, 255),   desc = "Arquitectura, seguridad y exploits." },
-    { name = "Creativo",    icon = "🎨", col = Color3.fromRGB(255, 130, 70),   desc = "Diseño de mecánicas y experiencias." },
-    { name = "Asistente",   icon = "🤖", col = Color3.fromRGB(50, 210, 140),   desc = "Ayuda general e información." },
-}
-
-local ModeCardRefs = {}
-for idx, md in ipairs(MODES_DATA) do
-    local active = md.name == S.Mode
-    local card   = Button(PanelModes, UDim2.new(1,0,0,54), UDim2.new(0,0,0,0),
-        CFG.C.Card, "", CFG.C.White, 13, CFG.F.Bold, 402)
-    card.BackgroundTransparency = active and 0.05 or 0.3
-    card.LayoutOrder = idx
-    Corner(card, 12)
-    local cstroke = Stroke(card, active and CFG.C.Accent or CFG.C.Border, active and 1.5 or 1)
-
-    -- Ícono
-    local ic = Frame(card, UDim2.new(0,38,0,38), UDim2.new(0,10,0.5,-19),
-        md.col, 0.12, 403, "IC")
-    Corner(ic, 19)
-    Label(ic, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), md.icon,
-        CFG.C.White, 18, CFG.F.Regular, Enum.TextXAlignment.Center, 404)
-
-    Label(card, UDim2.new(1,-66,0,16), UDim2.new(0,56,0,10),
-        md.name, CFG.C.White, 12, CFG.F.Bold, Enum.TextXAlignment.Left, 403)
-    Label(card, UDim2.new(1,-66,0,14), UDim2.new(0,56,0,28),
-        md.desc, CFG.C.TextSub, 9, CFG.F.Regular, Enum.TextXAlignment.Left, 403)
-
-    local badge = Frame(card, UDim2.new(0,8,0,8), UDim2.new(1,-18,0.5,-4),
-        md.col, active and 0 or 1, 403, "Badge")
-    Corner(badge, 4)
-
-    table.insert(ModeCardRefs, { card=card, stroke=cstroke, badge=badge, name=md.name, col=md.col })
-
-    card.MouseButton1Click:Connect(function()
-        S.Mode = md.name
-        HSubt.Text = "v3.0  ·  " .. S.Mode
-        for _, r in ipairs(ModeCardRefs) do
-            local on = r.name == md.name
-            Tween(r.card,  {BackgroundTransparency = on and 0.05 or 0.3}, 0.2)
-            Tween(r.badge, {BackgroundTransparency = on and 0    or 1},   0.2)
-            r.stroke.Color     = on and CFG.C.Accent or CFG.C.Border
-            r.stroke.Thickness = on and 1.5          or 1
-        end
-    end)
-end
-
--- ══════════════════════════════════════════════════════════════════
--- PANEL: CONFIG
--- ══════════════════════════════════════════════════════════════════
-local PanelCfg = Scroll(PanelHost, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), 401)
-PanelCfg.Name    = "PanelCfg"
-PanelCfg.Visible = false
-VList(PanelCfg, 8, Enum.HorizontalAlignment.Center)
-Pad(PanelCfg, 8, 8, 0, 0)
-
-local CfgTitle = Label(PanelCfg, UDim2.new(1,0,0,20), UDim2.new(0,0,0,0),
-    "Configuración del Sistema", CFG.C.White, 13, CFG.F.Bold,
-    Enum.TextXAlignment.Center, 402)
-CfgTitle.LayoutOrder = 0
-
--- Tarjeta de info de motores
-local EngCard = Frame(PanelCfg, UDim2.new(1,0,0,80), UDim2.new(0,0,0,0),
-    CFG.C.Card, 0.1, 402, "EngCard")
-EngCard.LayoutOrder = 1
-Corner(EngCard, 12)
-Stroke(EngCard, CFG.C.Border, 1)
-Pad(EngCard, 8, 8, 12, 12)
-Label(EngCard, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0),
-    "⚡ Motor Rápido  →  Gemma-3 27B (acciones)\n" ..
-    "🔵 Motor Código  →  Qwen3-Coder (scripts)\n" ..
-    "🟣 Motor Razón   →  Llama 3.3 70B (análisis)\n" ..
-    "🔀 Modo Dual     →  Qwen3 + Llama (revisión)",
-    CFG.C.TextSub, 9, CFG.F.Mono, Enum.TextXAlignment.Left, 403)
-
--- Prompt personalizado
-local CfgSysLabel = Label(PanelCfg, UDim2.new(1,0,0,14), UDim2.new(0,0,0,0),
-    "Prompt del sistema personalizado:", CFG.C.TextSub, 9, CFG.F.Bold,
-    Enum.TextXAlignment.Left, 402)
-CfgSysLabel.LayoutOrder = 2
-
-local CustomSysBox = Instance.new("TextBox")
-CustomSysBox.Name                   = "CustomSys"
-CustomSysBox.Size                   = UDim2.new(1,0,0,60)
-CustomSysBox.BackgroundColor3       = CFG.C.Card
-CustomSysBox.BackgroundTransparency = 0.1
-CustomSysBox.Text                   = ""
-CustomSysBox.PlaceholderText        = "Deja vacío para usar el prompt del modo activo..."
-CustomSysBox.TextColor3             = CFG.C.Text
-CustomSysBox.PlaceholderColor3      = CFG.C.TextDim
-CustomSysBox.TextSize               = 10
-CustomSysBox.Font                   = CFG.F.Regular
-CustomSysBox.MultiLine              = true
-CustomSysBox.ClearTextOnFocus       = false
-CustomSysBox.ZIndex                 = 402
-CustomSysBox.LayoutOrder            = 3
-CustomSysBox.BorderSizePixel        = 0
-CustomSysBox.TextXAlignment         = Enum.TextXAlignment.Left
-CustomSysBox.TextYAlignment         = Enum.TextYAlignment.Top
-CustomSysBox.Parent                 = PanelCfg
-Corner(CustomSysBox, 10)
-Stroke(CustomSysBox, CFG.C.Border, 1)
-Pad(CustomSysBox, 6, 6, 10, 10)
-
-CustomSysBox:GetPropertyChangedSignal("Text"):Connect(function()
-    S.CustomSys = CustomSysBox.Text
-end)
-
--- Estado físico
-local PhysCard = Frame(PanelCfg, UDim2.new(1,0,0,50), UDim2.new(0,0,0,0),
-    CFG.C.Card, 0.1, 402, "PhysCard")
-PhysCard.LayoutOrder = 4
-Corner(PhysCard, 12)
-Stroke(PhysCard, CFG.C.Border, 1)
-Pad(PhysCard, 8, 8, 12, 12)
-local PhysLbl = Label(PhysCard, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0),
-    "✈ Vuelo: OFF     👻 Noclip: OFF", CFG.C.TextSub, 10, CFG.F.Mono,
-    Enum.TextXAlignment.Left, 403)
-
-local function RefreshPhysLabel()
-    PhysLbl.Text = (S.Fly.Active and "✈ Vuelo: 🟢 ON" or "✈ Vuelo: ⭕ OFF") ..
-                   "     " ..
-                   (S.Noclip.Active and "👻 Noclip: 🟢 ON" or "👻 Noclip: ⭕ OFF")
-end
-RefreshPhysLabel()
-
--- Botones de config
-local BtnClear = Button(PanelCfg, UDim2.new(1,0,0,34), UDim2.new(0,0,0,0),
-    CFG.C.Card, "🗑  Borrar historial de chat", CFG.C.TextSub, 11, CFG.F.Bold, 402)
-BtnClear.BackgroundTransparency = 0.2
-BtnClear.LayoutOrder = 5
-Corner(BtnClear, 10)
-Stroke(BtnClear, CFG.C.Border, 1)
-
-local BtnReset = Button(PanelCfg, UDim2.new(1,0,0,34), UDim2.new(0,0,0,0),
-    CFG.C.Danger, "⚠  Resetear API Key", CFG.C.White, 11, CFG.F.Bold, 402)
-BtnReset.BackgroundTransparency = 0.25
-BtnReset.LayoutOrder = 6
-Corner(BtnReset, 10)
-
--- ─────────────────────────────────────────────────────────────────
--- CONSTRUCCIÓN FINAL DE TABS (requiere referencias de paneles)
--- ─────────────────────────────────────────────────────────────────
-local PANELS = {
-    Key    = PanelKey,
-    Chat   = PanelChat,
-    Modos  = PanelModes,
-    Config = PanelCfg,
-}
-local ALL_PANELS = { PanelKey, PanelChat, PanelModes, PanelCfg }
-
-local function ShowPanel(name)
-    for _, p in ipairs(ALL_PANELS) do p.Visible = false end
-    local t = PANELS[name]
-    if t then t.Visible = true end
-    S.ActivePanel = name
-end
-
--- Crear tabs ahora que ShowPanel existe
-local SwitchTab  -- forward declaration, se usa en click
-SwitchTab = function(name)
-    if not S.Verified and name ~= "Key" then return end
-    HighlightTab(name)
-    ShowPanel(name)
-end
-
-for _, tname in ipairs(TAB_NAMES) do
-    local tb = Button(TabBar, UDim2.new(0,96,1,0), UDim2.new(0,0,0,0),
-        CFG.C.Card, "", CFG.C.White, 11, CFG.F.Bold, 402)
-    tb.BackgroundTransparency = 0.55
-    Corner(tb, 8)
-    local tl = Label(tb, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), tname,
-        CFG.C.TextSub, 11, CFG.F.Bold, Enum.TextXAlignment.Center, 403)
-    table.insert(TabRefs, { name=tname, btn=tb, lbl=tl })
-    tb.MouseButton1Click:Connect(function() SwitchTab(tname) end)
-end
-
--- ══════════════════════════════════════════════════════════════════
--- [12] LÓGICA DE CHAT
--- ══════════════════════════════════════════════════════════════════
-
-local function ScrollBottom()
-    task.delay(0.05, function()
-        if MsgScroll and MsgScroll.Parent then
-            MsgScroll.CanvasPosition = Vector2.new(0, MsgScroll.AbsoluteCanvasSize.Y + 9999)
-        end
-    end)
-end
-
-local function PushMessage(role, text)
-    table.insert(S.Messages, { role = role, content = text })
-    if #S.Messages > CFG.MaxHistory then table.remove(S.Messages, 1) end
-    S.MsgCount += 1
-
-    local isUser = role == "user"
-    local row    = Frame(MsgScroll, UDim2.new(1,0,0,0), UDim2.new(0,0,0,0),
-        CFG.C.Black, 1, 403, "Row_" .. S.MsgCount)
-    row.AutomaticSize = Enum.AutomaticSize.Y
-    row.LayoutOrder   = S.MsgCount
-
-    local bubble = Frame(row, UDim2.new(0.86,0,0,0),
-        UDim2.new(isUser and 0.14 or 0, 0, 0, 0),
-        isUser and CFG.C.UserBubble or CFG.C.AIBubble, 0.06, 404, "Bubble")
-    bubble.AutomaticSize = Enum.AutomaticSize.Y
-    Corner(bubble, 14)
-    Pad(bubble, 8, 8, 12, 12)
-    if not isUser then Stroke(bubble, CFG.C.Border, 1) end
-    VList(bubble, 4, isUser and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left)
-
-    -- Autor
-    local authorTxt = isUser and ("🧑 " .. LocalPlayer.Name) or "⬡ Kaelen"
-    local authorCol = isUser and Color3.fromRGB(180, 150, 255) or CFG.C.AccentGlow
-    local xa        = isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
-    local aLbl = Label(bubble, UDim2.new(1,0,0,12), UDim2.new(0,0,0,0),
-        authorTxt, authorCol, 9, CFG.F.Bold, xa, 405)
-    aLbl.LayoutOrder = 1
-
-    -- Texto
-    local tLbl = Label(bubble, UDim2.new(1,0,0,0), UDim2.new(0,0,0,0),
-        text, CFG.C.Text, 11, CFG.F.Regular, xa, 405)
-    tLbl.AutomaticSize = Enum.AutomaticSize.Y
-    tLbl.LayoutOrder   = 2
-
-    -- Animación entrada
-    bubble.BackgroundTransparency = 1
-    tLbl.TextTransparency         = 1
-    aLbl.TextTransparency         = 1
-    Tween(bubble, {BackgroundTransparency = 0.06}, 0.28)
-    Tween(tLbl,   {TextTransparency = 0}, 0.28)
-    Tween(aLbl,   {TextTransparency = 0}, 0.28)
-
-    ScrollBottom()
-end
-
-local function SetThinking(on)
-    S.Thinking              = on
-    ThinkFr.Visible         = on
-    ThinkFr.LayoutOrder     = S.MsgCount + 1
-
+local InfJumpConn
+local function SetInfJump(on)
+    if InfJumpConn then InfJumpConn:Disconnect() InfJumpConn=nil end
     if on then
-        if S.ThinkThread then task.cancel(S.ThinkThread) end
-        S.ThinkThread = task.spawn(function()
-            local frames = {"⬤○○", "⬤⬤○", "⬤⬤⬤", "○⬤⬤", "○○⬤", "○○○"}
-            local i = 1
-            while S.Thinking do
-                if ThinkLbl and ThinkLbl.Parent then
-                    ThinkLbl.Text = "Orquestador  " .. frames[i]
-                end
-                i = (i % #frames) + 1
-                task.wait(0.25)
+        InfJumpConn = UserInputService.JumpRequest:Connect(function()
+            local hum = GetHum()
+            if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+        end)
+    end
+end
+
+local ClickTPConn
+local function SetClickTP(on)
+    if ClickTPConn then ClickTPConn:Disconnect() ClickTPConn=nil end
+    if on then
+        ClickTPConn = Mouse.Button1Down:Connect(function()
+            if not State.ClickTP then ClickTPConn:Disconnect() return end
+            local root = GetRoot()
+            if root and Mouse.Hit then
+                root.CFrame = Mouse.Hit + Vector3.new(0,3,0)
             end
         end)
-        ScrollBottom()
+    end
+end
+
+-- ============================================================
+--  TROLL MODULES
+-- ============================================================
+local SpinConn
+local function SpinPlayer(target)
+    if SpinConn then SpinConn:Disconnect() end
+    local root = target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        -- spin self
+        root = GetRoot()
+    end
+    if not root then return end
+    local angle = 0
+    local cf = root.CFrame
+    SpinConn = RunService.Heartbeat:Connect(function(dt)
+        if not State.SpinEnabled then SpinConn:Disconnect() return end
+        angle = angle + dt * 360 * 3
+        root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, math.rad(angle), 0)
+    end)
+end
+
+local function FlingPlayer(target)
+    if not target or not target.Character then return end
+    local root = target.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local bv = Instance.new("BodyVelocity")
+    bv.Velocity = Vector3.new(math.random(-1,1)*500, math.random(300,800), math.random(-1,1)*500)
+    bv.MaxForce = Vector3.new(1e9,1e9,1e9)
+    bv.Parent = root
+    game:GetService("Debris"):AddItem(bv, 0.2)
+end
+
+local function SuperFlingPlayer(target)
+    if not target or not target.Character then return end
+    local root = target.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    for i=1,5 do
+        local bv = Instance.new("BodyVelocity")
+        bv.Velocity = Vector3.new(math.random(-1,1)*9999, math.random(999,9999), math.random(-1,1)*9999)
+        bv.MaxForce = Vector3.new(math.huge,math.huge,math.huge)
+        bv.Parent = root
+        game:GetService("Debris"):AddItem(bv, 0.05)
+        task.wait(0.05)
+    end
+end
+
+local function LaunchPlayer(target)
+    if not target or not target.Character then return end
+    local root = target.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local bv = Instance.new("BodyVelocity")
+    bv.Velocity = Vector3.new(0, 1500, 0)
+    bv.MaxForce = Vector3.new(0,1e9,0)
+    bv.Parent = root
+    game:GetService("Debris"):AddItem(bv, 0.3)
+end
+
+local AttachConn
+local function AttachToPlayer(target)
+    if AttachConn then AttachConn:Disconnect() end
+    if not target or not target.Character then return end
+    AttachConn = RunService.Heartbeat:Connect(function()
+        if not State.AttachEnabled then AttachConn:Disconnect() return end
+        local myRoot = GetRoot()
+        local tRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+        if myRoot and tRoot then
+            myRoot.CFrame = tRoot.CFrame * CFrame.new(0,0,-4)
+        end
+    end)
+end
+
+local HeadsitConn
+local function HeadsitPlayer(target)
+    if HeadsitConn then HeadsitConn:Disconnect() end
+    if not target or not target.Character then return end
+    HeadsitConn = RunService.Heartbeat:Connect(function()
+        if not State.HeadsitOn then HeadsitConn:Disconnect() return end
+        local myRoot = GetRoot()
+        local tHead = target.Character and target.Character:FindFirstChild("Head")
+        if myRoot and tHead then
+            myRoot.CFrame = tHead.CFrame * CFrame.new(0, 3, 0)
+        end
+    end)
+end
+
+local FloatConn
+local function FloatPlayer(target)
+    if FloatConn then FloatConn:Disconnect() end
+    if not target or not target.Character then return end
+    local root = target.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    FloatConn = RunService.Heartbeat:Connect(function()
+        if not State.FloatEnabled then FloatConn:Disconnect() return end
+        root.Velocity = Vector3.new(0, 20, 0)
+    end)
+end
+
+local function SetSize(target, scale)
+    local char = target and target.Character or GetChar()
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.BodyDepthScale.Value = scale hum.BodyHeightScale.Value = scale hum.BodyWidthScale.Value = scale hum.HeadScale.Value = scale end
+end
+
+local function FreezePlayer(target, on)
+    if not target or not target.Character then return end
+    for _, v in pairs(target.Character:GetDescendants()) do
+        if v:IsA("BasePart") then v.Anchored = on end
+    end
+end
+
+local function BlindPlayer(target)
+    if not target or not target.Character then return end
+    -- Creates a bright part over their head to blind their camera
+    local head = target.Character:FindFirstChild("Head")
+    if not head then return end
+    local blinder = Instance.new("Part")
+    blinder.Size = Vector3.new(5,5,5)
+    blinder.BrickColor = BrickColor.new("White")
+    blinder.Material = Enum.Material.Neon
+    blinder.CanCollide = false
+    blinder.Parent = workspace
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0 = head
+    weld.Part1 = blinder
+    weld.Parent = blinder
+    blinder.CFrame = head.CFrame
+    game:GetService("Debris"):AddItem(blinder, 5)
+    Notify("Kaelen", "Blinded "..target.Name.." for 5s", 3)
+end
+
+local function KnockbackPlayer(target)
+    if not target or not target.Character then return end
+    local myRoot = GetRoot()
+    local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot or not tRoot then return end
+    local dir = (tRoot.Position - myRoot.Position).Unit
+    local bv = Instance.new("BodyVelocity")
+    bv.Velocity = dir * 200 + Vector3.new(0,80,0)
+    bv.MaxForce = Vector3.new(1e9,1e9,1e9)
+    bv.Parent = tRoot
+    game:GetService("Debris"):AddItem(bv, 0.3)
+end
+
+local DanceConn
+local DanceAnims = {
+    "507770239","507771019","507771955","507772104","507772398",
+    "507773317","507776043","507776468","507777268","507777451",
+}
+local function Dance(idx)
+    if DanceConn then DanceConn:Disconnect() end
+    local hum = GetHum()
+    if not hum then return end
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://" .. (DanceAnims[idx] or DanceAnims[1])
+    local track = hum.Animator:LoadAnimation(anim)
+    track:Play()
+    DanceConn = track
+end
+
+-- ============================================================
+--  MUSIC MODULE
+-- ============================================================
+local MusicSound = Instance.new("Sound")
+MusicSound.Name = "KaelenMusic"
+MusicSound.Volume = State.MusicVolume
+MusicSound.RollOffMaxDistance = 999999
+MusicSound.RollOffMinDistance = 999999
+MusicSound.RollOffMode = Enum.RollOffMode.InverseTapered
+MusicSound.Parent = workspace
+
+local function PlaySong(id)
+    MusicSound.SoundId = "rbxassetid://" .. tostring(id)
+    MusicSound:Stop()
+    MusicSound:Play()
+    State.MusicPlaying = true
+    State.MusicID = id
+end
+
+local function StopMusic()
+    MusicSound:Stop()
+    State.MusicPlaying = false
+end
+
+MusicSound.Ended:Connect(function()
+    if State.MusicLoop and State.MusicID then
+        MusicSound:Play()
+    elseif State.MusicPlaying then
+        -- Auto next
+        State.CurrentSongIdx = (State.CurrentSongIdx % #SONGS) + 1
+        PlaySong(SONGS[State.CurrentSongIdx].id)
+    end
+end)
+
+-- ============================================================
+--  PROTECTION MODULES
+-- ============================================================
+local GodConn
+local function SetGodMode(on)
+    if GodConn then GodConn:Disconnect() GodConn=nil end
+    if on then
+        GodConn = RunService.Heartbeat:Connect(function()
+            local hum = GetHum()
+            if hum then hum.Health = hum.MaxHealth end
+        end)
+    end
+end
+
+local InvisConn
+local function SetInvisible(on)
+    local char = GetChar()
+    if not char then return end
+    for _, v in pairs(char:GetDescendants()) do
+        if v:IsA("BasePart") or v:IsA("Decal") then
+            v.LocalTransparencyModifier = on and 1 or 0
+        end
+    end
+end
+
+local function SetFullbright(on)
+    if on then
+        State.OrigBrightness = Lighting.Brightness
+        State.OrigAmb = Lighting.Ambient
+        Lighting.Brightness = 10
+        Lighting.Ambient = Color3.fromRGB(255,255,255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255,255,255)
+        Lighting.ClockTime = 14
     else
-        if S.ThinkThread then task.cancel(S.ThinkThread); S.ThinkThread = nil end
+        Lighting.Brightness = State.OrigBrightness
+        Lighting.Ambient = State.OrigAmb
     end
 end
 
-local function Send(rawText)
-    local text = rawText and rawText:match("^%s*(.-)%s*$") or ""
-    if text == "" or S.Thinking then return end
-    ChatInput.Text = ""
+-- ============================================================
+--  ESP MODULE
+-- ============================================================
+local ESPHighlights = {}
+local function UpdateESP(on)
+    for _, h in pairs(ESPHighlights) do h:Destroy() end
+    ESPHighlights = {}
+    if not on then return end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local h = Instance.new("SelectionBox")
+            h.Color3 = CFG.Colors.AccentRed
+            h.LineThickness = 0.05
+            h.SurfaceTransparency = 0.7
+            h.SurfaceColor3 = CFG.Colors.AccentRed
+            h.Adornee = p.Character
+            h.Parent = workspace
+            ESPHighlights[p.Name] = h
+        end
+    end
+end
 
-    PushMessage("user", text)
-    SetThinking(true)
+Players.PlayerAdded:Connect(function(p)
+    if State.ESPEnabled then
+        p.CharacterAdded:Connect(function(char)
+            task.wait(1)
+            local h = Instance.new("SelectionBox")
+            h.Color3 = CFG.Colors.AccentRed
+            h.LineThickness = 0.05
+            h.SurfaceTransparency = 0.7
+            h.SurfaceColor3 = CFG.Colors.AccentRed
+            h.Adornee = char
+            h.Parent = workspace
+            ESPHighlights[p.Name] = h
+        end)
+    end
+end)
 
-    task.spawn(function()
-        local reply, err = Orchestrate(text, S.Messages)
-        SetThinking(false)
+-- ============================================================
+--  BUILD PANELS
+-- ============================================================
 
-        if err then
-            PushMessage("assistant", "⚠️ **Error del sistema:**\n" .. err)
+-- TROLL PANEL
+local TrollPanel = MakePanel("Troll")
+do
+    SectionLabel(TrollPanel, "Target", CFG.Colors.Troll)
+    local selectedTarget = nil
+    MakePlayerPicker(TrollPanel, function(p) selectedTarget = p end)
+
+    SectionLabel(TrollPanel, "Fling & Launch", CFG.Colors.Troll)
+
+    MakeButton(TrollPanel, "Fling", function()
+        local targets = selectedTarget and {selectedTarget} or Players:GetPlayers()
+        for _, p in ipairs(targets) do if p ~= LocalPlayer then FlingPlayer(p) end end
+        Notify("Kaelen", "Flung!", 2)
+    end, CFG.Colors.Troll)
+
+    MakeButton(TrollPanel, "SUPER FLING", function()
+        local targets = selectedTarget and {selectedTarget} or Players:GetPlayers()
+        for _, p in ipairs(targets) do if p ~= LocalPlayer then SuperFlingPlayer(p) end end
+        Notify("Kaelen", "SUPER FLUNG!!", 2)
+    end, Color3.fromRGB(255,50,50))
+
+    MakeButton(TrollPanel, "Launch UP", function()
+        local targets = selectedTarget and {selectedTarget} or Players:GetPlayers()
+        for _, p in ipairs(targets) do if p ~= LocalPlayer then LaunchPlayer(p) end end
+    end, CFG.Colors.Troll)
+
+    MakeButton(TrollPanel, "Knockback", function()
+        local targets = selectedTarget and {selectedTarget} or Players:GetPlayers()
+        for _, p in ipairs(targets) do if p ~= LocalPlayer then KnockbackPlayer(p) end end
+    end, CFG.Colors.Troll)
+
+    SectionLabel(TrollPanel, "Control", CFG.Colors.AccentPink)
+
+    local spinToggle = MakeToggle(TrollPanel, "Spin (Target/Self)", false, function(on)
+        State.SpinEnabled = on
+        if on then SpinPlayer(selectedTarget) end
+    end, CFG.Colors.AccentPink)
+
+    local headsitToggle = MakeToggle(TrollPanel, "Headsit", false, function(on)
+        State.HeadsitOn = on
+        if on and selectedTarget then
+            HeadsitPlayer(selectedTarget)
+        end
+    end, CFG.Colors.AccentPink)
+
+    local attachToggle = MakeToggle(TrollPanel, "Attach / Follow", false, function(on)
+        State.AttachEnabled = on
+        if on and selectedTarget then AttachToPlayer(selectedTarget) end
+    end, CFG.Colors.AccentPink)
+
+    local floatToggle = MakeToggle(TrollPanel, "Float Player", false, function(on)
+        State.FloatEnabled = on
+        if on and selectedTarget then FloatPlayer(selectedTarget) end
+    end, CFG.Colors.AccentPink)
+
+    SectionLabel(TrollPanel, "Size & Freeze", CFG.Colors.AccentOrange)
+
+    MakeSlider(TrollPanel, "Target Size", 0.1, 10, 1, function(v)
+        if selectedTarget then SetSize(selectedTarget, v) end
+    end, CFG.Colors.AccentOrange)
+
+    MakeButton(TrollPanel, "Tiny (0.1x)", function()
+        local targets = selectedTarget and {selectedTarget} or Players:GetPlayers()
+        for _, p in ipairs(targets) do if p ~= LocalPlayer then SetSize(p, 0.1) end end
+    end, CFG.Colors.AccentOrange)
+
+    MakeButton(TrollPanel, "GIANT (10x)", function()
+        local targets = selectedTarget and {selectedTarget} or Players:GetPlayers()
+        for _, p in ipairs(targets) do if p ~= LocalPlayer then SetSize(p, 10) end end
+    end, CFG.Colors.AccentOrange)
+
+    MakeButton(TrollPanel, "Normal Size", function()
+        local targets = selectedTarget and {selectedTarget} or Players:GetPlayers()
+        for _, p in ipairs(targets) do SetSize(p, 1) end
+    end, CFG.Colors.AccentOrange)
+
+    local freezeState = {}
+    MakeButton(TrollPanel, "Freeze Target", function()
+        if selectedTarget then
+            freezeState[selectedTarget.Name] = not (freezeState[selectedTarget.Name] or false)
+            FreezePlayer(selectedTarget, freezeState[selectedTarget.Name])
+            Notify("Kaelen", (freezeState[selectedTarget.Name] and "Froze " or "Thawed ") .. selectedTarget.Name, 2)
         else
-            ParseAICommands(reply)
-            RefreshPhysLabel()
-            PushMessage("assistant", reply or "Sin respuesta.")
+            Notify("Kaelen", "Select a target first", 2)
         end
-    end)
-end
+    end, CFG.Colors.Accent2)
 
-local function ClearChat()
-    for _, c in ipairs(MsgScroll:GetChildren()) do
-        if c:IsA("Frame") and c.Name ~= "ThinkFr" then c:Destroy() end
-    end
-    S.Messages  = {}
-    S.MsgCount  = 0
-end
+    MakeButton(TrollPanel, "Thaw All", function()
+        for _, p in ipairs(Players:GetPlayers()) do FreezePlayer(p, false) end
+    end, CFG.Colors.Accent2)
 
--- ══════════════════════════════════════════════════════════════════
--- [13] EVENTOS DE BOTONES
--- ══════════════════════════════════════════════════════════════════
+    SectionLabel(TrollPanel, "Misc Troll", CFG.Colors.AccentPink)
 
--- Enviar mensaje
-BtnSend.MouseButton1Click:Connect(function() Send(ChatInput.Text) end)
-ChatInput.FocusLost:Connect(function(enter)
-    if enter then Send(ChatInput.Text) end
-end)
+    MakeButton(TrollPanel, "Blind (5s)", function()
+        if selectedTarget then BlindPlayer(selectedTarget)
+        else for _,p in ipairs(Players:GetPlayers()) do if p~=LocalPlayer then BlindPlayer(p) end end end
+    end, CFG.Colors.AccentPink)
 
--- Quick commands
-for _, qr in ipairs(QBtnRefs) do
-    qr.btn.MouseButton1Click:Connect(function()
-        local id = qr.id
-        if     id == "analyze" then Send("🎮 Analiza en profundidad este juego:\n" .. GameContext())
-        elseif id == "fly"     then Send("Por favor activa mi vuelo para desplazarme libremente.")
-        elseif id == "noclip"  then Send("Activa el noclip para que pueda atravesar paredes.")
-        elseif id == "speed2"  then Send("Pon mi velocidad al doble de lo normal (WalkSpeed 32).")
-        elseif id == "clear"   then
-            ClearChat()
-            PushMessage("assistant", "🗑 Historial y memoria limpiados correctamente.")
+    MakeButton(TrollPanel, "Teleport To Target", function()
+        if selectedTarget and selectedTarget.Character then
+            local root = GetRoot()
+            local tRoot = selectedTarget.Character:FindFirstChild("HumanoidRootPart")
+            if root and tRoot then root.CFrame = tRoot.CFrame * CFrame.new(0,0,4) end
         end
-    end)
+    end, CFG.Colors.Accent)
+
+    MakeButton(TrollPanel, "Bring Target To Me", function()
+        if selectedTarget and selectedTarget.Character then
+            local root = GetRoot()
+            local tRoot = selectedTarget.Character:FindFirstChild("HumanoidRootPart")
+            if root and tRoot then tRoot.CFrame = root.CFrame * CFrame.new(0,0,4) end
+        end
+    end, CFG.Colors.Accent)
+
+    SectionLabel(TrollPanel, "Dance", CFG.Colors.Music)
+    local danceFrame = Frame(TrollPanel, UDim2.new(1,0,0,130), nil, CFG.Colors.Card, 0)
+    Corner(danceFrame)
+    Stroke(danceFrame, CFG.Colors.Border, 1)
+    local danceGrid = Instance.new("UIGridLayout")
+    danceGrid.CellSize = UDim2.new(0.3, -4, 0, 48)
+    danceGrid.CellPaddingSize = UDim2.new(0, 4, 0, 4)
+    danceGrid.Parent = danceFrame
+    Padding(danceFrame, 6, 6, 6, 6)
+    for i=1,9 do
+        local db = Instance.new("TextButton")
+        db.Size = UDim2.new(0,0,0,0)
+        db.BackgroundColor3 = CFG.Colors.Music
+        db.BackgroundTransparency = 0.3
+        db.Text = "Dance "..i
+        db.TextColor3 = Color3.new(1,1,1)
+        db.TextSize = 12
+        db.Font = Enum.Font.GothamBold
+        db.BorderSizePixel = 0
+        db.Parent = danceFrame
+        Corner(db, UDim.new(0,10))
+        db.MouseButton1Click:Connect(function() Dance(i) end)
+    end
 end
 
--- Verificar key
-BtnVerify.MouseButton1Click:Connect(function()
-    local raw = KeyInput.Text
-    local key = raw:match("^%s*(.-)%s*$") or ""
+-- MOVEMENT PANEL
+local MovePanel = MakePanel("Move")
+do
+    SectionLabel(MovePanel, "Flight", CFG.Colors.Move)
+    MakeToggle(MovePanel, "Fly (W/A/S/D + Space)", false, function(on)
+        State.FlyEnabled = on
+        if on then StartFly() else StopFly() end
+    end, CFG.Colors.Move)
+    MakeSlider(MovePanel, "Fly Speed", 10, 300, 50, function(v) State.FlySpeed=v end, CFG.Colors.Move)
 
-    if #key < 10 then
-        KeyLog.TextColor3 = CFG.C.Warning
-        KeyLog.Text       = "⚠ La clave parece demasiado corta."
-        return
-    end
+    SectionLabel(MovePanel, "Movement", CFG.Colors.Move)
+    MakeToggle(MovePanel, "Noclip", false, function(on)
+        State.NoclipEnabled = on
+        if on then StartNoclip() end
+    end, CFG.Colors.Move)
+    MakeToggle(MovePanel, "Infinite Jump", false, function(on)
+        State.InfJump = on
+        SetInfJump(on)
+    end, CFG.Colors.Move)
+    MakeToggle(MovePanel, "Click TP", false, function(on)
+        State.ClickTP = on
+        SetClickTP(on)
+    end, CFG.Colors.Move)
 
-    BtnVerify.Text                  = "⏳ Verificando..."
-    BtnVerify.BackgroundTransparency= 0.3
-    KeyLog.TextColor3               = CFG.C.TextSub
-    KeyLog.Text                     = "Conectando con OpenRouter..."
-    BtnBypass.Visible               = false
+    MakeSlider(MovePanel, "WalkSpeed", 0, 500, 16, function(v)
+        State.WalkSpeed = v
+        local hum = GetHum()
+        if hum then hum.WalkSpeed = v end
+    end, CFG.Colors.Move)
+    MakeSlider(MovePanel, "JumpPower", 0, 500, 50, function(v)
+        State.JumpPower = v
+        local hum = GetHum()
+        if hum then hum.JumpPower = v end
+    end, CFG.Colors.Move)
 
-    task.spawn(function()
-        local ok, err = VerifyKey(key)
-
-        if ok then
-            S.APIKey  = key
-            S.Verified = true
-            StatusDot.BackgroundColor3 = CFG.C.Success
-            Tween(StatusDot, {BackgroundColor3 = CFG.C.Success}, 0.4)
-
-            KeyLog.TextColor3 = CFG.C.Success
-            KeyLog.Text       = "✅ Conexión establecida. ¡Kaelen activo!"
-            BtnVerify.Text    = "✔ Activado"
-
-            task.wait(1.0)
-            SwitchTab("Chat")
-            PushMessage("assistant",
-                "⬡ **¡Sistema inicializado!**\n\n" ..
-                "Motor triple-engine operativo. Puedes escribir libremente o usar los botones rápidos.\n\n" ..
-                "Prueba:\n• «Activa el noclip»\n• «Pon mi velocidad en 90»\n• «Crea un script de admin»"
-            )
+    SectionLabel(MovePanel, "Checkpoints", CFG.Colors.AccentGreen)
+    MakeButton(MovePanel, "Save Checkpoint", function()
+        local root = GetRoot()
+        if root then
+            table.insert(State.Checkpoints, root.CFrame)
+            Notify("Kaelen", "Checkpoint "..#State.Checkpoints.." saved!", 2)
+        end
+    end, CFG.Colors.AccentGreen)
+    MakeButton(MovePanel, "Load Last Checkpoint", function()
+        if #State.Checkpoints > 0 then
+            local root = GetRoot()
+            if root then root.CFrame = State.Checkpoints[#State.Checkpoints] end
         else
-            KeyLog.TextColor3 = CFG.C.Danger
-            KeyLog.Text       = "❌ " .. tostring(err)
-            BtnVerify.Text    = "Reintentar"
-            BtnVerify.BackgroundTransparency = 0
-            if key:match("^sk%-or%-") then BtnBypass.Visible = true end
+            Notify("Kaelen", "No checkpoints saved!", 2)
         end
-    end)
-end)
+    end, CFG.Colors.AccentGreen)
+    MakeButton(MovePanel, "Clear Checkpoints", function()
+        State.Checkpoints = {}
+        Notify("Kaelen", "Checkpoints cleared", 2)
+    end, CFG.Colors.AccentRed)
 
--- Bypass
-BtnBypass.MouseButton1Click:Connect(function()
-    local key = (KeyInput.Text:match("^%s*(.-)%s*$") or "")
-    if #key > 0 then
-        S.APIKey  = key
-        S.Verified = true
-        StatusDot.BackgroundColor3 = CFG.C.Warning
-        KeyLog.TextColor3          = CFG.C.Warning
-        KeyLog.Text                = "⚠ Key guardada sin verificación."
-        task.wait(0.8)
-        SwitchTab("Chat")
-    end
-end)
-
--- Borrar historial
-BtnClear.MouseButton1Click:Connect(function()
-    ClearChat()
-end)
-
--- Reset key
-BtnReset.MouseButton1Click:Connect(function()
-    S.APIKey   = ""
-    S.Verified = false
-    StatusDot.BackgroundColor3 = CFG.C.Danger
-    KeyInput.Text = ""
-    KeyLog.Text   = ""
-    BtnVerify.Text = "Conectar y Activar"
-    BtnVerify.BackgroundTransparency = 0
-    ClearChat()
-    ShowPanel("Key")
-    HighlightTab("Chat")
-end)
-
--- Cerrar ventana
-BtnClose.MouseButton1Click:Connect(function()
-    -- Definido más abajo, usar variable forward
-end)
-
--- ══════════════════════════════════════════════════════════════════
--- [14] ABRIR / CERRAR VENTANA  ──  Animaciones fluidas
--- ══════════════════════════════════════════════════════════════════
-
-local function OpenWindow()
-    if S.WinOpen then return end
-    S.WinOpen = true
-
-    -- Animar desde la posición del FAB
-    local ox = FAB.Position.X.Scale
-    local oy = FAB.Position.X.Offset + 26
-    local yy = FAB.Position.Y.Scale
-    local yo = FAB.Position.Y.Offset + 26
-
-    WIN.Size     = UDim2.new(0,0,0,0)
-    WIN.Position = UDim2.new(ox, oy, yy, yo)
-    WIN.Visible  = true
-
-    Tween(WIN,
-        { Size     = UDim2.new(0, CFG.W.W, 0, CFG.W.H),
-          Position = UDim2.new(0.5, -CFG.W.W/2, 0.5, -CFG.W.H/2) },
-        0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
-    -- Animar halo del FAB al abrir
-    Tween(FAB, {BackgroundTransparency = 0.3}, 0.2)
+    SectionLabel(MovePanel, "Quick TP", CFG.Colors.Accent2)
+    MakeInput(MovePanel, "X, Y, Z (eg: 0 100 0)", function(text)
+        local root = GetRoot()
+        if not root then return end
+        local coords = {}
+        for v in text:gmatch("[%-]?%d+%.?%d*") do table.insert(coords, tonumber(v)) end
+        if #coords >= 3 then
+            root.CFrame = CFrame.new(coords[1], coords[2], coords[3])
+            Notify("Kaelen", "Teleported!", 2)
+        end
+    end, CFG.Colors.Accent2)
 end
 
-local function CloseWindow()
-    if not S.WinOpen then return end
-    S.WinOpen = false
+-- MUSIC PANEL
+local MusicPanel = MakePanel("Music")
+do
+    -- Now Playing display
+    local npFrame = Frame(MusicPanel, UDim2.new(1,0,0,70), nil, CFG.Colors.Card, 0)
+    Corner(npFrame)
+    Stroke(npFrame, CFG.Colors.Accent, 1)
+    do
+        local g = Instance.new("UIGradient")
+        g.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(20,10,40)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(10,18,35)),
+        })
+        g.Rotation = 135
+        g.Parent = npFrame
+    end
+    local npTitle = Label(npFrame, "Now Playing: --", 13, CFG.Colors.Music, Enum.Font.GothamBold)
+    npTitle.Size = UDim2.new(1,-14,0,20)
+    npTitle.Position = UDim2.new(0,10,0,10)
+    local npSub = Label(npFrame, "Music plays globally for all players", 11, CFG.Colors.TextDim, Enum.Font.Gotham)
+    npSub.Size = UDim2.new(1,-14,0,16)
+    npSub.Position = UDim2.new(0,10,0,32)
+    local npVolLabel = Label(npFrame, "Volume: 80%", 11, CFG.Colors.TextDim, Enum.Font.Gotham)
+    npVolLabel.Size = UDim2.new(1,-14,0,16)
+    npVolLabel.Position = UDim2.new(0,10,0,50)
 
-    local tx = FAB.Position.X.Scale
-    local to = FAB.Position.X.Offset + 26
-    local ty = FAB.Position.Y.Scale
-    local tyo= FAB.Position.Y.Offset + 26
+    -- Controls
+    local ctrlFrame = Frame(MusicPanel, UDim2.new(1,0,0,60), nil, CFG.Colors.Card, 0)
+    Corner(ctrlFrame)
+    do
+        local ctrlList = Instance.new("UIListLayout")
+        ctrlList.FillDirection = Enum.FillDirection.Horizontal
+        ctrlList.Padding = UDim.new(0,6)
+        ctrlList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        ctrlList.VerticalAlignment = Enum.VerticalAlignment.Center
+        ctrlList.Parent = ctrlFrame
 
-    Tween(WIN,
-        { Size     = UDim2.new(0,0,0,0),
-          Position = UDim2.new(tx, to, ty, tyo) },
-        0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        local function CtrlBtn(text, color, onClick)
+            local b = Instance.new("TextButton")
+            b.Size = UDim2.new(0,72,0,44)
+            b.BackgroundColor3 = color
+            b.BackgroundTransparency = 0.2
+            b.Text = text
+            b.TextColor3 = Color3.new(1,1,1)
+            b.TextSize = 13
+            b.Font = Enum.Font.GothamBold
+            b.BorderSizePixel = 0
+            b.Parent = ctrlFrame
+            Corner(b, UDim.new(0,12))
+            b.MouseButton1Click:Connect(onClick)
+            return b
+        end
 
-    Tween(FAB, {BackgroundTransparency = 0}, 0.2)
+        CtrlBtn("PREV", CFG.Colors.Accent2, function()
+            State.CurrentSongIdx = ((State.CurrentSongIdx - 2) % #SONGS) + 1
+            PlaySong(SONGS[State.CurrentSongIdx].id)
+            npTitle.Text = "Now Playing: "..SONGS[State.CurrentSongIdx].name
+        end)
+        CtrlBtn("PLAY", CFG.Colors.AccentGreen, function()
+            if State.MusicPlaying then
+                MusicSound:Pause()
+                State.MusicPlaying = false
+            else
+                if State.MusicID then MusicSound:Play() State.MusicPlaying=true
+                else
+                    PlaySong(SONGS[State.CurrentSongIdx].id)
+                    npTitle.Text = "Now Playing: "..SONGS[State.CurrentSongIdx].name
+                end
+            end
+        end)
+        CtrlBtn("STOP", CFG.Colors.AccentRed, function()
+            StopMusic()
+            npTitle.Text = "Now Playing: --"
+        end)
+        CtrlBtn("NEXT", CFG.Colors.Accent2, function()
+            State.CurrentSongIdx = (State.CurrentSongIdx % #SONGS) + 1
+            PlaySong(SONGS[State.CurrentSongIdx].id)
+            npTitle.Text = "Now Playing: "..SONGS[State.CurrentSongIdx].name
+        end)
+    end
 
-    task.delay(0.26, function()
-        if WIN and WIN.Parent then WIN.Visible = false end
-    end)
+    MakeToggle(MusicPanel, "Loop Song", false, function(on)
+        State.MusicLoop = on
+        MusicSound.Looped = on
+    end, CFG.Colors.Music)
+
+    MakeSlider(MusicPanel, "Volume", 0, 100, 80, function(v)
+        State.MusicVolume = v/100
+        MusicSound.Volume = State.MusicVolume
+        npVolLabel.Text = "Volume: "..v.."%"
+    end, CFG.Colors.Music)
+
+    -- Custom ID
+    SectionLabel(MusicPanel, "Custom Song ID", CFG.Colors.Music)
+    MakeInput(MusicPanel, "Enter Roblox Sound ID...", function(text)
+        local id = text:match("%d+")
+        if id then
+            PlaySong(id)
+            npTitle.Text = "Now Playing: Custom #"..id
+        end
+    end, CFG.Colors.Music)
+
+    -- Song List
+    SectionLabel(MusicPanel, "Song Library ("..#SONGS.." songs)", CFG.Colors.Music)
+    for i, song in ipairs(SONGS) do
+        local songBtn = Instance.new("TextButton")
+        songBtn.Size = UDim2.new(1,0,0,52)
+        songBtn.BackgroundColor3 = CFG.Colors.Card
+        songBtn.BackgroundTransparency = i%2==0 and 0.3 or 0.5
+        songBtn.Text = ""
+        songBtn.BorderSizePixel = 0
+        songBtn.Parent = MusicPanel
+        Corner(songBtn, UDim.new(0,10))
+
+        local num = Label(songBtn, tostring(i), 11, CFG.Colors.TextDim, Enum.Font.Gotham)
+        num.Size = UDim2.new(0,28,1,0)
+        num.Position = UDim2.new(0,8,0,0)
+        num.TextYAlignment = Enum.TextYAlignment.Center
+        num.TextXAlignment = Enum.TextXAlignment.Center
+
+        local sname = Label(songBtn, song.name, 13, CFG.Colors.Text, Enum.Font.GothamSemibold)
+        sname.Size = UDim2.new(1,-90,0,26)
+        sname.Position = UDim2.new(0,36,0,4)
+
+        local sid = Label(songBtn, "ID: "..song.id, 10, CFG.Colors.TextDim, Enum.Font.Gotham)
+        sid.Size = UDim2.new(1,-90,0,18)
+        sid.Position = UDim2.new(0,36,0,30)
+
+        local playIco = Label(songBtn, "PLAY", 11, CFG.Colors.Music, Enum.Font.GothamBold)
+        playIco.Size = UDim2.new(0,44,1,0)
+        playIco.Position = UDim2.new(1,-52,0,0)
+        playIco.TextXAlignment = Enum.TextXAlignment.Center
+
+        songBtn.MouseButton1Click:Connect(function()
+            State.CurrentSongIdx = i
+            PlaySong(song.id)
+            npTitle.Text = "Now Playing: "..song.name
+            Notify("Kaelen Music", "Playing: "..song.name, 3)
+        end)
+    end
 end
 
-BtnClose.MouseButton1Click:Connect(CloseWindow)
+-- PROTECTION PANEL
+local ProtectPanel = MakePanel("Protect")
+do
+    SectionLabel(ProtectPanel, "Self Protection", CFG.Colors.Protect)
 
--- Tecla K (PC)
-UserInputService.InputBegan:Connect(function(inp, gp)
-    if gp then return end
-    if inp.KeyCode == Enum.KeyCode.K then
-        if S.WinOpen then CloseWindow() else OpenWindow() end
-    end
-end)
+    MakeToggle(ProtectPanel, "God Mode (Full HP)", false, function(on)
+        State.GodMode = on
+        SetGodMode(on)
+    end, CFG.Colors.Protect)
 
--- ══════════════════════════════════════════════════════════════════
--- [15] DRAG  ──  Botón flotante  &  Ventana principal
---               FIX COMPLETO PARA TOUCH EN DELTA / MÓVIL
--- ══════════════════════════════════════════════════════════════════
+    MakeToggle(ProtectPanel, "Invisible", false, function(on)
+        State.Invisible = on
+        SetInvisible(on)
+    end, CFG.Colors.Protect)
 
--- ── FAB touch / drag ──────────────────────────────────────────────
-FAB.InputBegan:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        S.BtnDrag.Active     = true
-        S.BtnDrag.Origin     = Vector2.new(inp.Position.X, inp.Position.Y)
-        S.BtnDrag.PosOrigin  = FAB.Position
-        S.BtnDrag.TotalMoved = 0
-    end
-end)
+    MakeToggle(ProtectPanel, "Fullbright", false, function(on)
+        State.Fullbright = on
+        SetFullbright(on)
+    end, CFG.Colors.Protect)
 
-FAB.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        -- Tap (sin movimiento) → abrir/cerrar
-        if S.BtnDrag.TotalMoved < 8 then
-            if S.WinOpen then CloseWindow() else OpenWindow() end
+    SectionLabel(ProtectPanel, "Anti Troll", CFG.Colors.Protect)
+
+    MakeButton(ProtectPanel, "Anti-Fling (Reset Velocity)", function()
+        local root = GetRoot()
+        if root then root.Velocity = Vector3.zero end
+        Notify("Kaelen", "Velocity reset", 2)
+    end, CFG.Colors.Protect)
+
+    MakeButton(ProtectPanel, "Unanchor Self", function()
+        local char = GetChar()
+        if char then
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("BasePart") then v.Anchored = false end
+            end
         end
-        -- Siempre terminar el drag al soltar
-        S.BtnDrag.Active     = false
-        S.BtnDrag.TotalMoved = 0
-    end
-end)
+        Notify("Kaelen", "Unanchored", 2)
+    end, CFG.Colors.Protect)
 
--- ── Header drag (ventana) ──────────────────────────────────────────
-Header.InputBegan:Connect(function(inp)
+    MakeButton(ProtectPanel, "Respawn", function()
+        LocalPlayer:LoadCharacter()
+    end, CFG.Colors.AccentRed)
+
+    SectionLabel(ProtectPanel, "My Size", CFG.Colors.AccentOrange)
+    MakeSlider(ProtectPanel, "My Size", 0.1, 10, 1, function(v)
+        SetSize(LocalPlayer, v)
+    end, CFG.Colors.AccentOrange)
+    MakeButton(ProtectPanel, "Normal Size", function() SetSize(LocalPlayer, 1) end, CFG.Colors.AccentOrange)
+end
+
+-- UTILITIES PANEL
+local UtilPanel = MakePanel("Util")
+do
+    SectionLabel(UtilPanel, "Server", CFG.Colors.Util)
+
+    MakeButton(UtilPanel, "Rejoin Server", function()
+        local tp = game:GetService("TeleportService")
+        tp:Teleport(game.PlaceId, LocalPlayer)
+    end, CFG.Colors.Util)
+
+    MakeButton(UtilPanel, "Server Hop", function()
+        local tp = game:GetService("TeleportService")
+        local ok, servers = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+        end)
+        if ok and servers and servers.data then
+            for _, s in ipairs(servers.data) do
+                if s.id ~= game.JobId and s.playing < s.maxPlayers then
+                    tp:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
+                    return
+                end
+            end
+        end
+        Notify("Kaelen", "No other servers found, rejoining...", 3)
+        tp:Teleport(game.PlaceId, LocalPlayer)
+    end, CFG.Colors.Util)
+
+    SectionLabel(UtilPanel, "Chat & Spam", CFG.Colors.Util)
+    local chatInput, chatBox = MakeInput(UtilPanel, "Message to send...", nil, CFG.Colors.Util)
+
+    MakeButton(UtilPanel, "Chat Message", function()
+        local text = chatBox.Text
+        if text and text ~= "" then
+            game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents") and
+            game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents:FindFirstChild("SayMessageRequest") and
+            game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer(text, "All")
+        end
+    end, CFG.Colors.Util)
+
+    SectionLabel(UtilPanel, "Lighting Tricks", CFG.Colors.AccentPink)
+    MakeSlider(UtilPanel, "Clock Time", 0, 24, 14, function(v)
+        Lighting.ClockTime = v
+    end, CFG.Colors.AccentPink)
+
+    MakeButton(UtilPanel, "Night Mode", function()
+        Lighting.ClockTime = 0
+        Lighting.Brightness = 0.5
+    end, Color3.fromRGB(30,30,80))
+
+    MakeButton(UtilPanel, "Day Mode", function()
+        Lighting.ClockTime = 14
+        Lighting.Brightness = 2
+    end, Color3.fromRGB(255,200,60))
+
+    SectionLabel(UtilPanel, "Workspace", CFG.Colors.Util)
+    MakeSlider(UtilPanel, "Gravity", 0, 300, 196, function(v)
+        workspace.Gravity = v
+    end, CFG.Colors.Util)
+
+    MakeButton(UtilPanel, "Zero Gravity", function()
+        workspace.Gravity = 5
+        Notify("Kaelen", "Zero-G mode!", 2)
+    end, CFG.Colors.Accent2)
+    MakeButton(UtilPanel, "Normal Gravity", function()
+        workspace.Gravity = 196
+    end, CFG.Colors.Accent)
+    MakeButton(UtilPanel, "Moon Gravity", function()
+        workspace.Gravity = 30
+        Notify("Kaelen", "Moon Gravity!", 2)
+    end, Color3.fromRGB(180,180,255))
+
+    SectionLabel(UtilPanel, "Info", CFG.Colors.TextDim)
+    local infoLbl = Label(UtilPanel, "Voice changer: Roblox does not allow\nclient-side voice pitch modification.\nThat feature requires a PC app like\nVoiceMod outside of Roblox.", 12, CFG.Colors.TextDim, Enum.Font.Gotham)
+    infoLbl.Size = UDim2.new(1,0,0,70)
+    infoLbl.TextWrapped = true
+    infoLbl.TextXAlignment = Enum.TextXAlignment.Left
+    Padding(infoLbl, 0,0,10,0)
+end
+
+-- ESP PANEL
+local ESPPanel = MakePanel("ESP")
+do
+    SectionLabel(ESPPanel, "Player Highlight ESP", CFG.Colors.Accent2)
+
+    MakeToggle(ESPPanel, "ESP (SelectionBox)", false, function(on)
+        State.ESPEnabled = on
+        UpdateESP(on)
+    end, CFG.Colors.Accent2)
+
+    MakeToggle(ESPPanel, "Chams (Through Walls)", false, function(on)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                for _, v in pairs(p.Character:GetDescendants()) do
+                    if v:IsA("BasePart") then
+                        v.CastShadow = not on
+                    end
+                end
+            end
+        end
+    end, CFG.Colors.Accent2)
+
+    SectionLabel(ESPPanel, "Player Info", CFG.Colors.Accent2)
+
+    local function RefreshPlayerList()
+        for _, child in pairs(ESPPanel:GetChildren()) do
+            if child.Name == "PlayerCard" then child:Destroy() end
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            local card = Frame(ESPPanel, UDim2.new(1,0,0,60), nil, CFG.Colors.Card, 0)
+            card.Name = "PlayerCard"
+            Corner(card)
+            Stroke(card, CFG.Colors.Border, 1)
+
+            local nameL = Label(card, p.Name, 13, CFG.Colors.Text, Enum.Font.GothamBold)
+            nameL.Size = UDim2.new(0.6,0,0,24)
+            nameL.Position = UDim2.new(0,10,0,6)
+
+            local char = p.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            local myRoot = GetRoot()
+
+            local dist = "??m"
+            if root and myRoot then
+                dist = math.floor((root.Position - myRoot.Position).Magnitude).."m"
+            end
+            local hp = hum and math.floor(hum.Health) or "?"
+            local maxHp = hum and math.floor(hum.MaxHealth) or "?"
+
+            local infoL = Label(card, "HP: "..hp.."/"..maxHp.." | Dist: "..dist, 11, CFG.Colors.TextDim, Enum.Font.Gotham)
+            infoL.Size = UDim2.new(0.6,0,0,18)
+            infoL.Position = UDim2.new(0,10,0,30)
+
+            local tpBtn = Instance.new("TextButton")
+            tpBtn.Size = UDim2.new(0,58,0,36)
+            tpBtn.Position = UDim2.new(1,-66,0.5,-18)
+            tpBtn.BackgroundColor3 = CFG.Colors.Accent
+            tpBtn.BackgroundTransparency = 0.2
+            tpBtn.Text = "TP"
+            tpBtn.TextColor3 = Color3.new(1,1,1)
+            tpBtn.TextSize = 12
+            tpBtn.Font = Enum.Font.GothamBold
+            tpBtn.BorderSizePixel = 0
+            tpBtn.Parent = card
+            Corner(tpBtn, UDim.new(0,10))
+            tpBtn.MouseButton1Click:Connect(function()
+                local myR = GetRoot()
+                local tR = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+                if myR and tR then myR.CFrame = tR.CFrame * CFrame.new(0,0,4) end
+            end)
+        end
+    end
+
+    MakeButton(ESPPanel, "Refresh Player List", RefreshPlayerList, CFG.Colors.Accent2)
+    RefreshPlayerList()
+
+    Players.PlayerAdded:Connect(RefreshPlayerList)
+    Players.PlayerRemoving:Connect(RefreshPlayerList)
+end
+
+-- ============================================================
+--  WINDOW OPEN / CLOSE
+-- ============================================================
+local OpenWindow, CloseWindow, ToggleMinimize
+
+OpenWindow = function()
+    State.IsOpen = true
+    MainFrame.Visible = true
+    Tween(MainFrame, {Size=CFG.FrameSize, BackgroundTransparency=0.08}, CFG.AnimSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    Tween(FloatBtn, {BackgroundTransparency=0.3}, 0.2)
+    SetTab(State.CurrentTab)
+end
+
+CloseWindow = function()
+    State.IsOpen = false
+    Tween(MainFrame, {Size=UDim2.new(0,0,0,0), BackgroundTransparency=1}, CFG.AnimSpeed, Enum.EasingStyle.Quart)
+    Tween(FloatBtn, {BackgroundTransparency=0}, 0.2)
+    task.wait(CFG.AnimSpeed)
+    if not State.IsOpen then MainFrame.Visible = false end
+end
+
+ToggleMinimize = function()
+    State.IsMinimized = not State.IsMinimized
+    if State.IsMinimized then
+        Tween(MainFrame, {Size=UDim2.new(CFG.FrameSize.X.Scale,0,0,56)}, 0.3)
+    else
+        Tween(MainFrame, {Size=CFG.FrameSize}, CFG.AnimSpeed, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    end
+end
+
+-- ============================================================
+--  FLOAT BUTTON INTERACTION
+-- ============================================================
+local btnDragging = false
+local btnDragDist = 0
+local btnDragStart, btnStartPos
+
+FloatBtn.InputBegan:Connect(function(inp)
     if inp.UserInputType == Enum.UserInputType.MouseButton1
     or inp.UserInputType == Enum.UserInputType.Touch then
-        S.WinDrag.Active    = true
-        S.WinDrag.Origin    = Vector2.new(inp.Position.X, inp.Position.Y)
-        S.WinDrag.PosOrigin = WIN.Position
+        btnDragging = true
+        btnDragDist = 0
+        btnDragStart = inp.Position
+        btnStartPos  = FloatBtn.Position
     end
 end)
 
--- ── Movimiento unificado ───────────────────────────────────────────
+FloatBtn.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        if btnDragDist < 12 then
+            if State.IsOpen then CloseWindow() else OpenWindow() end
+        end
+        btnDragging = false
+        btnDragDist = 0
+    end
+end)
+
 UserInputService.InputChanged:Connect(function(inp)
-    if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-
-    local pos = Vector2.new(inp.Position.X, inp.Position.Y)
-
-    -- Mover FAB
-    if S.BtnDrag.Active then
-        local delta = pos - S.BtnDrag.Origin
-        S.BtnDrag.TotalMoved = delta.Magnitude
-        if S.BtnDrag.TotalMoved > 8 then
-            FAB.Position = UDim2.new(
-                S.BtnDrag.PosOrigin.X.Scale,
-                S.BtnDrag.PosOrigin.X.Offset + delta.X,
-                S.BtnDrag.PosOrigin.Y.Scale,
-                S.BtnDrag.PosOrigin.Y.Offset + delta.Y
-            )
-        end
-    end
-
-    -- Mover ventana
-    if S.WinDrag.Active then
-        local delta = pos - S.WinDrag.Origin
-        WIN.Position = UDim2.new(
-            S.WinDrag.PosOrigin.X.Scale,
-            S.WinDrag.PosOrigin.X.Offset + delta.X,
-            S.WinDrag.PosOrigin.Y.Scale,
-            S.WinDrag.PosOrigin.Y.Offset + delta.Y
-        )
+    if btnDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch) then
+        local delta = inp.Position - btnDragStart
+        btnDragDist = math.abs(delta.X) + math.abs(delta.Y)
+        local vp = Camera.ViewportSize
+        local nx = math.clamp(btnStartPos.X.Offset + delta.X, 0, vp.X - 72)
+        local ny = math.clamp(btnStartPos.Y.Offset + delta.Y, 0, vp.Y - 72)
+        FloatBtn.Position = UDim2.new(0, nx, 0, ny)
     end
 end)
 
--- ── Soltar todo al levantar el dedo/mouse ─────────────────────────
-UserInputService.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        S.WinDrag.Active = false
-        -- BtnDrag se gestiona en FAB.InputEnded
+-- ============================================================
+--  KEYBOARD SHORTCUT (PC)
+-- ============================================================
+UserInputService.InputBegan:Connect(function(inp, gpe)
+    if gpe then return end
+    if inp.KeyCode == Enum.KeyCode.RightBracket then
+        if State.IsOpen then CloseWindow() else OpenWindow() end
     end
 end)
 
--- ══════════════════════════════════════════════════════════════════
--- [16] INICIO
--- ══════════════════════════════════════════════════════════════════
-ShowPanel("Key")
-HighlightTab("Chat")
+-- ============================================================
+--  CHARACTER RESPAWN HANDLER
+-- ============================================================
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    local hum = char:WaitForChild("Humanoid", 5)
+    if hum then
+        if State.WalkSpeed ~= 16 then hum.WalkSpeed = State.WalkSpeed end
+        if State.JumpPower ~= 50 then hum.JumpPower = State.JumpPower end
+    end
+    if State.InfJump then SetInfJump(true) end
+    if State.NoclipEnabled then StartNoclip() end
+    if State.FlyEnabled then task.wait(0.5) StartFly() end
+    if State.GodMode then SetGodMode(true) end
+end)
 
-print("╔═══════════════════════════════════════╗")
-print("║  KAELEN v3.0 PHANTOM  ·  READY        ║")
-print("║  Toca el botón K para abrir la UI     ║")
-print("╚═══════════════════════════════════════╝")
+-- ============================================================
+--  INIT
+-- ============================================================
+SetTab("Troll")
+
+-- Startup notification
+task.wait(0.5)
+Notify("Kaelen Hub", "Loaded! Tap K button to open | ] to toggle", 4)
+
+print("╔══════════════════════════════╗")
+print("║      Kaelen Hub v1.0         ║")
+print("║   by crx-ter | Delta Ready   ║")
+print("╚══════════════════════════════╝")
+print("[Kaelen] Features: Troll | Move | Music ("..#SONGS.." songs) | Protect | ESP | Util")
+print("[Kaelen] Tap the K button or press ] to open")
