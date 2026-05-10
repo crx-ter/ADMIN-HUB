@@ -275,10 +275,24 @@ local function Scr(p, sz, pos)
     s.ScrollBarThickness = 3
     s.ScrollBarImageColor3 = C.Accent
     s.CanvasSize = UDim2.new(0,0,0,0)
-    s.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
     s.ScrollingDirection = Enum.ScrollingDirection.Y
-    s.ElasticBehavior = Enum.ElasticBehavior.Always
-    s.Parent = p; return s
+    s.Parent = p
+    -- Canvas auto-update: connect after layout is added
+    local _canvasConnected = false
+    s.ChildAdded:Connect(function(child)
+        if _canvasConnected then return end
+        task.wait(0.1)
+        local layout = s:FindFirstChildOfClass("UIListLayout") or s:FindFirstChildOfClass("UIGridLayout")
+        if layout then
+            _canvasConnected = true
+            local function update()
+                s.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 60)
+            end
+            layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(update)
+            update()
+        end
+    end)
+    return s
 end
 
 local function Notify(title, msg, dur)
@@ -531,8 +545,7 @@ TabScr.BackgroundTransparency = 1
 TabScr.BorderSizePixel = 0
 TabScr.ScrollBarThickness = 0
 TabScr.ScrollingDirection = Enum.ScrollingDirection.X
-TabScr.CanvasSize = UDim2.new(0,0,0,0)
-TabScr.AutomaticCanvasSize = Enum.AutomaticCanvasSize.X
+TabScr.CanvasSize = UDim2.new(0, #TABS*92, 0, 0)
 TabScr.ZIndex = 11
 TabScr.Parent = TabBarOuter
 Pad(TabScr, 6,6,8,8)
@@ -2372,7 +2385,7 @@ do
         sn.Font=Enum.Font.GothamSemibold
         sn.TextColor3=C.Text
         sn.TextXAlignment=Enum.TextXAlignment.Left
-        sn.TextTruncate=Enum.TextTruncate.AtEnd
+        pcall(function() sn.TextTruncate=Enum.TextTruncate.AtEnd end)
         sn.ZIndex=13
         sn.Parent=row
 
