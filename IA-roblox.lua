@@ -298,14 +298,14 @@ local function sFLY() -- IY exact PC fly
             local sp=iyflyspeed*50
             SPEED=(CONTROL.L+CONTROL.R~=0 or CONTROL.F+CONTROL.B~=0 or CONTROL.Q+CONTROL.E~=0) and sp or 0
             if (CONTROL.L+CONTROL.R)~=0 or (CONTROL.F+CONTROL.B)~=0 or (CONTROL.Q+CONTROL.E)~=0 then
-                BV.Velocity=((Cam.CFrame.LookVector*(CONTROL.F+CONTROL.B))+((Cam.CFrame*CFrame.new(CONTROL.L+CONTROL.R,(CONTROL.Q+CONTROL.E)*0.2,0).p)-Cam.CFrame.p))*SPEED
+                BV.Velocity=((Cam.CFrame.LookVector*(CONTROL.F+CONTROL.B))+((Cam.CFrame*CFrame.new(CONTROL.L+CONTROL.R,(CONTROL.Q+CONTROL.E)*0.2,0)).Position-Cam.CFrame.Position))*SPEED
                 lCONTROL={F=CONTROL.F,B=CONTROL.B,L=CONTROL.L,R=CONTROL.R,Q=CONTROL.Q,E=CONTROL.E}
             elseif SPEED~=0 then
-                BV.Velocity=((Cam.CFrame.LookVector*(lCONTROL.F+lCONTROL.B))+((Cam.CFrame*CFrame.new(lCONTROL.L+lCONTROL.R,(lCONTROL.F+lCONTROL.B)*0.2,0).p)-Cam.CFrame.p))*SPEED
+                BV.Velocity=((Cam.CFrame.LookVector*(lCONTROL.F+lCONTROL.B))+((Cam.CFrame*CFrame.new(lCONTROL.L+lCONTROL.R,(lCONTROL.F+lCONTROL.B)*0.2,0)).Position-Cam.CFrame.Position))*SPEED
             else BV.Velocity=Vector3.zero end
             BG.CFrame=Cam.CFrame
         until not FLYING
-        pcall(function() if hum then hum.PlatformStand=false end BG:Destroy(); BV:Destroy() end)
+        pcall(function() if hum then hum.PlatformStand=false end; BG:Destroy(); BV:Destroy() end)
     end)
     flyKeyDown=UserInputService.InputBegan:Connect(function(input,proc)
         if proc then return end; local sp=iyflyspeed
