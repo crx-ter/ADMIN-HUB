@@ -310,9 +310,7 @@ TabFrames["TAB_VISUALS"].Visible = true
 Tabs["TAB_VISUALS"].TextColor3 = Theme.AccentColor
 
 -- VISUALES
-CreateToggle(VisualsTab, "ESP_BOX", function(state)
-    ESP.Enabled = state
-    print("ESP " .. (state and "✅ Activado" or "❌ Desactivado"))
+CreateToggle(VisualsTab, "ESP_BOX", function(state) end)
 end)CreateToggle(VisualsTab, "TRACERS", function(state) end)
 CreateToggle(VisualsTab, "ESP_NAMES", function(state) end)
 CreateToggle(VisualsTab, "ESP_HEALTH", function(state) end)
@@ -413,90 +411,5 @@ for _, opt in ipairs(LangOptions) do
         end
     end)
 end
-- =============================================
--- === VISUALS - ESP SYSTEM ===
--- =============================================
 
-local Camera = workspace.CurrentCamera
-
-local ESP = {
-    Enabled = false,
-    Boxes = {},
-    Tracers = {},
-    Names = {}
-}
-
-local function CreateESP(plr)
-    if plr == localPlayer then return end
-
-    local Box = Drawing.new("Square")
-    Box.Thickness = 1.8
-    Box.Filled = false
-    Box.Transparency = 1
-    Box.Color = Color3.fromRGB(255, 60, 60)
-
-    local Tracer = Drawing.new("Line")
-    Tracer.Thickness = 1.6
-    Tracer.Transparency = 1
-    Tracer.Color = Color3.fromRGB(0, 180, 255)
-
-    local Name = Drawing.new("Text")
-    Name.Size = 14
-    Name.Center = true
-    Name.Outline = true
-    Name.Color = Color3.new(1, 1, 1)
-    Name.Transparency = 1
-
-    ESP.Boxes[plr] = Box
-    ESP.Tracers[plr] = Tracer
-    ESP.Names[plr] = Name
-end
-
-local function UpdateESP()
-    if not ESP.Enabled then
-        for _, v in pairs(ESP.Boxes) do v.Visible = false end
-        for _, v in pairs(ESP.Tracers) do v.Visible = false end
-        for _, v in pairs(ESP.Names) do v.Visible = false end
-        return
-    end
-
-    for plr, box in pairs(ESP.Boxes) do
-        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            local root = plr.Character.HumanoidRootPart
-            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
-            
-            if onScreen then
-                local scale = 2800 / pos.Z
-                box.Size = Vector2.new(scale * 1.6, scale * 2.4)
-                box.Position = Vector2.new(pos.X - box.Size.X/2, pos.Y - box.Size.Y/2)
-                box.Visible = true
-
-                local tracer = ESP.Tracers[plr]
-                tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 40)
-                tracer.To = Vector2.new(pos.X, pos.Y)
-                tracer.Visible = true
-
-                local name = ESP.Names[plr]
-                name.Text = plr.Name
-                name.Position = Vector2.new(pos.X, pos.Y - box.Size.Y/2 - 20)
-                name.Visible = true
-            else
-                box.Visible = false
-                ESP.Tracers[plr].Visible = false
-                ESP.Names[plr].Visible = false
-            end
-        end
-    end
-end
-
--- Crear ESP para todos los jugadores
-for _, plr in ipairs(Players:GetPlayers()) do
-    CreateESP(plr)
-end
-Players.PlayerAdded:Connect(CreateESP)
-
--- Actualizar cada frame
-RunService.RenderStepped:Connect(UpdateESP)
-
-print("✅ Sistema ESP cargado correctamente")
 print("LXNDXN UI: Localization System loaded successfully.")
