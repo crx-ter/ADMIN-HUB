@@ -528,3 +528,4 @@ Players.PlayerAdded:Connect(CreateESP)
 RunService.RenderStepped:Connect(UpdateESP)
 
 print("✅ ESP System cargado y conectado")
+print("LXNDXN UI: Localization System loaded successfully.")
