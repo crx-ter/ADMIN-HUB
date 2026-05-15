@@ -310,11 +310,21 @@ TabFrames["TAB_VISUALS"].Visible = true
 Tabs["TAB_VISUALS"].TextColor3 = Theme.AccentColor
 
 -- VISUALES
-CreateToggle(VisualsTab, "ESP_BOX", function(state) end)
-CreateToggle(VisualsTab, "TRACERS", function(state) end)
-CreateToggle(VisualsTab, "ESP_NAMES", function(state) end)
-CreateToggle(VisualsTab, "ESP_HEALTH", function(state) end)
-CreateToggle(VisualsTab, "KATANA_STATUS", function(state) end)
+CreateToggle(VisualsTab, "ESP_BOX", function(state)
+    ESP.Enabled = state
+end)
+
+CreateToggle(VisualsTab, "TRACERS", function(state)
+    ESP.ShowTracers = state
+end)
+
+CreateToggle(VisualsTab, "ESP_NAMES", function(state)
+    ESP.ShowNames = state
+end)
+
+CreateToggle(VisualsTab, "ESP_HEALTH", function(state)
+    ESP.ShowHealth = state
+end)
 
 -- COMBATE
 local AimDropdown
@@ -411,5 +421,110 @@ for _, opt in ipairs(LangOptions) do
         end
     end)
 end
+-- =============================================
+-- === VISUALS - ESP SYSTEM (Lógica Real) ===
+-- =============================================
 
-print("LXNDXN UI: Localization System loaded successfully.")
+local Camera = workspace.CurrentCamera
+
+local ESP = {
+    Enabled = false,
+    ShowTracers = true,
+    ShowNames = true,
+    ShowHealth = true,
+    Boxes = {},
+    Tracers = {},
+    Names = {},
+    HealthBars = {}
+}
+
+local function CreateESP(plr)
+    if plr == localPlayer then return end
+
+    -- Box
+    local Box = Drawing.new("Square")
+    Box.Thickness = 1.6
+    Box.Filled = false
+    Box.Transparency = 0.9
+    Box.Color = Color3.fromRGB(255, 65, 65)
+
+    -- Tracer
+    local Tracer = Drawing.new("Line")
+    Tracer.Thickness = 1.4
+    Tracer.Transparency = 0.85
+    Tracer.Color = Color3.fromRGB(0, 170, 255)
+
+    -- Name
+    local Name = Drawing.new("Text")
+    Name.Size = 14
+    Name.Center = true
+    Name.Outline = true
+    Name.Color = Color3.new(1,1,1)
+    Name.Transparency = 1
+
+    ESP.Boxes[plr] = Box
+    ESP.Tracers[plr] = Tracer
+    ESP.Names[plr] = Name
+end
+
+local function UpdateESP()
+    if not ESP.Enabled then
+        for _, obj in pairs(ESP.Boxes) do obj.Visible = false end
+        for _, obj in pairs(ESP.Tracers) do obj.Visible = false end
+        for _, obj in pairs(ESP.Names) do obj.Visible = false end
+        return
+    end
+
+    for plr, box in pairs(ESP.Boxes) do
+        local char = plr.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
+            local root = char.HumanoidRootPart
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+
+            if onScreen then
+                local distance = (Camera.CFrame.Position - root.Position).Magnitude
+                local scale = 2600 / pos.Z
+
+                -- Box
+                box.Size = Vector2.new(scale * 1.7, scale * 2.6)
+                box.Position = Vector2.new(pos.X - box.Size.X/2, pos.Y - box.Size.Y/2)
+                box.Visible = true
+
+                -- Tracer
+                if ESP.ShowTracers then
+                    local tracer = ESP.Tracers[plr]
+                    tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y - 50)
+                    tracer.To = Vector2.new(pos.X, pos.Y + box.Size.Y/2)
+                    tracer.Visible = true
+                end
+
+                -- Name
+                if ESP.ShowNames then
+                    local name = ESP.Names[plr]
+                    name.Text = plr.Name .. " [" .. math.floor(distance) .. "m]"
+                    name.Position = Vector2.new(pos.X, pos.Y - box.Size.Y/2 - 18)
+                    name.Visible = true
+                end
+            else
+                box.Visible = false
+                ESP.Tracers[plr].Visible = false
+                ESP.Names[plr].Visible = false
+            end
+        else
+            box.Visible = false
+            if ESP.Tracers[plr] then ESP.Tracers[plr].Visible = false end
+            if ESP.Names[plr] then ESP.Names[plr].Visible = false end
+        end
+    end
+end
+
+-- Inicializar ESP
+for _, plr in ipairs(Players:GetPlayers()) do
+    CreateESP(plr)
+end
+Players.PlayerAdded:Connect(CreateESP)
+
+-- Loop del ESP
+RunService.RenderStepped:Connect(UpdateESP)
+
+print("✅ ESP System cargado y conectado")
