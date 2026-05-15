@@ -310,11 +310,41 @@ TabFrames["TAB_VISUALS"].Visible = true
 Tabs["TAB_VISUALS"].TextColor3 = Theme.AccentColor
 
 -- VISUALES
-CreateToggle(VisualsTab, "ESP_BOX", function(state) end)
-CreateToggle(VisualsTab, "TRACERS", function(state) end)
-CreateToggle(VisualsTab, "ESP_NAMES", function(state) end)
-CreateToggle(VisualsTab, "ESP_HEALTH", function(state) end)
-CreateToggle(VisualsTab, "KATANA_STATUS", function(state) end)
+-- ESP Box (Highlight)
+CreateToggle(VisualsTab, "ESP_BOX", function(state)
+    if state then
+        StartESPBoxes()
+    else
+        StopESPBoxes()
+    end
+end)
+
+-- Tracers
+CreateToggle(VisualsTab, "TRACERS", function(state)
+    if state then
+        StartTracers()
+    else
+        StopTracers()
+    end
+end)
+
+-- ESP Nombre
+CreateToggle(VisualsTab, "ESP_NAME", function(state)
+    if state then
+        StartESPName()
+    else
+        StopESPName()
+    end
+end)
+
+-- ESP Salud
+CreateToggle(VisualsTab, "ESP_HEALTH", function(state)
+    if state then
+        StartESPHealth()
+    else
+        StopESPHealth()
+    end
+end)
 
 -- COMBATE
 local AimDropdown
@@ -410,6 +440,248 @@ for _, opt in ipairs(LangOptions) do
             end
         end
     end)
+end
+
+----------------------------------------------------
+-- ESP BOX (Highlight)
+local ESPBoxEnabled = false
+local ESPHighlights = {}
+function StartESPBoxes()
+    ESPBoxEnabled = true
+    local Players = game:GetService("Players")
+    local localPlayer = Players.LocalPlayer
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and not ESPHighlights[player] then
+            local char = player.Character
+            local highlight = Instance.new("Highlight")
+            highlight.FillColor = Color3.fromRGB(255, 0, 0)
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            highlight.FillTransparency = 0.7
+            highlight.OutlineTransparency = 0.1
+            highlight.Adornee = char
+            highlight.Parent = char
+            ESPHighlights[player] = highlight
+        end
+    end
+    ESPBoxConnections = ESPBoxConnections or {}
+    ESPBoxConnections.PlayerAdded = Players.PlayerAdded:Connect(function(player)
+        ESPBoxConnections[player] = player.CharacterAdded:Connect(function(char)
+            if ESPBoxEnabled then
+                local highlight = Instance.new("Highlight")
+                highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = 0.7
+                highlight.OutlineTransparency = 0.1
+                highlight.Adornee = char
+                highlight.Parent = char
+                ESPHighlights[player] = highlight
+            end
+        end)
+    end)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and not ESPBoxConnections[player] then
+            ESPBoxConnections[player] = player.CharacterAdded:Connect(function(char)
+                if ESPBoxEnabled then
+                    local highlight = Instance.new("Highlight")
+                    highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    highlight.FillTransparency = 0.7
+                    highlight.OutlineTransparency = 0.1
+                    highlight.Adornee = char
+                    highlight.Parent = char
+                    ESPHighlights[player] = highlight
+                end
+            end)
+        end
+    end
+end
+function StopESPBoxes()
+    ESPBoxEnabled = false
+    for player, highlight in pairs(ESPHighlights) do
+        if highlight and highlight.Parent then
+            highlight:Destroy()
+        end
+        ESPHighlights[player] = nil
+    end
+    if ESPBoxConnections then
+        for key, conn in pairs(ESPBoxConnections) do
+            if typeof(conn) == "RBXScriptConnection" and conn.Connected then
+                conn:Disconnect()
+            end
+        end
+    end
+    ESPBoxConnections = {}
+end
+
+----------------------------------------------------
+-- TRACERS (usando Drawing API)
+local TracersEnabled = false
+local TracerDrawings = {}
+function StartTracers()
+    TracersEnabled = true
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local LocalPlayer = Players.LocalPlayer
+    TracerDrawings = {}
+
+    function CreateTracer(player)
+        local tracer = Drawing.new("Line")
+        tracer.Color = Color3.new(1, 1, 0) -- Amarillo
+        tracer.Thickness = 2
+        tracer.Transparency = 0.9
+        tracer.Visible = true
+        TracerDrawings[player] = tracer
+
+        RunService.RenderStepped:Connect(function()
+            if not TracersEnabled or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+                tracer.Visible = false
+                return
+            end
+            local hrp = player.Character.HumanoidRootPart
+            local cam = workspace.CurrentCamera
+            local pos, onScreen = cam:WorldToViewportPoint(hrp.Position)
+            if onScreen then
+                tracer.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
+                tracer.To = Vector2.new(pos.X, pos.Y)
+                tracer.Visible = true
+            else
+                tracer.Visible = false
+            end
+        end)
+    end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            CreateTracer(player)
+        end
+    end
+    TracerPlayerAdded = Players.PlayerAdded:Connect(function(player)
+        if player ~= LocalPlayer then
+            CreateTracer(player)
+        end
+    end)
+end
+function StopTracers()
+    TracersEnabled = false
+    for _, tracer in pairs(TracerDrawings) do
+        if tracer then tracer:Remove() end
+    end
+    TracerDrawings = {}
+    if TracerPlayerAdded and TracerPlayerAdded.Disconnect then TracerPlayerAdded:Disconnect() end
+end
+
+----------------------------------------------------
+-- ESP Nombre (BillboardGui)
+local ESPNamesEnabled = false
+local ESPNameUIs = {}
+function StartESPName()
+    ESPNamesEnabled = true
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+
+    function CreateName(player)
+        if player ~= LocalPlayer and player.Character and not player.Character:FindFirstChild("ESP_Name") then
+            local head = player.Character:FindFirstChild("Head")
+            if head then
+                local bb = Instance.new("BillboardGui")
+                bb.Name = "ESP_Name"
+                bb.Size = UDim2.new(0, 200, 0, 50)
+                bb.Adornee = head
+                bb.AlwaysOnTop = true
+                bb.StudsOffset = Vector3.new(0, 2.5, 0)
+                local text = Instance.new("TextLabel", bb)
+                text.Size = UDim2.new(1, 0, 1, 0)
+                text.BackgroundTransparency = 1
+                text.TextColor3 = Color3.new(1, 1, 1)
+                text.TextStrokeTransparency = 0
+                text.Text = player.Name
+                text.Font = Enum.Font.SourceSansBold
+                text.TextSize = 18
+                bb.Parent = head
+                ESPNameUIs[player] = bb
+            end
+        end
+    end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        CreateName(player)
+    end
+    ESPNamePlayerAdded = Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function()
+            CreateName(player)
+        end)
+    end)
+end
+function StopESPName()
+    ESPNamesEnabled = false
+    for player, bb in pairs(ESPNameUIs) do
+        if bb and bb.Parent then
+            bb:Destroy()
+        end
+    end
+    ESPNameUIs = {}
+    if ESPNamePlayerAdded and ESPNamePlayerAdded.Disconnect then ESPNamePlayerAdded:Disconnect() end
+end
+
+----------------------------------------------------
+-- ESP Salud (Health sobre la cabeza)
+local ESPHealthEnabled = false
+local ESPHealthUIs = {}
+function StartESPHealth()
+    ESPHealthEnabled = true
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+
+    function CreateHealth(player)
+        if player ~= LocalPlayer and player.Character and not player.Character:FindFirstChild("ESP_Health") then
+            local head = player.Character:FindFirstChild("Head")
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if head and humanoid then
+                local bb = Instance.new("BillboardGui")
+                bb.Name = "ESP_Health"
+                bb.Size = UDim2.new(0, 120, 0, 25)
+                bb.Adornee = head
+                bb.AlwaysOnTop = true
+                bb.StudsOffset = Vector3.new(0, 3.6, 0)
+                local bar = Instance.new("Frame", bb)
+                bar.Size = UDim2.new(1, 0, 1, 0)
+                bar.BackgroundColor3 = Color3.fromRGB(30, 220, 30)
+                local text = Instance.new("TextLabel", bb)
+                text.Size = UDim2.new(1, 0, 1, 0)
+                text.BackgroundTransparency = 1
+                text.TextColor3 = Color3.new(1, 1, 1)
+                text.TextStrokeTransparency = 0
+                text.Text = tostring(math.floor(humanoid.Health)).." / "..tostring(math.floor(humanoid.MaxHealth))
+                text.Font = Enum.Font.SourceSansBold
+                text.TextScaled = true
+                ESPHealthUIs[player] = bb
+                -- Actualizador
+                humanoid.HealthChanged:Connect(function(hp)
+                    text.Text = tostring(math.floor(hp)).." / "..tostring(math.floor(humanoid.MaxHealth))
+                end)
+                bb.Parent = head
+            end
+        end
+    end
+    for _, player in ipairs(Players:GetPlayers()) do
+        CreateHealth(player)
+    end
+    ESPHealthPlayerAdded = Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function()
+            CreateHealth(player)
+        end)
+    end)
+end
+function StopESPHealth()
+    ESPHealthEnabled = false
+    for player, bb in pairs(ESPHealthUIs) do
+        if bb and bb.Parent then
+            bb:Destroy()
+        end
+    end
+    ESPHealthUIs = {}
+    if ESPHealthPlayerAdded and ESPHealthPlayerAdded.Disconnect then ESPHealthPlayerAdded:Disconnect() end
 end
 
 print("LXNDXN UI: Localization System loaded successfully.")
