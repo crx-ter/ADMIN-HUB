@@ -1,687 +1,2357 @@
--- LXNDXN --
--- Desarrollado para experiencia Premium Mobile (Estilo iOS Glassmorphism)
+-- ┌─────────────────────────────────────────────────────────┐
+-- │               SERVICIOS DE ROBLOX                       │
+-- └─────────────────────────────────────────────────────────┘
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+local RunService        = game:GetService("RunService")
+local Players           = game:GetService("Players")
+local HttpService       = game:GetService("HttpService")
+local CoreGui           = game:GetService("CoreGui")
+local StarterGui        = game:GetService("StarterGui")
+local Workspace         = game:GetService("Workspace")
+local Camera            = Workspace.CurrentCamera
 
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
+-- ┌─────────────────────────────────────────────────────────┐
+-- │         JUGADOR LOCAL + PARENT DEL GUI                  │
+-- └─────────────────────────────────────────────────────────┘
+local LocalPlayer   = Players.LocalPlayer
+local PlayerGui     = LocalPlayer:WaitForChild("PlayerGui")
 
-local localPlayer = Players.LocalPlayer
-local guiParent = pcall(function() return game:GetService("CoreGui") end) and game:GetService("CoreGui") or localPlayer:WaitForChild("PlayerGui")
+-- Intentamos usar CoreGui para mayor seguridad/ocultación
+-- Si falla (ejecutor no lo permite), caemos a PlayerGui
+local guiParent
+local ok = pcall(function()
+    local t = Instance.new("ScreenGui")
+    t.Parent = CoreGui
+    t:Destroy()
+    guiParent = CoreGui
+end)
+if not ok then guiParent = PlayerGui end
 
--- === DICCIONARIO DE TRADUCCIONES ===
-local CurrentLanguage = "Español"
+-- ┌─────────────────────────────────────────────────────────┐
+-- │            SISTEMA DE CONFIGURACIÓN GLOBAL              │
+-- └─────────────────────────────────────────────────────────┘
+-- Aquí guardamos TODOS los valores de toggles/sliders/dropdowns
+-- en tiempo real. También se usa para serializar a JSON.
+local Config = {
+    -- VISUALES
+    ESP_BOX         = false,
+    TRACERS         = false,
+    ESP_NAMES       = false,
+    ESP_HEALTH      = false,
+    KATANA_STATUS   = false,
+    -- COMBATE
+    SILENT_AIM      = false,
+    SILENT_AIM_DIR  = "DIR_HEAD",
+    HIT_CHANCE_ON   = false,
+    HIT_CHANCE_VAL  = 100,
+    SHOW_FOV        = false,
+    FOV_RADIUS      = 50,
+    PREDICTION      = false,
+    TRIGGER_BOT     = false,
+    -- MÍSTICO
+    ANTI_KATANA     = false,
+    RESOLVER        = false,
+    ANTI_LOCK       = false,
+    -- MOVIMIENTO
+    MOD_SPEED       = false,
+    WALK_SPEED      = 16,
+    FLY_ON          = false,
+    FLY_SPEED       = 50,
+    -- AJUSTES
+    AUTO_LOAD       = false,
+    PERF_MODE       = false,
+    PIN_BTN         = false,
+    HIDE_BTN        = false,
+    LANGUAGE        = "Español",
+}
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │         SISTEMA DE LOCALIZACIÓN (i18n) AVANZADO        │
+-- └─────────────────────────────────────────────────────────┘
+local CurrentLanguage = Config.LANGUAGE
 
 local Lang = {
     ["Español"] = {
-        TAB_VISUALS = "VISUALES", TAB_COMBAT = "COMBATE", TAB_MISTIC = "MÍSTICO", TAB_MOVEMENT = "MOVIMIENTO", TAB_SETTINGS = "AJUSTES",
-        ESP_BOX = "Cajas ESP", TRACERS = "Trazadoras", ESP_NAMES = "Nombres", ESP_HEALTH = "Vida", KATANA_STATUS = "Estado de Katana",
-        SILENT_AIM = "Apuntado Silencioso", DIR_TITLE = "Dirección", DIR_HEAD = "Cabeza", DIR_CHEST = "Pecho", DIR_ALL = "General",
-        HIT_CHANCE_ON = "Activar Probabilidad de Acierto", HIT_CHANCE_VAL = "Porcentaje de Acierto (%)",
-        SHOW_FOV = "Mostrar FOV", FOV_RADIUS = "Radio del FOV", PREDICTION = "Predicción", TRIGGER_BOT = "Gatillo Automático",
+        TAB_VISUALS = "VISUALES", TAB_COMBAT = "COMBATE", TAB_MISTIC = "MÍSTICO",
+        TAB_MOVEMENT = "MOVIMIENTO", TAB_SETTINGS = "AJUSTES",
+        ESP_BOX = "Cajas ESP", TRACERS = "Trazadoras", ESP_NAMES = "Nombres",
+        ESP_HEALTH = "Vida", KATANA_STATUS = "Estado de Katana",
+        SILENT_AIM = "Apuntado Silencioso", DIR_TITLE = "Dirección",
+        DIR_HEAD = "Cabeza", DIR_CHEST = "Pecho", DIR_ALL = "General",
+        HIT_CHANCE_ON = "Activar Probabilidad de Acierto", HIT_CHANCE_VAL = "Porcentaje (%)",
+        SHOW_FOV = "Mostrar FOV", FOV_RADIUS = "Radio del FOV",
+        PREDICTION = "Predicción", TRIGGER_BOT = "Gatillo Automático",
         ANTI_KATANA = "Anti-Katana", RESOLVER = "Resolver", ANTI_LOCK = "Anti-Bloqueo",
-        MOD_SPEED = "Modificar Velocidad", WALK_SPEED = "Velocidad de Caminado", FLY_ON = "Volar", FLY_SPEED = "Velocidad de Vuelo",
-        SAVE_CFG = "Guardar Configuración", LOAD_CFG = "Cargar Configuración", AUTO_LOAD = "Carga Automática", PERF_MODE = "Modo Rendimiento",
-        PIN_BTN = "Fijar Botón Flotante", HIDE_BTN = "Ocultar Botón Flotante", LANG_TITLE = "Cambiar Idioma"
+        MOD_SPEED = "Modificar Velocidad", WALK_SPEED = "Velocidad de Caminado",
+        FLY_ON = "Volar", FLY_SPEED = "Velocidad de Vuelo",
+        SAVE_CFG = "Guardar Config", LOAD_CFG = "Cargar Config",
+        AUTO_LOAD = "Carga Automática", PERF_MODE = "Modo Rendimiento",
+        PIN_BTN = "Fijar Botón", HIDE_BTN = "Ocultar Botón",
+        LANG_TITLE = "Idioma",
     },
     ["Inglés"] = {
-        TAB_VISUALS = "VISUALS", TAB_COMBAT = "COMBAT", TAB_MISTIC = "MYSTIC", TAB_MOVEMENT = "MOVEMENT", TAB_SETTINGS = "SETTINGS",
-        ESP_BOX = "ESP Boxes", TRACERS = "Tracers", ESP_NAMES = "Names", ESP_HEALTH = "Health", KATANA_STATUS = "Katana Status",
-        SILENT_AIM = "Silent Aim", DIR_TITLE = "Target Part", DIR_HEAD = "Head", DIR_CHEST = "Chest", DIR_ALL = "General",
+        TAB_VISUALS = "VISUALS", TAB_COMBAT = "COMBAT", TAB_MISTIC = "MYSTIC",
+        TAB_MOVEMENT = "MOVEMENT", TAB_SETTINGS = "SETTINGS",
+        ESP_BOX = "ESP Boxes", TRACERS = "Tracers", ESP_NAMES = "Names",
+        ESP_HEALTH = "Health", KATANA_STATUS = "Katana Status",
+        SILENT_AIM = "Silent Aim", DIR_TITLE = "Target Part",
+        DIR_HEAD = "Head", DIR_CHEST = "Chest", DIR_ALL = "General",
         HIT_CHANCE_ON = "Enable Hit Chance", HIT_CHANCE_VAL = "Hit Chance (%)",
-        SHOW_FOV = "Show FOV", FOV_RADIUS = "FOV Radius", PREDICTION = "Prediction", TRIGGER_BOT = "Trigger Bot",
+        SHOW_FOV = "Show FOV", FOV_RADIUS = "FOV Radius",
+        PREDICTION = "Prediction", TRIGGER_BOT = "Trigger Bot",
         ANTI_KATANA = "Anti-Katana", RESOLVER = "Resolver", ANTI_LOCK = "Anti-Lock",
-        MOD_SPEED = "Modify Speed", WALK_SPEED = "Walk Speed", FLY_ON = "Fly", FLY_SPEED = "Fly Speed",
-        SAVE_CFG = "Save Config", LOAD_CFG = "Load Config", AUTO_LOAD = "Auto Load", PERF_MODE = "Performance Mode",
-        PIN_BTN = "Pin Float Button", HIDE_BTN = "Hide Float Button", LANG_TITLE = "Change Language"
+        MOD_SPEED = "Modify Speed", WALK_SPEED = "Walk Speed",
+        FLY_ON = "Fly", FLY_SPEED = "Fly Speed",
+        SAVE_CFG = "Save Config", LOAD_CFG = "Load Config",
+        AUTO_LOAD = "Auto Load", PERF_MODE = "Performance Mode",
+        PIN_BTN = "Pin Button", HIDE_BTN = "Hide Button",
+        LANG_TITLE = "Language",
     },
     ["Portugués"] = {
-        TAB_VISUALS = "VISUAIS", TAB_COMBAT = "COMBATE", TAB_MISTIC = "MÍSTICO", TAB_MOVEMENT = "MOVIMENTO", TAB_SETTINGS = "CONFIGURAÇÕES",
-        ESP_BOX = "Caixas ESP", TRACERS = "Rastreadores", ESP_NAMES = "Nomes", ESP_HEALTH = "Vida", KATANA_STATUS = "Status da Katana",
-        SILENT_AIM = "Mira Silenciosa", DIR_TITLE = "Direção", DIR_HEAD = "Cabeça", DIR_CHEST = "Peito", DIR_ALL = "Geral",
-        HIT_CHANCE_ON = "Ativar Chance de Acerto", HIT_CHANCE_VAL = "Chance de Acerto (%)",
-        SHOW_FOV = "Mostrar FOV", FOV_RADIUS = "Raio do FOV", PREDICTION = "Previsão", TRIGGER_BOT = "Gatilho Automático",
+        TAB_VISUALS = "VISUAIS", TAB_COMBAT = "COMBATE", TAB_MISTIC = "MÍSTICO",
+        TAB_MOVEMENT = "MOVIMENTO", TAB_SETTINGS = "CONFIGURAÇÕES",
+        ESP_BOX = "Caixas ESP", TRACERS = "Rastreadores", ESP_NAMES = "Nomes",
+        ESP_HEALTH = "Vida", KATANA_STATUS = "Status da Katana",
+        SILENT_AIM = "Mira Silenciosa", DIR_TITLE = "Direção",
+        DIR_HEAD = "Cabeça", DIR_CHEST = "Peito", DIR_ALL = "Geral",
+        HIT_CHANCE_ON = "Ativar Chance de Acerto", HIT_CHANCE_VAL = "Chance (%)",
+        SHOW_FOV = "Mostrar FOV", FOV_RADIUS = "Raio do FOV",
+        PREDICTION = "Previsão", TRIGGER_BOT = "Gatilho Automático",
         ANTI_KATANA = "Anti-Katana", RESOLVER = "Resolver", ANTI_LOCK = "Anti-Bloqueio",
-        MOD_SPEED = "Modificar Velocidade", WALK_SPEED = "Velocidade de Caminhada", FLY_ON = "Voar", FLY_SPEED = "Velocidade de Voo",
-        SAVE_CFG = "Salvar Configuração", LOAD_CFG = "Carregar Configuração", AUTO_LOAD = "Carregamento Automático", PERF_MODE = "Modo Desempenho",
-        PIN_BTN = "Fixar Botão Flutuante", HIDE_BTN = "Ocultar Botão Flutuante", LANG_TITLE = "Mudar Idioma"
+        MOD_SPEED = "Modificar Velocidade", WALK_SPEED = "Velocidade",
+        FLY_ON = "Voar", FLY_SPEED = "Velocidade de Voo",
+        SAVE_CFG = "Salvar Config", LOAD_CFG = "Carregar Config",
+        AUTO_LOAD = "Carregamento Automático", PERF_MODE = "Modo Desempenho",
+        PIN_BTN = "Fixar Botão", HIDE_BTN = "Ocultar Botão",
+        LANG_TITLE = "Idioma",
     },
     ["Ruso"] = {
-        TAB_VISUALS = "ВИЗУАЛЫ", TAB_COMBAT = "БОЙ", TAB_MISTIC = "МИСТИКА", TAB_MOVEMENT = "ДВИЖЕНИЕ", TAB_SETTINGS = "НАСТРОЙКИ",
-        ESP_BOX = "ESP Коробки", TRACERS = "Трейсеры", ESP_NAMES = "Имена", ESP_HEALTH = "Здоровье", KATANA_STATUS = "Статус Катаны",
-        SILENT_AIM = "Тихий Аим", DIR_TITLE = "Цель", DIR_HEAD = "Голова", DIR_CHEST = "Грудь", DIR_ALL = "Общее",
-        HIT_CHANCE_ON = "Шанс Попадания", HIT_CHANCE_VAL = "Шанс Попадания (%)",
-        SHOW_FOV = "Показать FOV", FOV_RADIUS = "Радиус FOV", PREDICTION = "Предугадывание", TRIGGER_BOT = "Автоспуск",
+        TAB_VISUALS = "ВИЗУАЛЫ", TAB_COMBAT = "БОЙ", TAB_MISTIC = "МИСТИКА",
+        TAB_MOVEMENT = "ДВИЖЕНИЕ", TAB_SETTINGS = "НАСТРОЙКИ",
+        ESP_BOX = "ESP Коробки", TRACERS = "Трейсеры", ESP_NAMES = "Имена",
+        ESP_HEALTH = "Здоровье", KATANA_STATUS = "Статус Катаны",
+        SILENT_AIM = "Тихий Аим", DIR_TITLE = "Цель",
+        DIR_HEAD = "Голова", DIR_CHEST = "Грудь", DIR_ALL = "Общее",
+        HIT_CHANCE_ON = "Шанс Попадания", HIT_CHANCE_VAL = "Шанс (%)",
+        SHOW_FOV = "Показать FOV", FOV_RADIUS = "Радиус FOV",
+        PREDICTION = "Предугадывание", TRIGGER_BOT = "Автоспуск",
         ANTI_KATANA = "Анти-Катана", RESOLVER = "Резольвер", ANTI_LOCK = "Анти-Захват",
-        MOD_SPEED = "Изменить Скорость", WALK_SPEED = "Скорость Ходьбы", FLY_ON = "Полет", FLY_SPEED = "Скорость Полета",
-        SAVE_CFG = "Сохранить Конфиг", LOAD_CFG = "Загрузить Конфиг", AUTO_LOAD = "Автозагрузка", PERF_MODE = "Производительность",
-        PIN_BTN = "Закрепить Кнопку", HIDE_BTN = "Скрыть Кнопку", LANG_TITLE = "Изменить Язык"
+        MOD_SPEED = "Изменить Скорость", WALK_SPEED = "Скорость Ходьбы",
+        FLY_ON = "Полет", FLY_SPEED = "Скорость Полета",
+        SAVE_CFG = "Сохранить", LOAD_CFG = "Загрузить",
+        AUTO_LOAD = "Автозагрузка", PERF_MODE = "Производительность",
+        PIN_BTN = "Закрепить", HIDE_BTN = "Скрыть",
+        LANG_TITLE = "Язык",
     },
-    ["Pastún (Afganistán)"] = {
-        TAB_VISUALS = "لیدونه", TAB_COMBAT = "جګړه", TAB_MISTIC = "صوفیانه", TAB_MOVEMENT = "حرکت", TAB_SETTINGS = "تنظیمات",
-        ESP_BOX = "ESP بکسونه", TRACERS = "تعقیبونکي", ESP_NAMES = "نومونه", ESP_HEALTH = "روغتیا", KATANA_STATUS = "د کټانا حالت",
-        SILENT_AIM = "خاموش هدف", DIR_TITLE = "لارښوونه", DIR_HEAD = "سر", DIR_CHEST = "سینه", DIR_ALL = "عمومي",
-        HIT_CHANCE_ON = "د وهلو چانس فعال کړئ", HIT_CHANCE_VAL = "د وهلو چانس (%)",
-        SHOW_FOV = "FOV وښایاست", FOV_RADIUS = "د FOV شعاع", PREDICTION = "وړاندوینه", TRIGGER_BOT = "اتوماتیک محرک",
+    ["Pastún"] = {
+        TAB_VISUALS = "لیدونه", TAB_COMBAT = "جګړه", TAB_MISTIC = "صوفیانه",
+        TAB_MOVEMENT = "حرکت", TAB_SETTINGS = "تنظیمات",
+        ESP_BOX = "ESP بکسونه", TRACERS = "تعقیبونکي", ESP_NAMES = "نومونه",
+        ESP_HEALTH = "روغتیا", KATANA_STATUS = "د کټانا حالت",
+        SILENT_AIM = "خاموش هدف", DIR_TITLE = "لارښوونه",
+        DIR_HEAD = "سر", DIR_CHEST = "سینه", DIR_ALL = "عمومي",
+        HIT_CHANCE_ON = "د وهلو چانس", HIT_CHANCE_VAL = "چانس (%)",
+        SHOW_FOV = "FOV وښایاست", FOV_RADIUS = "د FOV شعاع",
+        PREDICTION = "وړاندوینه", TRIGGER_BOT = "اتوماتیک محرک",
         ANTI_KATANA = "انټي-کټانا", RESOLVER = "حل کوونکی", ANTI_LOCK = "انټي-لاک",
-        MOD_SPEED = "سرعت بدل کړئ", WALK_SPEED = "د تګ سرعت", FLY_ON = "الوتنه", FLY_SPEED = "د الوتنې سرعت",
-        SAVE_CFG = "تشکیلات خوندي کړئ", LOAD_CFG = "تشکیلات بار کړئ", AUTO_LOAD = "اتومات بار", PERF_MODE = "د فعالیت حالت",
-        PIN_BTN = "تڼۍ پن کړئ", HIDE_BTN = "تڼۍ پټ کړئ", LANG_TITLE = "ژبه بدله کړئ"
-    }
+        MOD_SPEED = "سرعت بدل کړئ", WALK_SPEED = "د تګ سرعت",
+        FLY_ON = "الوتنه", FLY_SPEED = "د الوتنې سرعت",
+        SAVE_CFG = "خوندي کړئ", LOAD_CFG = "بار کړئ",
+        AUTO_LOAD = "اتومات بار", PERF_MODE = "فعالیت",
+        PIN_BTN = "پن کړئ", HIDE_BTN = "پټ کړئ",
+        LANG_TITLE = "ژبه",
+    },
 }
 
--- Registro de elementos para actualización en tiempo real
+-- Tabla de todos los elementos que deben actualizarse al cambiar idioma
 local TranslatingElements = {}
 
+-- Registra un elemento UI para que reciba traducciones automáticamente
 local function RegisterTranslation(instance, type, key, extra)
-    table.insert(TranslatingElements, {UI = instance, Type = type, Key = key, Extra = extra})
-    -- Aplicar texto inicial
+    table.insert(TranslatingElements, { UI = instance, Type = type, Key = key, Extra = extra or {} })
+    -- Aplica la traducción inmediatamente
     if type == "Text" then
-        instance.Text = Lang[CurrentLanguage][key]
+        instance.Text = Lang[CurrentLanguage][key] or key
     elseif type == "DropdownTitle" then
-        instance.Text = Lang[CurrentLanguage][key] .. ": " .. (Lang[CurrentLanguage][extra.CurrentSelectionKey] or extra.CurrentSelectionKey)
+        local sel = extra and (Lang[CurrentLanguage][extra.CurrentSelectionKey] or extra.CurrentSelectionKey) or ""
+        instance.Text = (Lang[CurrentLanguage][key] or key) .. ": " .. sel
     elseif type == "DropdownOption" then
-        instance.Text = "  " .. Lang[CurrentLanguage][key]
+        instance.Text = "  " .. (Lang[CurrentLanguage][key] or key)
     end
 end
 
+-- Actualiza todos los elementos registrados con el nuevo idioma
 local function UpdateLanguage(newLang)
     CurrentLanguage = newLang
+    Config.LANGUAGE = newLang
     for _, item in ipairs(TranslatingElements) do
+        local langTable = Lang[CurrentLanguage]
         if item.Type == "Text" then
-            item.UI.Text = Lang[CurrentLanguage][item.Key]
+            item.UI.Text = langTable[item.Key] or item.Key
         elseif item.Type == "DropdownTitle" then
-            local sel = Lang[CurrentLanguage][item.Extra.CurrentSelectionKey] or item.Extra.CurrentSelectionKey
-            item.UI.Text = Lang[CurrentLanguage][item.Key] .. ": " .. sel
+            local sel = langTable[item.Extra.CurrentSelectionKey] or item.Extra.CurrentSelectionKey or ""
+            item.UI.Text = (langTable[item.Key] or item.Key) .. ": " .. sel
         elseif item.Type == "DropdownOption" then
-            item.UI.Text = "  " .. Lang[CurrentLanguage][item.Key]
+            item.UI.Text = "  " .. (langTable[item.Key] or item.Key)
         end
     end
 end
 
--- === VARIABLES GLOBALES DE TEMA ===
+-- ┌─────────────────────────────────────────────────────────┐
+-- │              SISTEMA DE EVENTOS INTERNO                 │
+-- └─────────────────────────────────────────────────────────┘
+-- Un bus de eventos simple para comunicar módulos sin acoplamiento
+local EventBus = {}
+EventBus._listeners = {}
+
+function EventBus:On(event, callback)
+    if not self._listeners[event] then self._listeners[event] = {} end
+    table.insert(self._listeners[event], callback)
+end
+
+function EventBus:Fire(event, ...)
+    if self._listeners[event] then
+        for _, cb in ipairs(self._listeners[event]) do
+            pcall(cb, ...)
+        end
+    end
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │        SISTEMA DE TEMA / VARIABLES DE DISEÑO            │
+-- └─────────────────────────────────────────────────────────┘
 local Theme = {
-    MainColor = Color3.fromRGB(15, 15, 18), GlassTransparency = 0.35, AccentColor = Color3.fromRGB(10, 132, 255),
-    TextColor = Color3.fromRGB(255, 255, 255), SecondaryText = Color3.fromRGB(170, 170, 170),
-    BorderColor = Color3.fromRGB(255, 255, 255), BorderTransparency = 0.85, DropdownColor = Color3.fromRGB(30, 30, 35)
+    -- Colores principales
+    MainColor           = Color3.fromRGB(10, 10, 14),
+    GlassTransparency   = 0.30,
+    AccentColor         = Color3.fromRGB(10, 132, 255),
+    AccentSecondary     = Color3.fromRGB(48, 209, 88),   -- verde para "activo"
+    DangerColor         = Color3.fromRGB(255, 69, 58),   -- rojo para advertencias
+    TextColor           = Color3.fromRGB(245, 245, 250),
+    SecondaryText       = Color3.fromRGB(160, 160, 170),
+    BorderColor         = Color3.fromRGB(255, 255, 255),
+    BorderTransparency  = 0.82,
+    DropdownColor       = Color3.fromRGB(22, 22, 28),
+    CardColor           = Color3.fromRGB(20, 20, 26),
+    CardTransparency    = 0.50,
+    -- Animaciones
+    TweenDuration       = 0.3,
+    TweenStyle          = Enum.EasingStyle.Quart,
+    TweenDir            = Enum.EasingDirection.Out,
 }
 
+-- ┌─────────────────────────────────────────────────────────┐
+-- │              HELPERS / UTILIDADES GENERALES             │
+-- └─────────────────────────────────────────────────────────┘
+
+-- Crea una instancia Roblox con propiedades de forma limpia
 local function Create(className, properties)
     local inst = Instance.new(className)
-    for k, v in pairs(properties) do if k ~= "Parent" then inst[k] = v end end
+    for k, v in pairs(properties) do
+        if k ~= "Parent" then inst[k] = v end
+    end
     if properties.Parent then inst.Parent = properties.Parent end
     return inst
 end
 
-local function Tween(object, properties, duration)
-    local tw = TweenService:Create(object, TweenInfo.new(duration or 0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), properties)
-    tw:Play() return tw
+-- Crea un Tween con los valores del tema global
+local function Tween(object, props, duration, style, dir)
+    local info = TweenInfo.new(
+        duration or Theme.TweenDuration,
+        style    or Theme.TweenStyle,
+        dir      or Theme.TweenDir
+    )
+    local tw = TweenService:Create(object, info, props)
+    tw:Play()
+    return tw
 end
 
--- === UI PRINCIPAL ===
-local ScreenGui = Create("ScreenGui", { Name = "LXNDXN_UI", Parent = guiParent, ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 999 })
+-- Aplica una sombra de drop-shadow a un Frame usando ImageLabel
+local function ApplyShadow(frame, offset, transparency)
+    offset        = offset or 15
+    transparency  = transparency or 0.6
+    local shadow = Create("ImageLabel", {
+        Name               = "Shadow",
+        Parent             = frame,
+        AnchorPoint        = Vector2.new(0.5, 0.5),
+        BackgroundTransparency = 1,
+        Position           = UDim2.new(0.5, 0, 0.5, offset / 2),
+        Size               = UDim2.new(1, offset * 2, 1, offset * 2),
+        ZIndex             = frame.ZIndex - 1,
+        Image              = "rbxassetid://5028857084",
+        ImageColor3        = Color3.fromRGB(0, 0, 0),
+        ImageTransparency  = transparency,
+        ScaleType          = Enum.ScaleType.Slice,
+        SliceCenter        = Rect.new(24, 24, 276, 276),
+    })
+    return shadow
+end
 
+-- Actualiza el CanvasSize de un ScrollingFrame según su contenido
+local function UpdateCanvasSize(scrollFrame)
+    local layout = scrollFrame:FindFirstChildOfClass("UIListLayout")
+    if layout then
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 24)
+    end
+end
+
+-- Redondea un número a N decimales
+local function Round(n, decimals)
+    local factor = 10 ^ (decimals or 0)
+    return math.floor(n * factor + 0.5) / factor
+end
+
+-- Obtiene el mejor objetivo del juego según distancia al centro de pantalla
+-- (esto es usada por SilentAim, TriggerBot, etc.)
+local function GetClosestPlayerToMouse(maxRadius)
+    maxRadius = maxRadius or Config.FOV_RADIUS
+    local closestPlayer  = nil
+    local closestDist    = math.huge
+    local viewportCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            -- Intentamos apuntar a la parte configurada
+            local partName = "HumanoidRootPart"
+            if Config.SILENT_AIM_DIR == "DIR_HEAD" then
+                partName = "Head"
+            elseif Config.SILENT_AIM_DIR == "DIR_CHEST" then
+                partName = "UpperTorso"
+            end
+
+            local part = player.Character:FindFirstChild(partName)
+                      or player.Character:FindFirstChild("HumanoidRootPart")
+
+            if part then
+                -- Verificamos que el jugador esté vivo
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - viewportCenter).Magnitude
+                        if dist2D < maxRadius and dist2D < closestDist then
+                            closestDist   = dist2D
+                            closestPlayer = player
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closestPlayer, closestDist
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │       CONSTRUCCIÓN DE LA INTERFAZ DE USUARIO            │
+-- └─────────────────────────────────────────────────────────┘
+
+-- ScreenGui principal
+local ScreenGui = Create("ScreenGui", {
+    Name            = "LXNDXN_UI_v3",
+    Parent          = guiParent,
+    ResetOnSpawn    = false,
+    IgnoreGuiInset  = true,
+    DisplayOrder    = 999,
+    ZIndexBehavior  = Enum.ZIndexBehavior.Sibling,
+})
+
+-- ── BOTÓN FLOTANTE ──────────────────────────────────────────
 local FloatButton = Create("TextButton", {
-    Name = "FloatButton", Parent = ScreenGui, Size = UDim2.new(0, 50, 0, 50), Position = UDim2.new(0.5, 0, 0.1, 0),
-    AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.MainColor, BackgroundTransparency = Theme.GlassTransparency,
-    Text = "L", TextColor3 = Theme.TextColor, TextTransparency = 0, TextScaled = true, Font = Enum.Font.GothamBold, ClipsDescendants = true
+    Name                = "FloatButton",
+    Parent              = ScreenGui,
+    Size                = UDim2.new(0, 52, 0, 52),
+    Position            = UDim2.new(0.92, 0, 0.08, 0),
+    AnchorPoint         = Vector2.new(0.5, 0.5),
+    BackgroundColor3    = Theme.AccentColor,
+    BackgroundTransparency = 0.15,
+    Text                = "⚡",
+    TextColor3          = Color3.fromRGB(255, 255, 255),
+    TextTransparency    = 0,
+    TextScaled          = true,
+    Font                = Enum.Font.GothamBold,
+    ClipsDescendants    = true,
+    ZIndex              = 10,
 })
-local FloatCorner = Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = FloatButton })
-local FloatStroke = Create("UIStroke", { Color = Theme.BorderColor, Transparency = Theme.BorderTransparency, Thickness = 1.5, Parent = FloatButton })
+Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = FloatButton })
+local FloatStroke = Create("UIStroke", {
+    Color           = Color3.fromRGB(255, 255, 255),
+    Transparency    = 0.7,
+    Thickness       = 1.5,
+    Parent          = FloatButton,
+})
+-- Efecto de pulso en el botón flotante para indicar que está activo
+local pulseTween
+local function StartButtonPulse()
+    if pulseTween then pulseTween:Cancel() end
+    local function doPulse()
+        pulseTween = Tween(FloatButton, { BackgroundTransparency = 0.4 }, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        pulseTween.Completed:Connect(function()
+            pulseTween = Tween(FloatButton, { BackgroundTransparency = 0.1 }, 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+            pulseTween.Completed:Connect(doPulse)
+        end)
+    end
+    doPulse()
+end
+StartButtonPulse()
 
+-- ── VENTANA PRINCIPAL ────────────────────────────────────────
 local MainFrame = Create("Frame", {
-    Name = "MainFrame", Parent = ScreenGui, Size = UDim2.new(0, 480, 0, 383), Position = UDim2.new(0.5, 0, 0.5, 0),
-    AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Theme.MainColor, BackgroundTransparency = Theme.GlassTransparency,
-    ClipsDescendants = true, Visible = false
+    Name                = "MainFrame",
+    Parent              = ScreenGui,
+    Size                = UDim2.new(0, 500, 0, 410),
+    Position            = UDim2.new(0.5, 0, 0.5, 0),
+    AnchorPoint         = Vector2.new(0.5, 0.5),
+    BackgroundColor3    = Theme.MainColor,
+    BackgroundTransparency = Theme.GlassTransparency,
+    ClipsDescendants    = true,
+    Visible             = false,
+    ZIndex              = 5,
 })
-Create("UICorner", { CornerRadius = UDim.new(0, 16), Parent = MainFrame })
-Create("UIStroke", { Color = Theme.BorderColor, Transparency = Theme.BorderTransparency, Thickness = 1, Parent = MainFrame })
+Create("UICorner", { CornerRadius = UDim.new(0, 18), Parent = MainFrame })
+Create("UIStroke", {
+    Color        = Theme.BorderColor,
+    Transparency = Theme.BorderTransparency,
+    Thickness    = 1,
+    Parent       = MainFrame,
+})
+ApplyShadow(MainFrame, 30, 0.5)
 
-local TopBar = Create("Frame", { Name = "TopBar", Parent = MainFrame, Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1 })
-Create("TextLabel", { Name = "Title", Parent = TopBar, Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 20, 0, 0), BackgroundTransparency = 1, Text = "LXNDXN", TextColor3 = Theme.TextColor, Font = Enum.Font.GothamBold, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left })
+-- Línea decorativa de acento en la parte superior
+local AccentLine = Create("Frame", {
+    Name                = "AccentLine",
+    Parent              = MainFrame,
+    Size                = UDim2.new(0.6, 0, 0, 2),
+    Position            = UDim2.new(0.2, 0, 0, 0),
+    BackgroundColor3    = Theme.AccentColor,
+    BorderSizePixel     = 0,
+    ZIndex              = 6,
+})
+Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = AccentLine })
+-- Animación de brillo en la línea de acento
+spawn(function()
+    while MainFrame.Parent do
+        Tween(AccentLine, { BackgroundColor3 = Theme.AccentSecondary }, 1.5, Enum.EasingStyle.Sine)
+        wait(1.6)
+        Tween(AccentLine, { BackgroundColor3 = Theme.AccentColor }, 1.5, Enum.EasingStyle.Sine)
+        wait(1.6)
+    end
+end)
 
-local TabBar = Create("ScrollingFrame", { Name = "TabBar", Parent = MainFrame, Size = UDim2.new(1, -40, 0, 35), Position = UDim2.new(0, 20, 0, 45), BackgroundTransparency = 1, ScrollBarThickness = 0, CanvasSize = UDim2.new(1.2, 0, 0, 0), ScrollingDirection = Enum.ScrollingDirection.X })
-Create("UIListLayout", { Parent = TabBar, FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10) })
+-- ── BARRA SUPERIOR / TOPBAR ──────────────────────────────────
+local TopBar = Create("Frame", {
+    Name                = "TopBar",
+    Parent              = MainFrame,
+    Size                = UDim2.new(1, 0, 0, 44),
+    BackgroundTransparency = 1,
+    ZIndex              = 6,
+})
 
-local ContentContainer = Create("Frame", { Name = "ContentContainer", Parent = MainFrame, Size = UDim2.new(1, -40, 1, -100), Position = UDim2.new(0, 20, 0, 90), BackgroundTransparency = 1 })
+-- Título con efecto gradiente simulado en dos labels
+Create("TextLabel", {
+    Name                = "TitleShadow",
+    Parent              = TopBar,
+    Size                = UDim2.new(1, -20, 1, 0),
+    Position            = UDim2.new(0, 22, 0, 1),
+    BackgroundTransparency = 1,
+    Text                = "LXNDXN",
+    TextColor3          = Theme.AccentColor,
+    TextTransparency    = 0.6,
+    Font                = Enum.Font.GothamBlack,
+    TextSize            = 20,
+    TextXAlignment      = Enum.TextXAlignment.Left,
+    ZIndex              = 6,
+})
+Create("TextLabel", {
+    Name                = "Title",
+    Parent              = TopBar,
+    Size                = UDim2.new(1, -20, 1, 0),
+    Position            = UDim2.new(0, 20, 0, 0),
+    BackgroundTransparency = 1,
+    Text                = "LXNDXN",
+    TextColor3          = Theme.TextColor,
+    Font                = Enum.Font.GothamBlack,
+    TextSize            = 20,
+    TextXAlignment      = Enum.TextXAlignment.Left,
+    ZIndex              = 7,
+})
+-- Versión
+Create("TextLabel", {
+    Name                = "Version",
+    Parent              = TopBar,
+    Size                = UDim2.new(0, 60, 0, 16),
+    Position            = UDim2.new(0, 85, 0, 14),
+    BackgroundTransparency = 1,
+    Text                = "v3.0",
+    TextColor3          = Theme.SecondaryText,
+    Font                = Enum.Font.GothamSemibold,
+    TextSize            = 11,
+    TextXAlignment      = Enum.TextXAlignment.Left,
+    ZIndex              = 7,
+})
 
--- === DRAGGING SISTEMA ===
+-- ── BARRA DE TABS ─────────────────────────────────────────────
+local TabBar = Create("ScrollingFrame", {
+    Name                = "TabBar",
+    Parent              = MainFrame,
+    Size                = UDim2.new(1, -40, 0, 36),
+    Position            = UDim2.new(0, 20, 0, 50),
+    BackgroundTransparency = 1,
+    ScrollBarThickness  = 0,
+    CanvasSize          = UDim2.new(1.5, 0, 0, 0),
+    ScrollingDirection  = Enum.ScrollingDirection.X,
+    ZIndex              = 6,
+})
+Create("UIListLayout", {
+    Parent          = TabBar,
+    FillDirection   = Enum.FillDirection.Horizontal,
+    SortOrder       = Enum.SortOrder.LayoutOrder,
+    Padding         = UDim.new(0, 12),
+})
+
+-- ── CONTENEDOR DE CONTENIDO ───────────────────────────────────
+local ContentContainer = Create("Frame", {
+    Name                = "ContentContainer",
+    Parent              = MainFrame,
+    Size                = UDim2.new(1, -40, 1, -104),
+    Position            = UDim2.new(0, 20, 0, 96),
+    BackgroundTransparency = 1,
+    ClipsDescendants    = true,
+    ZIndex              = 5,
+})
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │             SISTEMA DE DRAG / ARRASTRE                  │
+-- └─────────────────────────────────────────────────────────┘
 local ButtonIsFixed = false
+
 local function MakeDraggable(guiObject, dragHandle)
     dragHandle = dragHandle or guiObject
     local dragging, dragInput, dragStart, startPos
+
     dragHandle.InputBegan:Connect(function(input)
+        -- Si es el botón flotante y está fijado, no permite moverlo
         if guiObject == FloatButton and ButtonIsFixed then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true dragStart = input.Position startPos = guiObject.Position
-            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
-        end
-    end)
-    guiObject.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            guiObject.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-end
-MakeDraggable(FloatButton) MakeDraggable(MainFrame, TopBar)
-
-FloatButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-    if MainFrame.Visible then
-        MainFrame.Size = UDim2.new(0, 480, 0, 0) MainFrame.BackgroundTransparency = 1
-        Tween(MainFrame, {Size = UDim2.new(0, 480, 0, 383), BackgroundTransparency = Theme.GlassTransparency}, 0.5)
-    end
-end)
-
--- === CREADORES DE COMPONENTES ===
-local Tabs, TabFrames = {}, {}
-
-local function UpdateCanvasSize(frame)
-    local layout = frame:FindFirstChildOfClass("UIListLayout")
-    if layout then frame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20) end
-end
-
-local function CreateTab(key)
-    local TabBtn = Create("TextButton", { Name = key, Parent = TabBar, Size = UDim2.new(0, 90, 1, 0), BackgroundTransparency = 1, TextColor3 = Theme.SecondaryText, Font = Enum.Font.GothamSemibold, TextSize = 14 })
-    RegisterTranslation(TabBtn, "Text", key)
-    
-    local TabFrame = Create("ScrollingFrame", { Name = key.."_Frame", Parent = ContentContainer, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, ScrollBarThickness = 2, Visible = false })
-    local layout = Create("UIListLayout", { Parent = TabFrame, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) })
-    
-    Tabs[key] = TabBtn TabFrames[key] = TabFrame
-    TabBtn.MouseButton1Click:Connect(function()
-        for k, frame in pairs(TabFrames) do
-            frame.Visible = (k == key)
-            Tween(Tabs[k], {TextColor3 = (k == key) and Theme.AccentColor or Theme.SecondaryText}, 0.2)
-        end
-    end)
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() UpdateCanvasSize(TabFrame) end)
-    return TabFrame
-end
-
-local function CreateToggle(parent, key, callback)
-    local ToggleFrame = Create("Frame", { Parent = parent, Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Color3.fromRGB(25, 25, 30), BackgroundTransparency = 0.5 })
-    Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = ToggleFrame })
-    local Label = Create("TextLabel", { Parent = ToggleFrame, Size = UDim2.new(1, -60, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, TextColor3 = Theme.TextColor, Font = Enum.Font.GothamMedium, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left })
-    RegisterTranslation(Label, "Text", key)
-    
-    local SwitchBtn = Create("TextButton", { Parent = ToggleFrame, Size = UDim2.new(0, 40, 0, 20), Position = UDim2.new(1, -55, 0.5, -10), BackgroundColor3 = Color3.fromRGB(50, 50, 50), Text = "", AutoButtonColor = false })
-    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = SwitchBtn })
-    local Indicator = Create("Frame", { Parent = SwitchBtn, Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(0, 2, 0.5, -8), BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
-    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Indicator })
-    
-    local toggled = false
-    SwitchBtn.MouseButton1Click:Connect(function()
-        toggled = not toggled
-        Tween(Indicator, {Position = toggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}, 0.2)
-        Tween(SwitchBtn, {BackgroundColor3 = toggled and Theme.AccentColor or Color3.fromRGB(50, 50, 50)}, 0.2)
-        if callback then callback(toggled) end
-    end)
-    return ToggleFrame
-end
-
-local function CreateSlider(parent, key, min, max, default, callback)
-    local SliderFrame = Create("Frame", { Parent = parent, Size = UDim2.new(1, 0, 0, 60), BackgroundColor3 = Color3.fromRGB(25, 25, 30), BackgroundTransparency = 0.5 })
-    Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = SliderFrame })
-    
-    local Label = Create("TextLabel", { Parent = SliderFrame, Size = UDim2.new(1, -30, 0, 20), Position = UDim2.new(0, 15, 0, 5), BackgroundTransparency = 1, TextColor3 = Theme.TextColor, Font = Enum.Font.GothamMedium, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left })
-    RegisterTranslation(Label, "Text", key)
-    local ValueLabel = Create("TextLabel", { Parent = SliderFrame, Size = UDim2.new(0, 50, 0, 20), Position = UDim2.new(1, -65, 0, 5), BackgroundTransparency = 1, Text = tostring(default), TextColor3 = Theme.AccentColor, Font = Enum.Font.GothamBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Right })
-    
-    local SliderBG = Create("Frame", { Parent = SliderFrame, Size = UDim2.new(1, -30, 0, 6), Position = UDim2.new(0, 15, 0, 35), BackgroundColor3 = Color3.fromRGB(50, 50, 50) })
-    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = SliderBG })
-    local Fill = Create("Frame", { Parent = SliderBG, Size = UDim2.new((default - min) / (max - min), 0, 1, 0), BackgroundColor3 = Theme.AccentColor })
-    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Fill })
-    local Knob = Create("Frame", { Parent = Fill, Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(1, -7, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
-    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Knob })
-    
-    local dragging = false
-    local function UpdateSlider(input)
-        local pos = math.clamp((input.Position.X - SliderBG.AbsolutePosition.X) / SliderBG.AbsoluteSize.X, 0, 1)
-        local value = math.floor(min + (max - min) * pos)
-        Fill.Size = UDim2.new(pos, 0, 1, 0) ValueLabel.Text = tostring(value)
-        if callback then callback(value) end
-    end
-    
-    SliderBG.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true UpdateSlider(input) end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then UpdateSlider(input) end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
-    end)
-    
-    return SliderFrame
-end
-
-local function CreateLocalizedDropdown(parent, titleKey, optionKeys, defaultKey, callback)
-    local DropdownFrame = Create("Frame", { Parent = parent, Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Color3.fromRGB(25, 25, 30), BackgroundTransparency = 0.5, ClipsDescendants = true })
-    Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = DropdownFrame })
-    
-    local TitleLabel = Create("TextLabel", { Parent = DropdownFrame, Size = UDim2.new(1, -60, 0, 40), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, TextColor3 = Theme.TextColor, Font = Enum.Font.GothamMedium, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left })
-    local DropArrow = Create("TextLabel", { Parent = DropdownFrame, Size = UDim2.new(0, 20, 0, 20), Position = UDim2.new(1, -30, 0, 10), BackgroundTransparency = 1, Text = "▼", TextColor3 = Theme.SecondaryText, Font = Enum.Font.GothamBold, TextSize = 14 })
-    
-    local extraData = {CurrentSelectionKey = defaultKey}
-    RegisterTranslation(TitleLabel, "DropdownTitle", titleKey, extraData)
-    
-    local OptionContainer = Create("Frame", { Parent = DropdownFrame, Size = UDim2.new(1, 0, 1, -40), Position = UDim2.new(0, 0, 0, 40), BackgroundTransparency = 1 })
-    Create("UIListLayout", { Parent = OptionContainer, SortOrder = Enum.SortOrder.LayoutOrder })
-    
-    local isOpen = false
-    local containerHeight = #optionKeys * 30
-    local ToggleButton = Create("TextButton", { Parent = DropdownFrame, Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, Text = "" })
-    
-    ToggleButton.MouseButton1Click:Connect(function()
-        isOpen = not isOpen
-        Tween(DropdownFrame, {Size = isOpen and UDim2.new(1, 0, 0, 40 + containerHeight) or UDim2.new(1, 0, 0, 40)}, 0.2)
-        Tween(DropArrow, {Rotation = isOpen and 180 or 0}, 0.2)
-    end)
-    
-    for _, optKey in ipairs(optionKeys) do
-        local OptBtn = Create("TextButton", { Parent = OptionContainer, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.DropdownColor, BackgroundTransparency = 0.5, TextColor3 = Theme.SecondaryText, Font = Enum.Font.Gotham, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left })
-        RegisterTranslation(OptBtn, "DropdownOption", optKey)
-        
-        OptBtn.MouseButton1Click:Connect(function()
-            extraData.CurrentSelectionKey = optKey
-            TitleLabel.Text = Lang[CurrentLanguage][titleKey] .. ": " .. Lang[CurrentLanguage][optKey]
-            isOpen = false
-            Tween(DropdownFrame, {Size = UDim2.new(1, 0, 0, 40)}, 0.2)
-            Tween(DropArrow, {Rotation = 0}, 0.2)
-            if callback then callback(optKey) end
-        end)
-    end
-    return DropdownFrame
-end
-
--- === CONSTRUCCIÓN DE LA INTERFAZ ===
-
-local VisualsTab = CreateTab("TAB_VISUALS")
-local CombatTab = CreateTab("TAB_COMBAT")
-local MisticTab = CreateTab("TAB_MISTIC")
-local MovementTab = CreateTab("TAB_MOVEMENT")
-local SettingsTab = CreateTab("TAB_SETTINGS")
-
-TabFrames["TAB_VISUALS"].Visible = true
-Tabs["TAB_VISUALS"].TextColor3 = Theme.AccentColor
-
--- VISUALES
--- ESP Box (Highlight)
-CreateToggle(VisualsTab, "ESP_BOX", function(state)
-    if state then
-        StartESPBoxes()
-    else
-        StopESPBoxes()
-    end
-end)
-
--- Tracers
-CreateToggle(VisualsTab, "TRACERS", function(state)
-    if state then
-        StartTracers()
-    else
-        StopTracers()
-    end
-end)
-
--- ESP Nombre
-CreateToggle(VisualsTab, "ESP_NAME", function(state)
-    if state then
-        StartESPName()
-    else
-        StopESPName()
-    end
-end)
-
--- ESP Salud
-CreateToggle(VisualsTab, "ESP_HEALTH", function(state)
-    if state then
-        StartESPHealth()
-    else
-        StopESPHealth()
-    end
-end)
-
--- COMBATE
-local AimDropdown
-CreateToggle(CombatTab, "SILENT_AIM", function(state) if AimDropdown then AimDropdown.Visible = state end end)
-AimDropdown = CreateLocalizedDropdown(CombatTab, "DIR_TITLE", {"DIR_HEAD", "DIR_CHEST", "DIR_ALL"}, "DIR_HEAD", function(selKey) end)
-AimDropdown.Visible = false
-
-local HitChanceSlider
-CreateToggle(CombatTab, "HIT_CHANCE_ON", function(state) if HitChanceSlider then HitChanceSlider.Visible = state end end)
-HitChanceSlider = CreateSlider(CombatTab, "HIT_CHANCE_VAL", 0, 100, 100, function(val) end)
-HitChanceSlider.Visible = false
-
-local FOVSlider
-CreateToggle(CombatTab, "SHOW_FOV", function(state) if FOVSlider then FOVSlider.Visible = state end end)
-FOVSlider = CreateSlider(CombatTab, "FOV_RADIUS", 0, 100, 50, function(val) end)
-FOVSlider.Visible = false
-
-CreateToggle(CombatTab, "PREDICTION", function(state) end)
-CreateToggle(CombatTab, "TRIGGER_BOT", function(state) end)
-
--- MÍSTICO
-CreateToggle(MisticTab, "ANTI_KATANA", function(state) end)
-CreateToggle(MisticTab, "RESOLVER", function(state) end)
-CreateToggle(MisticTab, "ANTI_LOCK", function(state) end)
-
--- MOVIMIENTO
-local SpeedSlider
-CreateToggle(MovementTab, "MOD_SPEED", function(state)
-    if SpeedSlider then SpeedSlider.Visible = state end
-    if not state and localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then localPlayer.Character.Humanoid.WalkSpeed = 16 end
-end)
-SpeedSlider = CreateSlider(MovementTab, "WALK_SPEED", 0, 300, 16, function(val)
-    if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then localPlayer.Character.Humanoid.WalkSpeed = val end
-end)
-SpeedSlider.Visible = false
-
-local FlySlider
-CreateToggle(MovementTab, "FLY_ON", function(state) if FlySlider then FlySlider.Visible = state end end)
-FlySlider = CreateSlider(MovementTab, "FLY_SPEED", 0, 300, 50, function(val) end)
-FlySlider.Visible = false
-
--- AJUSTES
-CreateToggle(SettingsTab, "SAVE_CFG", function() end)
-CreateToggle(SettingsTab, "LOAD_CFG", function() end)
-CreateToggle(SettingsTab, "AUTO_LOAD", function() end)
-CreateToggle(SettingsTab, "PERF_MODE", function() end)
-
-CreateToggle(SettingsTab, "PIN_BTN", function(state) ButtonIsFixed = state end)
-CreateToggle(SettingsTab, "HIDE_BTN", function(state)
-    if state then
-        Tween(FloatButton, {BackgroundTransparency = 1, TextTransparency = 1}, 0.2)
-        Tween(FloatStroke, {Transparency = 1}, 0.2)
-    else
-        Tween(FloatButton, {BackgroundTransparency = Theme.GlassTransparency, TextTransparency = 0}, 0.2)
-        Tween(FloatStroke, {Transparency = Theme.BorderTransparency}, 0.2)
-    end
-end)
-
--- Menú Especial para cambiar el idioma base (Este NO usa el sistema dinámico de su propio texto para que los nombres de los idiomas sean fijos y siempre reconocibles).
-local LangDropdown = Create("Frame", { Parent = SettingsTab, Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = Color3.fromRGB(25, 25, 30), BackgroundTransparency = 0.5, ClipsDescendants = true })
-Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = LangDropdown })
-local LangTitle = Create("TextLabel", { Parent = LangDropdown, Size = UDim2.new(1, -60, 0, 40), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, TextColor3 = Theme.TextColor, Font = Enum.Font.GothamMedium, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left })
-RegisterTranslation(LangTitle, "DropdownTitle", "LANG_TITLE", {CurrentSelectionKey = "Español"}) -- Extra.CurrentSelectionKey usará el string literal aquí
-
-local LangArrow = Create("TextLabel", { Parent = LangDropdown, Size = UDim2.new(0, 20, 0, 20), Position = UDim2.new(1, -30, 0, 10), BackgroundTransparency = 1, Text = "▼", TextColor3 = Theme.SecondaryText, Font = Enum.Font.GothamBold, TextSize = 14 })
-local LangContainer = Create("Frame", { Parent = LangDropdown, Size = UDim2.new(1, 0, 1, -40), Position = UDim2.new(0, 0, 0, 40), BackgroundTransparency = 1 })
-Create("UIListLayout", { Parent = LangContainer, SortOrder = Enum.SortOrder.LayoutOrder })
-local L_isOpen = false
-local LangBtnToggle = Create("TextButton", { Parent = LangDropdown, Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, Text = "" })
-
-LangBtnToggle.MouseButton1Click:Connect(function()
-    L_isOpen = not L_isOpen
-    Tween(LangDropdown, {Size = L_isOpen and UDim2.new(1, 0, 0, 40 + (5 * 30)) or UDim2.new(1, 0, 0, 40)}, 0.2)
-    Tween(LangArrow, {Rotation = L_isOpen and 180 or 0}, 0.2)
-end)
-
-local LangOptions = {"Español", "Inglés", "Portugués", "Ruso", "Pastún (Afganistán)"}
-for _, opt in ipairs(LangOptions) do
-    local OptBtn = Create("TextButton", { Parent = LangContainer, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.DropdownColor, BackgroundTransparency = 0.5, Text = "  " .. opt, TextColor3 = Theme.SecondaryText, Font = Enum.Font.Gotham, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left })
-    OptBtn.MouseButton1Click:Connect(function()
-        L_isOpen = false
-        Tween(LangDropdown, {Size = UDim2.new(1, 0, 0, 40)}, 0.2)
-        Tween(LangArrow, {Rotation = 0}, 0.2)
-        
-        -- Ejecutar la traducción principal
-        UpdateLanguage(opt)
-        
-        -- Actualizar el título de este Dropdown manualmente ya que "opt" no es un Key de diccionario, es el nombre del idioma real
-        for _, v in ipairs(TranslatingElements) do
-            if v.UI == LangTitle then
-                v.Extra.CurrentSelectionKey = opt
-                v.UI.Text = Lang[CurrentLanguage][v.Key] .. ": " .. opt
-            end
-        end
-    end)
-end
-
-----------------------------------------------------
--- ESP BOX (Highlight)
-local ESPBoxEnabled = false
-local ESPHighlights = {}
-function StartESPBoxes()
-    ESPBoxEnabled = true
-    local Players = game:GetService("Players")
-    local localPlayer = Players.LocalPlayer
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character and not ESPHighlights[player] then
-            local char = player.Character
-            local highlight = Instance.new("Highlight")
-            highlight.FillColor = Color3.fromRGB(255, 0, 0)
-            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-            highlight.FillTransparency = 0.7
-            highlight.OutlineTransparency = 0.1
-            highlight.Adornee = char
-            highlight.Parent = char
-            ESPHighlights[player] = highlight
-        end
-    end
-    ESPBoxConnections = ESPBoxConnections or {}
-    ESPBoxConnections.PlayerAdded = Players.PlayerAdded:Connect(function(player)
-        ESPBoxConnections[player] = player.CharacterAdded:Connect(function(char)
-            if ESPBoxEnabled then
-                local highlight = Instance.new("Highlight")
-                highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                highlight.FillTransparency = 0.7
-                highlight.OutlineTransparency = 0.1
-                highlight.Adornee = char
-                highlight.Parent = char
-                ESPHighlights[player] = highlight
-            end
-        end)
-    end)
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and not ESPBoxConnections[player] then
-            ESPBoxConnections[player] = player.CharacterAdded:Connect(function(char)
-                if ESPBoxEnabled then
-                    local highlight = Instance.new("Highlight")
-                    highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                    highlight.FillTransparency = 0.7
-                    highlight.OutlineTransparency = 0.1
-                    highlight.Adornee = char
-                    highlight.Parent = char
-                    ESPHighlights[player] = highlight
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging  = true
+            dragStart = input.Position
+            startPos  = guiObject.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
                 end
             end)
         end
-    end
-end
-function StopESPBoxes()
-    ESPBoxEnabled = false
-    for player, highlight in pairs(ESPHighlights) do
-        if highlight and highlight.Parent then
-            highlight:Destroy()
+    end)
+
+    guiObject.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
         end
-        ESPHighlights[player] = nil
-    end
-    if ESPBoxConnections then
-        for key, conn in pairs(ESPBoxConnections) do
-            if typeof(conn) == "RBXScriptConnection" and conn.Connected then
-                conn:Disconnect()
-            end
-        end
-    end
-    ESPBoxConnections = {}
-end
+    end)
 
-----------------------------------------------------
--- TRACERS (usando Drawing API)
-local TracersEnabled = false
-local TracerDrawings = {}
-function StartTracers()
-    TracersEnabled = true
-    local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
-    local LocalPlayer = Players.LocalPlayer
-    TracerDrawings = {}
-
-    function CreateTracer(player)
-        local tracer = Drawing.new("Line")
-        tracer.Color = Color3.new(1, 1, 0) -- Amarillo
-        tracer.Thickness = 2
-        tracer.Transparency = 0.9
-        tracer.Visible = true
-        TracerDrawings[player] = tracer
-
-        RunService.RenderStepped:Connect(function()
-            if not TracersEnabled or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-                tracer.Visible = false
-                return
-            end
-            local hrp = player.Character.HumanoidRootPart
-            local cam = workspace.CurrentCamera
-            local pos, onScreen = cam:WorldToViewportPoint(hrp.Position)
-            if onScreen then
-                tracer.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
-                tracer.To = Vector2.new(pos.X, pos.Y)
-                tracer.Visible = true
-            else
-                tracer.Visible = false
-            end
-        end)
-    end
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            CreateTracer(player)
-        end
-    end
-    TracerPlayerAdded = Players.PlayerAdded:Connect(function(player)
-        if player ~= LocalPlayer then
-            CreateTracer(player)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            guiObject.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
         end
     end)
 end
-function StopTracers()
-    TracersEnabled = false
-    for _, tracer in pairs(TracerDrawings) do
-        if tracer then tracer:Remove() end
+
+MakeDraggable(FloatButton)
+MakeDraggable(MainFrame, TopBar)
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │          LÓGICA DE APERTURA/CIERRE DEL MENÚ             │
+-- └─────────────────────────────────────────────────────────┘
+local menuOpen = false
+
+local function ToggleMenu()
+    menuOpen = not menuOpen
+    if menuOpen then
+        -- Animación de entrada: escala desde 0
+        MainFrame.Visible             = true
+        MainFrame.Size                = UDim2.new(0, 500, 0, 0)
+        MainFrame.BackgroundTransparency = 1
+        Tween(MainFrame, {
+            Size                     = UDim2.new(0, 500, 0, 410),
+            BackgroundTransparency   = Theme.GlassTransparency,
+        }, 0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    else
+        -- Animación de salida
+        local closeTween = Tween(MainFrame, {
+            Size                     = UDim2.new(0, 500, 0, 0),
+            BackgroundTransparency   = 1,
+        }, 0.3)
+        closeTween.Completed:Connect(function()
+            MainFrame.Visible = false
+        end)
     end
-    TracerDrawings = {}
-    if TracerPlayerAdded and TracerPlayerAdded.Disconnect then TracerPlayerAdded:Disconnect() end
 end
 
-----------------------------------------------------
--- ESP Nombre (BillboardGui)
-local ESPNamesEnabled = false
-local ESPNameUIs = {}
-function StartESPName()
-    ESPNamesEnabled = true
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
+FloatButton.MouseButton1Click:Connect(ToggleMenu)
 
-    function CreateName(player)
-        if player ~= LocalPlayer and player.Character and not player.Character:FindFirstChild("ESP_Name") then
-            local head = player.Character:FindFirstChild("Head")
-            if head then
-                local bb = Instance.new("BillboardGui")
-                bb.Name = "ESP_Name"
-                bb.Size = UDim2.new(0, 200, 0, 50)
-                bb.Adornee = head
-                bb.AlwaysOnTop = true
-                bb.StudsOffset = Vector3.new(0, 2.5, 0)
-                local text = Instance.new("TextLabel", bb)
-                text.Size = UDim2.new(1, 0, 1, 0)
-                text.BackgroundTransparency = 1
-                text.TextColor3 = Color3.new(1, 1, 1)
-                text.TextStrokeTransparency = 0
-                text.Text = player.Name
-                text.Font = Enum.Font.SourceSansBold
-                text.TextSize = 18
-                bb.Parent = head
-                ESPNameUIs[player] = bb
+-- Tecla INSERT para abrir/cerrar (alternativa de teclado)
+UserInputService.InputBegan:Connect(function(input, gp)
+    if not gp and input.KeyCode == Enum.KeyCode.Insert then
+        ToggleMenu()
+    end
+end)
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │         CREADORES DE COMPONENTES UI AVANZADOS           │
+-- └─────────────────────────────────────────────────────────┘
+
+-- Tabla de botones de tab y sus frames
+local Tabs      = {}
+local TabFrames = {}
+local ActiveTab = nil
+
+-- Crea un tab con su botón y su ScrollingFrame
+local function CreateTab(key, layoutOrder)
+    -- Botón del tab
+    local TabBtn = Create("TextButton", {
+        Name                = key,
+        Parent              = TabBar,
+        Size                = UDim2.new(0, 95, 1, 0),
+        BackgroundTransparency = 1,
+        TextColor3          = Theme.SecondaryText,
+        Font                = Enum.Font.GothamSemibold,
+        TextSize            = 13,
+        LayoutOrder         = layoutOrder or 0,
+        ZIndex              = 7,
+    })
+    RegisterTranslation(TabBtn, "Text", key)
+
+    -- Indicador subrayado del tab activo
+    local TabIndicator = Create("Frame", {
+        Name                = "Indicator",
+        Parent              = TabBtn,
+        Size                = UDim2.new(0, 0, 0, 2),
+        Position            = UDim2.new(0.5, 0, 1, -2),
+        AnchorPoint         = Vector2.new(0.5, 0),
+        BackgroundColor3    = Theme.AccentColor,
+        BorderSizePixel     = 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = TabIndicator })
+
+    -- Frame de contenido para este tab
+    local TabFrame = Create("ScrollingFrame", {
+        Name                = key .. "_Frame",
+        Parent              = ContentContainer,
+        Size                = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ScrollBarThickness  = 2,
+        ScrollBarImageColor3 = Theme.AccentColor,
+        Visible             = false,
+        ZIndex              = 5,
+    })
+    local layout = Create("UIListLayout", {
+        Parent      = TabFrame,
+        SortOrder   = Enum.SortOrder.LayoutOrder,
+        Padding     = UDim.new(0, 8),
+    })
+    -- Padding extra arriba
+    Create("UIPadding", {
+        Parent          = TabFrame,
+        PaddingTop      = UDim.new(0, 4),
+        PaddingBottom   = UDim.new(0, 8),
+    })
+
+    Tabs[key]      = { Button = TabBtn, Indicator = TabIndicator }
+    TabFrames[key] = TabFrame
+
+    -- Cuando el layout cambia de tamaño → actualizar canvas
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        UpdateCanvasSize(TabFrame)
+    end)
+
+    -- Lógica de clic en el tab
+    TabBtn.MouseButton1Click:Connect(function()
+        if ActiveTab == key then return end
+        -- Oculta todos los frames y resetea indicadores
+        for k, data in pairs(Tabs) do
+            TabFrames[k].Visible = false
+            Tween(data.Button,    { TextColor3 = Theme.SecondaryText }, 0.2)
+            Tween(data.Indicator, { Size = UDim2.new(0, 0, 0, 2) }, 0.2)
+        end
+        -- Activa el nuevo tab con animación
+        ActiveTab              = key
+        TabFrame.Visible       = true
+        Tween(TabBtn,      { TextColor3 = Theme.AccentColor }, 0.2)
+        Tween(TabIndicator, { Size = UDim2.new(0.8, 0, 0, 2) }, 0.3, Enum.EasingStyle.Back)
+    end)
+
+    return TabFrame
+end
+
+-- ──────────────────────────────────────────────────────────
+-- COMPONENTE: TOGGLE (Switch avanzado con animación líquida)
+-- ──────────────────────────────────────────────────────────
+local function CreateToggle(parent, key, callback, layoutOrder)
+    local ToggleFrame = Create("Frame", {
+        Parent              = parent,
+        Size                = UDim2.new(1, 0, 0, 44),
+        BackgroundColor3    = Theme.CardColor,
+        BackgroundTransparency = Theme.CardTransparency,
+        LayoutOrder         = layoutOrder or 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = ToggleFrame })
+
+    -- Ícono de estado (punto de color)
+    local StatusDot = Create("Frame", {
+        Parent           = ToggleFrame,
+        Size             = UDim2.new(0, 6, 0, 6),
+        Position         = UDim2.new(0, 10, 0.5, -3),
+        BackgroundColor3 = Theme.SecondaryText,
+        BorderSizePixel  = 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = StatusDot })
+
+    local Label = Create("TextLabel", {
+        Parent              = ToggleFrame,
+        Size                = UDim2.new(1, -80, 1, 0),
+        Position            = UDim2.new(0, 24, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3          = Theme.TextColor,
+        Font                = Enum.Font.GothamMedium,
+        TextSize            = 13,
+        TextXAlignment      = Enum.TextXAlignment.Left,
+    })
+    RegisterTranslation(Label, "Text", key)
+
+    -- Switch exterior (fondo)
+    local SwitchBG = Create("Frame", {
+        Parent           = ToggleFrame,
+        Size             = UDim2.new(0, 44, 0, 22),
+        Position         = UDim2.new(1, -56, 0.5, -11),
+        BackgroundColor3 = Color3.fromRGB(45, 45, 52),
+        BorderSizePixel  = 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = SwitchBG })
+
+    -- Knob del switch
+    local Knob = Create("Frame", {
+        Parent           = SwitchBG,
+        Size             = UDim2.new(0, 18, 0, 18),
+        Position         = UDim2.new(0, 2, 0.5, -9),
+        BackgroundColor3 = Color3.fromRGB(210, 210, 220),
+        BorderSizePixel  = 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Knob })
+
+    -- Área de clic transparente (más grande para mejor UX en móvil)
+    local ClickArea = Create("TextButton", {
+        Parent              = ToggleFrame,
+        Size                = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text                = "",
+        ZIndex              = ToggleFrame.ZIndex + 1,
+    })
+
+    local toggled = false
+
+    local function SetToggle(state, skipCallback)
+        toggled = state
+        -- Animación del knob
+        Tween(Knob, {
+            Position = state
+                and UDim2.new(1, -20, 0.5, -9)
+                or  UDim2.new(0, 2, 0.5, -9),
+        }, 0.25, Enum.EasingStyle.Back)
+        -- Animación del fondo del switch
+        Tween(SwitchBG, {
+            BackgroundColor3 = state and Theme.AccentColor or Color3.fromRGB(45, 45, 52),
+        }, 0.25)
+        -- Actualiza el punto de estado
+        Tween(StatusDot, {
+            BackgroundColor3 = state and Theme.AccentSecondary or Theme.SecondaryText,
+        }, 0.2)
+        -- Escala breve del knob para efecto "pop"
+        Tween(Knob, { Size = UDim2.new(0, 20, 0, 20) }, 0.1)
+        delay(0.12, function()
+            Tween(Knob, { Size = UDim2.new(0, 18, 0, 18) }, 0.15)
+        end)
+
+        if not skipCallback and callback then
+            callback(state)
+        end
+    end
+
+    ClickArea.MouseButton1Click:Connect(function()
+        SetToggle(not toggled)
+    end)
+
+    -- Exposición pública del toggle para control externo
+    return ToggleFrame, SetToggle
+end
+
+-- ──────────────────────────────────────────────────────────
+-- COMPONENTE: SLIDER (con valor numérico editable)
+-- ──────────────────────────────────────────────────────────
+local function CreateSlider(parent, key, minVal, maxVal, defaultVal, callback, layoutOrder)
+    local SliderFrame = Create("Frame", {
+        Parent              = parent,
+        Size                = UDim2.new(1, 0, 0, 64),
+        BackgroundColor3    = Theme.CardColor,
+        BackgroundTransparency = Theme.CardTransparency,
+        LayoutOrder         = layoutOrder or 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = SliderFrame })
+
+    local Label = Create("TextLabel", {
+        Parent              = SliderFrame,
+        Size                = UDim2.new(1, -80, 0, 22),
+        Position            = UDim2.new(0, 15, 0, 6),
+        BackgroundTransparency = 1,
+        TextColor3          = Theme.TextColor,
+        Font                = Enum.Font.GothamMedium,
+        TextSize            = 13,
+        TextXAlignment      = Enum.TextXAlignment.Left,
+    })
+    RegisterTranslation(Label, "Text", key)
+
+    local ValueLabel = Create("TextLabel", {
+        Parent              = SliderFrame,
+        Size                = UDim2.new(0, 55, 0, 22),
+        Position            = UDim2.new(1, -68, 0, 6),
+        BackgroundTransparency = 1,
+        Text                = tostring(defaultVal),
+        TextColor3          = Theme.AccentColor,
+        Font                = Enum.Font.GothamBold,
+        TextSize            = 13,
+        TextXAlignment      = Enum.TextXAlignment.Right,
+    })
+
+    -- Track del slider
+    local Track = Create("Frame", {
+        Parent              = SliderFrame,
+        Size                = UDim2.new(1, -30, 0, 6),
+        Position            = UDim2.new(0, 15, 0, 38),
+        BackgroundColor3    = Color3.fromRGB(45, 45, 52),
+        BorderSizePixel     = 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Track })
+
+    -- Fill del slider
+    local Fill = Create("Frame", {
+        Parent              = Track,
+        Size                = UDim2.new((defaultVal - minVal) / (maxVal - minVal), 0, 1, 0),
+        BackgroundColor3    = Theme.AccentColor,
+        BorderSizePixel     = 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Fill })
+
+    -- Gradiente en el fill
+    Create("UIGradient", {
+        Parent      = Fill,
+        Color       = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Theme.AccentColor),
+            ColorSequenceKeypoint.new(1, Theme.AccentSecondary),
+        }),
+        Rotation    = 0,
+    })
+
+    -- Knob del slider
+    local SliderKnob = Create("Frame", {
+        Parent              = Fill,
+        Size                = UDim2.new(0, 16, 0, 16),
+        Position            = UDim2.new(1, -8, 0.5, -8),
+        BackgroundColor3    = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel     = 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = SliderKnob })
+    Create("UIStroke", {
+        Color        = Theme.AccentColor,
+        Transparency = 0.3,
+        Thickness    = 2,
+        Parent       = SliderKnob,
+    })
+
+    local currentValue = defaultVal
+    local isDragging   = false
+
+    local function UpdateSlider(inputX)
+        local relativeX = math.clamp(
+            (inputX - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1
+        )
+        currentValue         = Round(minVal + (maxVal - minVal) * relativeX)
+        Fill.Size            = UDim2.new(relativeX, 0, 1, 0)
+        ValueLabel.Text      = tostring(currentValue)
+        if callback then callback(currentValue) end
+    end
+
+    Track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = true
+            UpdateSlider(input.Position.X)
+            -- Efecto de "press" en el knob
+            Tween(SliderKnob, { Size = UDim2.new(0, 18, 0, 18) }, 0.1)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and (
+            input.UserInputType == Enum.UserInputType.MouseMovement or
+            input.UserInputType == Enum.UserInputType.Touch
+        ) then
+            UpdateSlider(input.Position.X)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            if isDragging then
+                isDragging = false
+                Tween(SliderKnob, { Size = UDim2.new(0, 16, 0, 16) }, 0.1)
             end
         end
+    end)
+
+    return SliderFrame, function() return currentValue end
+end
+
+-- ──────────────────────────────────────────────────────────
+-- COMPONENTE: DROPDOWN CON LOCALIZACIÓN
+-- ──────────────────────────────────────────────────────────
+local function CreateDropdown(parent, titleKey, optionKeys, defaultKey, callback, layoutOrder)
+    local optCount       = #optionKeys
+    local optionHeight   = 30
+    local closedHeight   = 44
+    local openHeight     = closedHeight + optCount * optionHeight
+
+    local DropFrame = Create("Frame", {
+        Parent              = parent,
+        Size                = UDim2.new(1, 0, 0, closedHeight),
+        BackgroundColor3    = Theme.CardColor,
+        BackgroundTransparency = Theme.CardTransparency,
+        ClipsDescendants    = true,
+        LayoutOrder         = layoutOrder or 0,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = DropFrame })
+
+    local TitleLabel = Create("TextLabel", {
+        Parent              = DropFrame,
+        Size                = UDim2.new(1, -60, 0, closedHeight),
+        Position            = UDim2.new(0, 15, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3          = Theme.TextColor,
+        Font                = Enum.Font.GothamMedium,
+        TextSize            = 13,
+        TextXAlignment      = Enum.TextXAlignment.Left,
+    })
+    local extraData = { CurrentSelectionKey = defaultKey }
+    RegisterTranslation(TitleLabel, "DropdownTitle", titleKey, extraData)
+
+    local Arrow = Create("TextLabel", {
+        Parent              = DropFrame,
+        Size                = UDim2.new(0, 24, 0, 24),
+        Position            = UDim2.new(1, -34, 0, 10),
+        BackgroundTransparency = 1,
+        Text                = "▾",
+        TextColor3          = Theme.SecondaryText,
+        Font                = Enum.Font.GothamBold,
+        TextSize            = 16,
+    })
+
+    local OptionContainer = Create("Frame", {
+        Parent              = DropFrame,
+        Size                = UDim2.new(1, 0, 1, -closedHeight),
+        Position            = UDim2.new(0, 0, 0, closedHeight),
+        BackgroundTransparency = 1,
+    })
+    Create("UIListLayout", { Parent = OptionContainer, SortOrder = Enum.SortOrder.LayoutOrder })
+
+    local isOpen = false
+
+    local ToggleBtn = Create("TextButton", {
+        Parent              = DropFrame,
+        Size                = UDim2.new(1, 0, 0, closedHeight),
+        BackgroundTransparency = 1,
+        Text                = "",
+        ZIndex              = DropFrame.ZIndex + 2,
+    })
+
+    ToggleBtn.MouseButton1Click:Connect(function()
+        isOpen = not isOpen
+        Tween(DropFrame, {
+            Size = UDim2.new(1, 0, 0, isOpen and openHeight or closedHeight),
+        }, 0.25, Enum.EasingStyle.Quart)
+        Tween(Arrow, { Rotation = isOpen and 180 or 0 }, 0.25)
+    end)
+
+    for i, optKey in ipairs(optionKeys) do
+        local OptBtn = Create("TextButton", {
+            Parent              = OptionContainer,
+            Size                = UDim2.new(1, 0, 0, optionHeight),
+            BackgroundColor3    = Theme.DropdownColor,
+            BackgroundTransparency = 0.3,
+            TextColor3          = Theme.SecondaryText,
+            Font                = Enum.Font.Gotham,
+            TextSize            = 12,
+            TextXAlignment      = Enum.TextXAlignment.Left,
+            LayoutOrder         = i,
+            ZIndex              = DropFrame.ZIndex + 3,
+        })
+        RegisterTranslation(OptBtn, "DropdownOption", optKey)
+
+        OptBtn.MouseButton1Click:Connect(function()
+            extraData.CurrentSelectionKey  = optKey
+            TitleLabel.Text = (Lang[CurrentLanguage][titleKey] or titleKey)
+                           .. ": "
+                           .. (Lang[CurrentLanguage][optKey] or optKey)
+            isOpen = false
+            Tween(DropFrame, { Size = UDim2.new(1, 0, 0, closedHeight) }, 0.2)
+            Tween(Arrow, { Rotation = 0 }, 0.2)
+            if callback then callback(optKey) end
+        end)
+
+        -- Hover effect
+        OptBtn.MouseEnter:Connect(function()
+            Tween(OptBtn, { BackgroundTransparency = 0.0 }, 0.15)
+        end)
+        OptBtn.MouseLeave:Connect(function()
+            Tween(OptBtn, { BackgroundTransparency = 0.3 }, 0.15)
+        end)
     end
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        CreateName(player)
-    end
-    ESPNamePlayerAdded = Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function()
-            CreateName(player)
-        end)
-    end)
+    return DropFrame
 end
-function StopESPName()
-    ESPNamesEnabled = false
-    for player, bb in pairs(ESPNameUIs) do
-        if bb and bb.Parent then
-            bb:Destroy()
+
+-- ──────────────────────────────────────────────────────────
+-- COMPONENTE: SEPARADOR / LABEL DE SECCIÓN
+-- ──────────────────────────────────────────────────────────
+local function CreateSectionLabel(parent, text, layoutOrder)
+    local F = Create("Frame", {
+        Parent              = parent,
+        Size                = UDim2.new(1, 0, 0, 28),
+        BackgroundTransparency = 1,
+        LayoutOrder         = layoutOrder or 0,
+    })
+    Create("TextLabel", {
+        Parent              = F,
+        Size                = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text                = "— " .. text .. " —",
+        TextColor3          = Theme.AccentColor,
+        Font                = Enum.Font.GothamBold,
+        TextSize            = 11,
+        TextXAlignment      = Enum.TextXAlignment.Center,
+    })
+    return F
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │              CONSTRUCCIÓN DE TABS                       │
+-- └─────────────────────────────────────────────────────────┘
+
+local VisualsTab  = CreateTab("TAB_VISUALS",  1)
+local CombatTab   = CreateTab("TAB_COMBAT",   2)
+local MisticTab   = CreateTab("TAB_MISTIC",   3)
+local MovementTab = CreateTab("TAB_MOVEMENT", 4)
+local SettingsTab = CreateTab("TAB_SETTINGS", 5)
+
+-- Activa el primer tab por defecto
+ActiveTab                          = "TAB_VISUALS"
+TabFrames["TAB_VISUALS"].Visible   = true
+Tabs["TAB_VISUALS"].Button.TextColor3    = Theme.AccentColor
+Tabs["TAB_VISUALS"].Indicator.Size = UDim2.new(0.8, 0, 0, 2)
+
+-- ================================================================
+-- ██╗   ██╗██╗███████╗██╗   ██╗ █████╗ ██╗     ███████╗███████╗
+-- ██║   ██║██║██╔════╝██║   ██║██╔══██╗██║     ██╔════╝██╔════╝
+-- ██║   ██║██║███████╗██║   ██║███████║██║     █████╗  ███████╗
+-- ╚██╗ ██╔╝██║╚════██║██║   ██║██╔══██║██║     ██╔══╝  ╚════██║
+--  ╚████╔╝ ██║███████║╚██████╔╝██║  ██║███████╗███████╗███████║
+--   ╚═══╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝
+-- ================================================================
+-- Aquí están las implementaciones REALES de cada feature.
+-- Las marcadas con [EJEMPLO] son lógicas de demostración
+-- porque dependen de mecánicas específicas del juego.
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO ESP: Sistema completo de Extra Sensory        │
+-- └─────────────────────────────────────────────────────────┘
+
+local ESP = {
+    -- Estado de cada feature
+    BoxEnabled      = false,
+    TracersEnabled  = false,
+    NamesEnabled    = false,
+    HealthEnabled   = false,
+    -- Almacenamiento de instancias creadas
+    Highlights      = {},  -- [player] = Highlight
+    TracerLines     = {},  -- [player] = Drawing Line
+    NameBillboards  = {},  -- [player] = BillboardGui
+    HealthBillboards= {},  -- [player] = BillboardGui
+    -- Conexiones de eventos
+    Connections     = {},
+}
+
+-- Limpia todas las instancias ESP de un jugador al salir
+local function ESP_CleanPlayer(player)
+    if ESP.Highlights[player] then
+        pcall(function() ESP.Highlights[player]:Destroy() end)
+        ESP.Highlights[player] = nil
+    end
+    if ESP.TracerLines[player] then
+        pcall(function() ESP.TracerLines[player]:Remove() end)
+        ESP.TracerLines[player] = nil
+    end
+    if ESP.NameBillboards[player] then
+        pcall(function() ESP.NameBillboards[player]:Destroy() end)
+        ESP.NameBillboards[player] = nil
+    end
+    if ESP.HealthBillboards[player] then
+        pcall(function() ESP.HealthBillboards[player]:Destroy() end)
+        ESP.HealthBillboards[player] = nil
+    end
+end
+
+-- ── ESP BOX (Highlight) ───────────────────────────────────
+-- Usa el objeto Highlight nativo de Roblox para crear
+-- contornos y rellenos coloreados alrededor de los personajes.
+
+local function ESP_Box_ApplyToCharacter(player, char)
+    -- Evita duplicados
+    if ESP.Highlights[player] then
+        pcall(function() ESP.Highlights[player]:Destroy() end)
+    end
+    local hl                    = Instance.new("Highlight")
+    hl.FillColor                = Color3.fromRGB(255, 50, 50)   -- rojo translúcido
+    hl.OutlineColor             = Color3.fromRGB(255, 255, 255) -- contorno blanco
+    hl.FillTransparency         = 0.65
+    hl.OutlineTransparency      = 0.05
+    hl.DepthMode                = Enum.HighlightDepthMode.AlwaysOnTop  -- visible a través de paredes
+    hl.Adornee                  = char
+    hl.Parent                   = char
+    ESP.Highlights[player]      = hl
+end
+
+function ESP.StartBoxes()
+    ESP.BoxEnabled = true
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            ESP_Box_ApplyToCharacter(player, player.Character)
         end
     end
-    ESPNameUIs = {}
-    if ESPNamePlayerAdded and ESPNamePlayerAdded.Disconnect then ESPNamePlayerAdded:Disconnect() end
+    -- Escuchar nuevos personajes de jugadores existentes
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local conn = player.CharacterAdded:Connect(function(char)
+                if ESP.BoxEnabled then
+                    ESP_Box_ApplyToCharacter(player, char)
+                end
+            end)
+            ESP.Connections["box_char_" .. player.UserId] = conn
+        end
+    end
+    -- Escuchar nuevos jugadores que entren
+    ESP.Connections["box_playeradded"] = Players.PlayerAdded:Connect(function(player)
+        ESP.Connections["box_char_" .. player.UserId] = player.CharacterAdded:Connect(function(char)
+            if ESP.BoxEnabled then ESP_Box_ApplyToCharacter(player, char) end
+        end)
+    end)
+    -- Limpiar al salir
+    ESP.Connections["box_playerremoving"] = Players.PlayerRemoving:Connect(function(player)
+        ESP_CleanPlayer(player)
+    end)
 end
 
-----------------------------------------------------
--- ESP Salud (Health sobre la cabeza)
-local ESPHealthEnabled = false
-local ESPHealthUIs = {}
-function StartESPHealth()
-    ESPHealthEnabled = true
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
+function ESP.StopBoxes()
+    ESP.BoxEnabled = false
+    for player, hl in pairs(ESP.Highlights) do
+        pcall(function() hl:Destroy() end)
+        ESP.Highlights[player] = nil
+    end
+    -- Desconecta eventos relacionados con Boxes
+    for key, conn in pairs(ESP.Connections) do
+        if key:find("box_") then
+            pcall(function() conn:Disconnect() end)
+            ESP.Connections[key] = nil
+        end
+    end
+end
 
-    function CreateHealth(player)
-        if player ~= LocalPlayer and player.Character and not player.Character:FindFirstChild("ESP_Health") then
-            local head = player.Character:FindFirstChild("Head")
+-- ── ESP TRACERS (Drawing API) ─────────────────────────────
+-- Dibuja líneas desde el centro inferior de la pantalla
+-- hasta la posición en pantalla de cada jugador enemigo.
+-- Usa la Drawing API del ejecutor.
+
+local TracerRenderConnection = nil
+
+function ESP.StartTracers()
+    ESP.TracersEnabled = true
+    -- Limpia tracers anteriores
+    for _, line in pairs(ESP.TracerLines) do
+        pcall(function() line:Remove() end)
+    end
+    ESP.TracerLines = {}
+
+    -- Crea una línea de tracer para cada jugador
+    local function MakeTracer(player)
+        if player == LocalPlayer then return end
+        local line          = Drawing.new("Line")
+        line.Color          = Color3.fromRGB(255, 230, 0)  -- amarillo
+        line.Thickness      = 1.5
+        line.Transparency   = 0.85
+        line.Visible        = true
+        ESP.TracerLines[player] = line
+    end
+
+    for _, p in ipairs(Players:GetPlayers()) do MakeTracer(p) end
+
+    ESP.Connections["tracer_playeradded"] = Players.PlayerAdded:Connect(function(p)
+        MakeTracer(p)
+    end)
+
+    -- RenderStepped: actualiza posición de cada tracer cada frame
+    TracerRenderConnection = RunService.RenderStepped:Connect(function()
+        if not ESP.TracersEnabled then return end
+        local vpSize = Camera.ViewportSize
+        local origin = Vector2.new(vpSize.X / 2, vpSize.Y) -- centro inferior
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            local line = ESP.TracerLines[player]
+            if not line then continue end
+
+            if player == LocalPlayer or not player.Character then
+                line.Visible = false
+                continue
+            end
+
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then line.Visible = false; continue end
+
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            if head and humanoid then
-                local bb = Instance.new("BillboardGui")
-                bb.Name = "ESP_Health"
-                bb.Size = UDim2.new(0, 120, 0, 25)
-                bb.Adornee = head
-                bb.AlwaysOnTop = true
-                bb.StudsOffset = Vector3.new(0, 3.6, 0)
-                local bar = Instance.new("Frame", bb)
-                bar.Size = UDim2.new(1, 0, 1, 0)
-                bar.BackgroundColor3 = Color3.fromRGB(30, 220, 30)
-                local text = Instance.new("TextLabel", bb)
-                text.Size = UDim2.new(1, 0, 1, 0)
-                text.BackgroundTransparency = 1
-                text.TextColor3 = Color3.new(1, 1, 1)
-                text.TextStrokeTransparency = 0
-                text.Text = tostring(math.floor(humanoid.Health)).." / "..tostring(math.floor(humanoid.MaxHealth))
-                text.Font = Enum.Font.SourceSansBold
-                text.TextScaled = true
-                ESPHealthUIs[player] = bb
-                -- Actualizador
-                humanoid.HealthChanged:Connect(function(hp)
-                    text.Text = tostring(math.floor(hp)).." / "..tostring(math.floor(humanoid.MaxHealth))
-                end)
-                bb.Parent = head
+            if humanoid and humanoid.Health <= 0 then line.Visible = false; continue end
+
+            local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+            if onScreen then
+                line.From    = origin
+                line.To      = Vector2.new(screenPos.X, screenPos.Y)
+                line.Visible = true
+            else
+                line.Visible = false
             end
         end
+    end)
+end
+
+function ESP.StopTracers()
+    ESP.TracersEnabled = false
+    if TracerRenderConnection then
+        TracerRenderConnection:Disconnect()
+        TracerRenderConnection = nil
     end
-    for _, player in ipairs(Players:GetPlayers()) do
-        CreateHealth(player)
+    for player, line in pairs(ESP.TracerLines) do
+        pcall(function() line:Remove() end)
+        ESP.TracerLines[player] = nil
     end
-    ESPHealthPlayerAdded = Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function()
-            CreateHealth(player)
+    if ESP.Connections["tracer_playeradded"] then
+        pcall(function() ESP.Connections["tracer_playeradded"]:Disconnect() end)
+        ESP.Connections["tracer_playeradded"] = nil
+    end
+end
+
+-- ── ESP NOMBRES (BillboardGui) ────────────────────────────
+-- Crea etiquetas de nombre flotantes sobre la cabeza de cada
+-- jugador enemigo, visibles a través de paredes.
+
+local function ESP_Name_Create(player)
+    if player == LocalPlayer then return end
+    if not player.Character then return end
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+    -- Evita duplicados
+    if player.Character:FindFirstChild("LXNDXN_Name") then return end
+
+    local bb            = Instance.new("BillboardGui")
+    bb.Name             = "LXNDXN_Name"
+    bb.Size             = UDim2.new(0, 200, 0, 40)
+    bb.Adornee          = head
+    bb.AlwaysOnTop      = true  -- visible a través de paredes
+    bb.StudsOffset      = Vector3.new(0, 2.8, 0)
+    bb.MaxDistance      = 300   -- máximo 300 studs de distancia
+
+    -- Sombra del texto
+    local shadow        = Instance.new("TextLabel", bb)
+    shadow.Size         = UDim2.new(1, 0, 1, 0)
+    shadow.Position     = UDim2.new(0, 1, 0, 1)
+    shadow.BackgroundTransparency = 1
+    shadow.TextColor3   = Color3.new(0, 0, 0)
+    shadow.Text         = player.Name
+    shadow.Font         = Enum.Font.GothamBold
+    shadow.TextSize     = 16
+
+    -- Texto principal
+    local text          = Instance.new("TextLabel", bb)
+    text.Size           = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.TextColor3     = Color3.fromRGB(255, 255, 255)
+    text.TextStrokeTransparency = 0.5
+    text.Text           = player.Name
+    text.Font           = Enum.Font.GothamBold
+    text.TextSize       = 16
+
+    bb.Parent           = head
+    ESP.NameBillboards[player] = bb
+end
+
+function ESP.StartNames()
+    ESP.NamesEnabled = true
+    for _, p in ipairs(Players:GetPlayers()) do ESP_Name_Create(p) end
+    ESP.Connections["names_playeradded"] = Players.PlayerAdded:Connect(function(p)
+        p.CharacterAdded:Connect(function()
+            task.wait(0.5) -- espera a que el personaje cargue
+            if ESP.NamesEnabled then ESP_Name_Create(p) end
         end)
     end)
 end
-function StopESPHealth()
-    ESPHealthEnabled = false
-    for player, bb in pairs(ESPHealthUIs) do
-        if bb and bb.Parent then
-            bb:Destroy()
-        end
+
+function ESP.StopNames()
+    ESP.NamesEnabled = false
+    for p, bb in pairs(ESP.NameBillboards) do
+        pcall(function() bb:Destroy() end)
+        ESP.NameBillboards[p] = nil
     end
-    ESPHealthUIs = {}
-    if ESPHealthPlayerAdded and ESPHealthPlayerAdded.Disconnect then ESPHealthPlayerAdded:Disconnect() end
+    if ESP.Connections["names_playeradded"] then
+        pcall(function() ESP.Connections["names_playeradded"]:Disconnect() end)
+        ESP.Connections["names_playeradded"] = nil
+    end
 end
 
-print("LXNDXN UI: Localization System loaded successfully.")
+-- ── ESP SALUD ─────────────────────────────────────────────
+-- Muestra la vida actual y máxima sobre la cabeza, con
+-- una barra de color que cambia según el porcentaje de vida.
+
+local function ESP_Health_Create(player)
+    if player == LocalPlayer then return end
+    if not player.Character then return end
+    local head      = player.Character:FindFirstChild("Head")
+    local humanoid  = player.Character:FindFirstChildOfClass("Humanoid")
+    if not head or not humanoid then return end
+    if player.Character:FindFirstChild("LXNDXN_Health") then return end
+
+    local bb            = Instance.new("BillboardGui")
+    bb.Name             = "LXNDXN_Health"
+    bb.Size             = UDim2.new(0, 100, 0, 16)
+    bb.Adornee          = head
+    bb.AlwaysOnTop      = true
+    bb.StudsOffset      = Vector3.new(0, 4.2, 0)
+    bb.MaxDistance      = 200
+
+    -- Fondo oscuro de la barra
+    local barBG         = Instance.new("Frame", bb)
+    barBG.Size          = UDim2.new(1, 0, 0.6, 0)
+    barBG.Position      = UDim2.new(0, 0, 0.2, 0)
+    barBG.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = barBG })
+
+    -- Barra de salud (fill)
+    local healthPct     = humanoid.Health / humanoid.MaxHealth
+    local barFill       = Instance.new("Frame", barBG)
+    barFill.Size        = UDim2.new(healthPct, 0, 1, 0)
+    barFill.BackgroundColor3 = Color3.fromRGB(
+        math.floor(255 * (1 - healthPct)),
+        math.floor(255 * healthPct),
+        30
+    )
+    Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = barFill })
+
+    -- Texto de vida
+    local healthText    = Instance.new("TextLabel", bb)
+    healthText.Size     = UDim2.new(1, 0, 0.5, 0)
+    healthText.BackgroundTransparency = 1
+    healthText.TextColor3 = Color3.new(1, 1, 1)
+    healthText.Text     = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+    healthText.Font     = Enum.Font.GothamBold
+    healthText.TextScaled = true
+
+    bb.Parent           = head
+    ESP.HealthBillboards[player] = bb
+
+    -- Listener para actualizar la barra en tiempo real
+    humanoid.HealthChanged:Connect(function(hp)
+        if not ESP.HealthEnabled then return end
+        local pct       = hp / humanoid.MaxHealth
+        barFill.Size    = UDim2.new(pct, 0, 1, 0)
+        barFill.BackgroundColor3 = Color3.fromRGB(
+            math.floor(255 * (1 - pct)),
+            math.floor(255 * pct),
+            30
+        )
+        healthText.Text = math.floor(hp) .. "/" .. math.floor(humanoid.MaxHealth)
+    end)
+end
+
+function ESP.StartHealth()
+    ESP.HealthEnabled = true
+    for _, p in ipairs(Players:GetPlayers()) do ESP_Health_Create(p) end
+    ESP.Connections["health_playeradded"] = Players.PlayerAdded:Connect(function(p)
+        p.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            if ESP.HealthEnabled then ESP_Health_Create(p) end
+        end)
+    end)
+end
+
+function ESP.StopHealth()
+    ESP.HealthEnabled = false
+    for p, bb in pairs(ESP.HealthBillboards) do
+        pcall(function() bb:Destroy() end)
+        ESP.HealthBillboards[p] = nil
+    end
+    if ESP.Connections["health_playeradded"] then
+        pcall(function() ESP.Connections["health_playeradded"]:Disconnect() end)
+        ESP.Connections["health_playeradded"] = nil
+    end
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │         MÓDULO FOV: Círculo de Radio de Apuntado        │
+-- └─────────────────────────────────────────────────────────┘
+-- Dibuja un círculo en el centro de la pantalla que indica
+-- el radio máximo donde el Silent Aim buscará objetivos.
+
+local FOVCircle = nil
+local FOVRenderConn = nil
+
+local function StartFOVCircle()
+    if FOVCircle then FOVCircle:Remove() end
+    FOVCircle               = Drawing.new("Circle")
+    FOVCircle.Color         = Color3.fromRGB(255, 255, 255)
+    FOVCircle.Thickness     = 1.2
+    FOVCircle.Transparency  = 0.85
+    FOVCircle.Filled        = false
+    FOVCircle.NumSides      = 64
+    FOVCircle.Visible       = true
+
+    -- Actualiza posición al centro cada frame (en caso de resize)
+    FOVRenderConn = RunService.RenderStepped:Connect(function()
+        if not Config.SHOW_FOV then return end
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        FOVCircle.Radius   = Config.FOV_RADIUS
+    end)
+end
+
+local function StopFOVCircle()
+    if FOVRenderConn then FOVRenderConn:Disconnect() FOVRenderConn = nil end
+    if FOVCircle then FOVCircle:Remove() FOVCircle = nil end
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO SILENT AIM: Redireccionamiento de Disparo     │
+-- │    [LÓGICA DE EJEMPLO - Requiere hooks del juego]       │
+-- └─────────────────────────────────────────────────────────┘
+-- El silent aim real necesita hookear la función de raycast
+-- o la función de envío de paquetes del juego específico.
+-- Esta es una DEMOSTRACIÓN de la arquitectura correcta.
+
+local SilentAim = {}
+SilentAim.Active        = false
+SilentAim.OriginalRaycast = nil
+
+function SilentAim.Enable()
+    SilentAim.Active = true
+    -- [EJEMPLO] Hook conceptual de cómo funcionaría:
+    -- En un juego real, interceptarías la función de raycast
+    -- del gun system del juego y redirigirías el origen/dirección
+    -- hacia el objetivo más cercano dentro del FOV.
+    --
+    -- Ejemplo de arquitectura:
+    --[[
+        local oldRaycast = workspace.Raycast  -- NO funciona así en Roblox real
+        workspace.Raycast = function(origin, direction, params)
+            if SilentAim.Active then
+                local target, _ = GetClosestPlayerToMouse(Config.FOV_RADIUS)
+                if target and target.Character then
+                    local partName = "Head"
+                    if Config.SILENT_AIM_DIR == "DIR_CHEST" then partName = "UpperTorso" end
+                    local targetPart = target.Character:FindFirstChild(partName)
+                    if targetPart then
+                        -- Redirige el disparo hacia el objetivo
+                        direction = (targetPart.Position - origin).Unit * direction.Magnitude
+                    end
+                end
+            end
+            return oldRaycast(origin, direction, params)
+        end
+    ]]
+    print("[LXNDXN] Silent Aim: Activado (modo demostración)")
+end
+
+function SilentAim.Disable()
+    SilentAim.Active = false
+    print("[LXNDXN] Silent Aim: Desactivado")
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO TRIGGER BOT: Disparo Automático al Apuntar   │
+-- │    [LÓGICA DE EJEMPLO]                                  │
+-- └─────────────────────────────────────────────────────────┘
+local TriggerBot = {}
+TriggerBot.Active   = false
+TriggerBot.Thread   = nil
+
+function TriggerBot.Enable()
+    TriggerBot.Active = true
+    TriggerBot.Thread = task.spawn(function()
+        while TriggerBot.Active do
+            task.wait(0.05) -- revisa cada 50ms para no spammear
+
+            -- Verificamos si el mouse está sobre un jugador enemigo
+            -- [EJEMPLO] En un juego real harías un raycast desde la cámara
+            local target, dist = GetClosestPlayerToMouse(15) -- 15px de tolerancia
+            if target then
+                -- Simulamos el click (en un juego real sería mouse:Click()
+                -- o disparar la función del arma)
+                -- [EJEMPLO CONCEPTUAL]:
+                -- mouse:Button1Click()  -- NO existe en LocalScript directamente
+                print("[TriggerBot] Objetivo detectado:", target.Name, "dist:", math.floor(dist))
+            end
+        end
+    end)
+end
+
+function TriggerBot.Disable()
+    TriggerBot.Active = false
+    if TriggerBot.Thread then
+        task.cancel(TriggerBot.Thread)
+        TriggerBot.Thread = nil
+    end
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │         MÓDULO VUELO (FLY)                             │
+-- └─────────────────────────────────────────────────────────┘
+-- Implementación real de vuelo usando BodyVelocity y
+-- BodyGyro en el personaje del jugador.
+
+local FlyModule = {}
+FlyModule.Active        = false
+FlyModule.BodyVelocity  = nil
+FlyModule.BodyGyro      = nil
+FlyModule.RenderConn    = nil
+
+function FlyModule.Enable()
+    FlyModule.Active = true
+    local character = LocalPlayer.Character
+    if not character then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+    -- Crea BodyVelocity para controlar la velocidad en 3D
+    local bv             = Instance.new("BodyVelocity")
+    bv.Velocity          = Vector3.new(0, 0, 0)
+    bv.MaxForce          = Vector3.new(math.huge, math.huge, math.huge)
+    bv.P                 = 9999
+    bv.Parent            = hrp
+    FlyModule.BodyVelocity = bv
+
+    -- Crea BodyGyro para estabilizar la rotación
+    local bg             = Instance.new("BodyGyro")
+    bg.MaxTorque         = Vector3.new(math.huge, math.huge, math.huge)
+    bg.P                 = 9999
+    bg.D                 = 100
+    bg.Parent            = hrp
+    FlyModule.BodyGyro   = bg
+
+    -- Pausa la animación de caída
+    if humanoid then humanoid.PlatformStand = true end
+
+    -- Loop de vuelo: lee input del teclado para mover al jugador
+    FlyModule.RenderConn = RunService.RenderStepped:Connect(function()
+        if not FlyModule.Active then return end
+        local speed   = Config.FLY_SPEED
+        local camCF   = Camera.CFrame
+        local velocity = Vector3.new(0, 0, 0)
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            velocity = velocity + camCF.LookVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            velocity = velocity - camCF.LookVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            velocity = velocity - camCF.RightVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            velocity = velocity + camCF.RightVector * speed
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            velocity = velocity + Vector3.new(0, speed, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            velocity = velocity - Vector3.new(0, speed, 0)
+        end
+
+        bv.Velocity = velocity
+        -- Apunta el personaje en la dirección de la cámara
+        bg.CFrame   = CFrame.new(hrp.Position, hrp.Position + camCF.LookVector)
+    end)
+end
+
+function FlyModule.Disable()
+    FlyModule.Active = false
+    if FlyModule.RenderConn then
+        FlyModule.RenderConn:Disconnect()
+        FlyModule.RenderConn = nil
+    end
+    if FlyModule.BodyVelocity then
+        pcall(function() FlyModule.BodyVelocity:Destroy() end)
+        FlyModule.BodyVelocity = nil
+    end
+    if FlyModule.BodyGyro then
+        pcall(function() FlyModule.BodyGyro:Destroy() end)
+        FlyModule.BodyGyro = nil
+    end
+    -- Restaura el personaje
+    local character = LocalPlayer.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.PlatformStand = false end
+    end
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO ANTI-KATANA [LÓGICA DE EJEMPLO]               │
+-- └─────────────────────────────────────────────────────────┘
+-- En el juego destino, interceptaría los ataques de katana
+-- detectando animaciones específicas del atacante.
+
+local AntiKatana = {}
+AntiKatana.Active   = false
+AntiKatana.Thread   = nil
+
+function AntiKatana.Enable()
+    AntiKatana.Active = true
+    AntiKatana.Thread = task.spawn(function()
+        while AntiKatana.Active do
+            task.wait(0.1)
+            -- [EJEMPLO] Lógica conceptual:
+            -- Detectar si algún jugador cercano está usando la animación
+            -- de ataque de katana, y si es así, tomar acción evasiva.
+            --[[
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    local animator = player.Character:FindFirstChildOfClass("Animator")
+                    if animator then
+                        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                            if track.Animation.AnimationId == "KATANA_ATTACK_ID" then
+                                -- Ejecutar evasión: dash, teleport, etc.
+                                DoEvasiveAction()
+                            end
+                        end
+                    end
+                end
+            end
+            ]]
+        end
+    end)
+end
+
+function AntiKatana.Disable()
+    AntiKatana.Active = false
+    if AntiKatana.Thread then task.cancel(AntiKatana.Thread) AntiKatana.Thread = nil end
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO RESOLVER [LÓGICA DE EJEMPLO]                  │
+-- └─────────────────────────────────────────────────────────┘
+-- El resolver intenta predecir hacia dónde se moverá un
+-- jugador que usa técnicas anti-aim (girarse rápido, etc.)
+
+local Resolver = {}
+Resolver.Active         = false
+Resolver.PreviousAngles = {}  -- historial de ángulos de cada jugador
+
+function Resolver.Enable()
+    Resolver.Active = true
+    -- [EJEMPLO] Guarda el ángulo Y de cada jugador cada frame
+    -- para calcular la tendencia y predecir el siguiente ángulo.
+    task.spawn(function()
+        while Resolver.Active do
+            task.wait(0.05)
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local angle = hrp.CFrame:ToEulerAnglesYXZ()
+                        if not Resolver.PreviousAngles[player] then
+                            Resolver.PreviousAngles[player] = {}
+                        end
+                        table.insert(Resolver.PreviousAngles[player], angle)
+                        -- Mantiene solo los últimos 10 ángulos
+                        if #Resolver.PreviousAngles[player] > 10 then
+                            table.remove(Resolver.PreviousAngles[player], 1)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+function Resolver.Disable()
+    Resolver.Active = false
+    Resolver.PreviousAngles = {}
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO ANTI-LOCK [LÓGICA DE EJEMPLO]                 │
+-- └─────────────────────────────────────────────────────────┘
+-- Previene que otros jugadores usen lock-on contra ti,
+-- aplicando movimiento errático o detectando el lock.
+
+local AntiLock = {}
+AntiLock.Active     = false
+AntiLock.Thread     = nil
+local antiLockJitter = 0
+
+function AntiLock.Enable()
+    AntiLock.Active = true
+    AntiLock.Thread = task.spawn(function()
+        while AntiLock.Active do
+            task.wait(0.03)
+            -- [EJEMPLO] Aplica pequeñas rotaciones aleatorias al personaje
+            -- para dificultar el lock-on de sistemas enemy-aim.
+            local char = LocalPlayer.Character
+            if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    -- Micro-jitter: variación aleatoria muy pequeña en Y
+                    antiLockJitter = antiLockJitter + math.random(-2, 2)
+                    -- En un juego real aplicarías esto de forma más sofisticada
+                    -- hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(antiLockJitter * 0.1), 0)
+                end
+            end
+        end
+    end)
+end
+
+function AntiLock.Disable()
+    AntiLock.Active = false
+    antiLockJitter  = 0
+    if AntiLock.Thread then task.cancel(AntiLock.Thread) AntiLock.Thread = nil end
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO PREDICCIÓN [LÓGICA DE EJEMPLO]                │
+-- └─────────────────────────────────────────────────────────┘
+-- Calcula la posición futura del objetivo sumando su
+-- velocidad actual multiplicada por el ping/latencia.
+
+local Prediction = {}
+Prediction.Active           = false
+Prediction.VelocityCache    = {}  -- [player] = Vector3 velocidad
+
+function Prediction.Enable()
+    Prediction.Active = true
+    -- Trackea velocidad de cada jugador
+    task.spawn(function()
+        local lastPositions = {}
+        while Prediction.Active do
+            task.wait(0.05)
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local currentPos = hrp.Position
+                        if lastPositions[player] then
+                            -- Velocidad ≈ (posición actual - posición anterior) / tiempo
+                            local vel = (currentPos - lastPositions[player]) / 0.05
+                            Prediction.VelocityCache[player] = vel
+                        end
+                        lastPositions[player] = currentPos
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Función auxiliar: calcula posición predicha para un jugador
+function Prediction.GetPredictedPosition(player, pingSeconds)
+    pingSeconds = pingSeconds or 0.1  -- default 100ms
+    if not player.Character then return nil end
+    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local vel = Prediction.VelocityCache[player] or Vector3.new(0, 0, 0)
+    return hrp.Position + vel * pingSeconds
+end
+
+function Prediction.Disable()
+    Prediction.Active = false
+    Prediction.VelocityCache = {}
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO KATANA STATUS ESP [LÓGICA DE EJEMPLO]         │
+-- └─────────────────────────────────────────────────────────┘
+-- Detecta si un jugador tiene la katana equipada/activa
+-- y lo muestra con un indicador visual.
+
+local KatanaESP = {}
+KatanaESP.Active        = false
+KatanaESP.Billboards    = {}
+
+local function KatanaESP_Create(player)
+    if player == LocalPlayer then return end
+    if not player.Character then return end
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+
+    local bb        = Instance.new("BillboardGui")
+    bb.Name         = "LXNDXN_KatanaStatus"
+    bb.Size         = UDim2.new(0, 120, 0, 20)
+    bb.Adornee      = head
+    bb.AlwaysOnTop  = true
+    bb.StudsOffset  = Vector3.new(0, 5.5, 0)
+    bb.MaxDistance  = 150
+
+    local label     = Instance.new("TextLabel", bb)
+    label.Size      = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Font      = Enum.Font.GothamBold
+    label.TextSize  = 13
+    label.TextColor3 = Color3.fromRGB(255, 80, 80)  -- rojo = peligro
+    label.Text      = "⚔ KATANA"
+
+    bb.Parent       = head
+    KatanaESP.Billboards[player] = bb
+
+    -- [EJEMPLO] Actualiza el estado según si el jugador tiene la katana
+    task.spawn(function()
+        while KatanaESP.Active and bb.Parent do
+            task.wait(0.2)
+            -- En un juego real verificarías el tool equipado:
+            -- local tool = player.Character:FindFirstChildOfClass("Tool")
+            -- local hasKatana = tool and tool.Name:find("Katana")
+            local hasKatana = false  -- placeholder
+            label.Text      = hasKatana and "⚔ KATANA" or "✓ SAFE"
+            label.TextColor3 = hasKatana
+                and Color3.fromRGB(255, 80, 80)
+                or  Color3.fromRGB(80, 255, 80)
+        end
+    end)
+end
+
+function KatanaESP.Enable()
+    KatanaESP.Active = true
+    for _, p in ipairs(Players:GetPlayers()) do KatanaESP_Create(p) end
+end
+
+function KatanaESP.Disable()
+    KatanaESP.Active = false
+    for p, bb in pairs(KatanaESP.Billboards) do
+        pcall(function() bb:Destroy() end)
+        KatanaESP.Billboards[p] = nil
+    end
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │    MÓDULO PERSISTENCIA DE CONFIGURACIÓN                 │
+-- └─────────────────────────────────────────────────────────┘
+-- Guarda y carga la configuración usando writefile/readfile
+-- del ejecutor. Si no están disponibles, usa un fallback en
+-- tabla local (se pierde al cerrar el juego).
+
+local CONFIG_FILE = "LXNDXN_config.json"
+
+local function SaveConfig()
+    -- Serializa la tabla Config a JSON
+    local success, jsonStr = pcall(function()
+        return HttpService:JSONEncode(Config)
+    end)
+    if not success then
+        warn("[LXNDXN] Error al serializar config:", jsonStr)
+        return
+    end
+    -- Intenta escribir el archivo
+    local ok2, err = pcall(function()
+        writefile(CONFIG_FILE, jsonStr)
+    end)
+    if ok2 then
+        print("[LXNDXN] Configuración guardada correctamente.")
+    else
+        warn("[LXNDXN] No se pudo guardar (ejecutor sin writefile):", err)
+    end
+end
+
+local function LoadConfig()
+    -- Intenta leer el archivo
+    local ok, content = pcall(function()
+        return readfile(CONFIG_FILE)
+    end)
+    if not ok or not content then
+        warn("[LXNDXN] No se encontró archivo de configuración.")
+        return nil
+    end
+    -- Deserializa
+    local ok2, decoded = pcall(function()
+        return HttpService:JSONDecode(content)
+    end)
+    if not ok2 or type(decoded) ~= "table" then
+        warn("[LXNDXN] Config corrupta o inválida.")
+        return nil
+    end
+    -- Mezcla con los valores por defecto para no perder keys nuevas
+    for k, v in pairs(decoded) do
+        if Config[k] ~= nil then
+            Config[k] = v
+        end
+    end
+    print("[LXNDXN] Configuración cargada correctamente.")
+    return decoded
+end
+
+-- ================================================================
+-- TAB: VISUALES
+-- ================================================================
+
+CreateSectionLabel(VisualsTab, "ESP FEATURES", 1)
+
+-- ESP Box
+CreateToggle(VisualsTab, "ESP_BOX", function(state)
+    Config.ESP_BOX = state
+    if state then ESP.StartBoxes() else ESP.StopBoxes() end
+end, 2)
+
+-- Tracers
+CreateToggle(VisualsTab, "TRACERS", function(state)
+    Config.TRACERS = state
+    if state then ESP.StartTracers() else ESP.StopTracers() end
+end, 3)
+
+-- Nombres
+CreateToggle(VisualsTab, "ESP_NAMES", function(state)
+    Config.ESP_NAMES = state
+    if state then ESP.StartNames() else ESP.StopNames() end
+end, 4)
+
+-- Salud
+CreateToggle(VisualsTab, "ESP_HEALTH", function(state)
+    Config.ESP_HEALTH = state
+    if state then ESP.StartHealth() else ESP.StopHealth() end
+end, 5)
+
+-- Katana Status ESP
+CreateToggle(VisualsTab, "KATANA_STATUS", function(state)
+    Config.KATANA_STATUS = state
+    if state then KatanaESP.Enable() else KatanaESP.Disable() end
+end, 6)
+
+-- ================================================================
+-- TAB: COMBATE
+-- ================================================================
+
+CreateSectionLabel(CombatTab, "AIM ASSISTANCE", 1)
+
+-- Silent Aim (toggle + dropdown de parte del cuerpo)
+local aimDropdown
+local _, setAimToggle = CreateToggle(CombatTab, "SILENT_AIM", function(state)
+    Config.SILENT_AIM = state
+    aimDropdown.Visible = state
+    if state then SilentAim.Enable() else SilentAim.Disable() end
+end, 2)
+
+aimDropdown = CreateDropdown(CombatTab, "DIR_TITLE",
+    {"DIR_HEAD", "DIR_CHEST", "DIR_ALL"},
+    "DIR_HEAD",
+    function(selKey)
+        Config.SILENT_AIM_DIR = selKey
+    end, 3
+)
+aimDropdown.Visible = false
+
+-- Hit Chance (probabilidad de no disparar para parecer menos obvio)
+local hitChanceSlider
+CreateToggle(CombatTab, "HIT_CHANCE_ON", function(state)
+    Config.HIT_CHANCE_ON = state
+    hitChanceSlider.Visible = state
+end, 4)
+
+hitChanceSlider, _ = CreateSlider(CombatTab, "HIT_CHANCE_VAL", 0, 100, 100, function(val)
+    Config.HIT_CHANCE_VAL = val
+end, 5)
+hitChanceSlider.Visible = false
+
+CreateSectionLabel(CombatTab, "FOV & TARGETING", 6)
+
+-- FOV Circle
+local fovSlider
+CreateToggle(CombatTab, "SHOW_FOV", function(state)
+    Config.SHOW_FOV = state
+    fovSlider.Visible = state
+    if state then StartFOVCircle() else StopFOVCircle() end
+end, 7)
+
+fovSlider, _ = CreateSlider(CombatTab, "FOV_RADIUS", 10, 500, 50, function(val)
+    Config.FOV_RADIUS = val
+    if FOVCircle then FOVCircle.Radius = val end
+end, 8)
+fovSlider.Visible = false
+
+-- Predicción
+CreateToggle(CombatTab, "PREDICTION", function(state)
+    Config.PREDICTION = state
+    if state then Prediction.Enable() else Prediction.Disable() end
+end, 9)
+
+-- Trigger Bot
+CreateToggle(CombatTab, "TRIGGER_BOT", function(state)
+    Config.TRIGGER_BOT = state
+    if state then TriggerBot.Enable() else TriggerBot.Disable() end
+end, 10)
+
+-- ================================================================
+-- TAB: MÍSTICO
+-- ================================================================
+
+CreateSectionLabel(MisticTab, "ANTI-CHEAT BYPASS", 1)
+
+-- Anti-Katana
+CreateToggle(MisticTab, "ANTI_KATANA", function(state)
+    Config.ANTI_KATANA = state
+    if state then AntiKatana.Enable() else AntiKatana.Disable() end
+end, 2)
+
+-- Resolver
+CreateToggle(MisticTab, "RESOLVER", function(state)
+    Config.RESOLVER = state
+    if state then Resolver.Enable() else Resolver.Disable() end
+end, 3)
+
+-- Anti-Lock
+CreateToggle(MisticTab, "ANTI_LOCK", function(state)
+    Config.ANTI_LOCK = state
+    if state then AntiLock.Enable() else AntiLock.Disable() end
+end, 4)
+
+-- ================================================================
+-- TAB: MOVIMIENTO
+-- ================================================================
+
+CreateSectionLabel(MovementTab, "CHARACTER MOVEMENT", 1)
+
+-- Velocidad
+local speedSlider
+CreateToggle(MovementTab, "MOD_SPEED", function(state)
+    Config.MOD_SPEED = state
+    speedSlider.Visible = state
+    if not state then
+        -- Restaura velocidad original al desactivar
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = 16 end
+        end
+    end
+end, 2)
+
+speedSlider, _ = CreateSlider(MovementTab, "WALK_SPEED", 0, 400, 16, function(val)
+    Config.WALK_SPEED = val
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = val end
+    end
+end, 3)
+speedSlider.Visible = false
+
+-- Mantiene la velocidad al respawn
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if Config.MOD_SPEED then
+        task.wait(0.5)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = Config.WALK_SPEED end
+    end
+    if Config.FLY_ON then
+        task.wait(1)
+        FlyModule.Enable()
+    end
+end)
+
+CreateSectionLabel(MovementTab, "FLY", 4)
+
+-- Volar
+local flySlider
+CreateToggle(MovementTab, "FLY_ON", function(state)
+    Config.FLY_ON = state
+    flySlider.Visible = state
+    if state then FlyModule.Enable() else FlyModule.Disable() end
+end, 5)
+
+flySlider, _ = CreateSlider(MovementTab, "FLY_SPEED", 5, 500, 50, function(val)
+    Config.FLY_SPEED = val
+    -- La velocidad se aplica en tiempo real dentro del RenderStepped del módulo
+end, 6)
+flySlider.Visible = false
+
+-- ================================================================
+-- TAB: AJUSTES
+-- ================================================================
+
+CreateSectionLabel(SettingsTab, "CONFIG", 1)
+
+-- Guardar configuración
+CreateToggle(SettingsTab, "SAVE_CFG", function(state)
+    if state then
+        SaveConfig()
+        -- El toggle se auto-apaga después de guardar
+        task.delay(0.5, function()
+            -- Referencia al SetToggle si fuera necesario
+        end)
+    end
+end, 2)
+
+-- Cargar configuración
+CreateToggle(SettingsTab, "LOAD_CFG", function(state)
+    if state then LoadConfig() end
+end, 3)
+
+-- Auto-Load al iniciar
+CreateToggle(SettingsTab, "AUTO_LOAD", function(state)
+    Config.AUTO_LOAD = state
+end, 4)
+
+-- Modo Rendimiento (desactiva animaciones del UI para FPS bajo)
+CreateToggle(SettingsTab, "PERF_MODE", function(state)
+    Config.PERF_MODE = state
+    if state then
+        -- Desactiva tweens y el pulso del botón flotante
+        if pulseTween then pulseTween:Cancel() end
+        FloatButton.BackgroundTransparency = 0.15
+    else
+        StartButtonPulse()
+    end
+end, 5)
+
+CreateSectionLabel(SettingsTab, "BUTTON", 6)
+
+-- Fijar botón flotante
+CreateToggle(SettingsTab, "PIN_BTN", function(state)
+    Config.PIN_BTN = state
+    ButtonIsFixed  = state
+end, 7)
+
+-- Ocultar botón flotante
+CreateToggle(SettingsTab, "HIDE_BTN", function(state)
+    Config.HIDE_BTN = state
+    if state then
+        Tween(FloatButton, { BackgroundTransparency = 1, TextTransparency = 1 }, 0.3)
+        Tween(FloatStroke, { Transparency = 1 }, 0.3)
+    else
+        Tween(FloatButton, { BackgroundTransparency = 0.15, TextTransparency = 0 }, 0.3)
+        Tween(FloatStroke, { Transparency = 0.7 }, 0.3)
+    end
+end, 8)
+
+CreateSectionLabel(SettingsTab, "LANGUAGE", 9)
+
+-- ── DROPDOWN DE IDIOMA ────────────────────────────────────
+-- Este dropdown NO usa el sistema de localizaciónm interna
+-- porque los nombres de idiomas son fijos y siempre reconocibles.
+local langOptionHeight   = 30
+local langCount          = 5
+local langClosedH        = 44
+local langOpenH          = langClosedH + langCount * langOptionHeight
+
+local LangDropFrame = Create("Frame", {
+    Parent              = SettingsTab,
+    Size                = UDim2.new(1, 0, 0, langClosedH),
+    BackgroundColor3    = Theme.CardColor,
+    BackgroundTransparency = Theme.CardTransparency,
+    ClipsDescendants    = true,
+    LayoutOrder         = 10,
+})
+Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = LangDropFrame })
+
+local LangTitle = Create("TextLabel", {
+    Parent              = LangDropFrame,
+    Size                = UDim2.new(1, -60, 0, langClosedH),
+    Position            = UDim2.new(0, 15, 0, 0),
+    BackgroundTransparency = 1,
+    TextColor3          = Theme.TextColor,
+    Font                = Enum.Font.GothamMedium,
+    TextSize            = 13,
+    TextXAlignment      = Enum.TextXAlignment.Left,
+})
+local langExtra = { CurrentSelectionKey = Config.LANGUAGE }
+RegisterTranslation(LangTitle, "DropdownTitle", "LANG_TITLE", langExtra)
+
+local LangArrow = Create("TextLabel", {
+    Parent              = LangDropFrame,
+    Size                = UDim2.new(0, 24, 0, 24),
+    Position            = UDim2.new(1, -34, 0, 10),
+    BackgroundTransparency = 1,
+    Text                = "▾",
+    TextColor3          = Theme.SecondaryText,
+    Font                = Enum.Font.GothamBold,
+    TextSize            = 16,
+})
+
+local LangContainer = Create("Frame", {
+    Parent              = LangDropFrame,
+    Size                = UDim2.new(1, 0, 1, -langClosedH),
+    Position            = UDim2.new(0, 0, 0, langClosedH),
+    BackgroundTransparency = 1,
+})
+Create("UIListLayout", { Parent = LangContainer, SortOrder = Enum.SortOrder.LayoutOrder })
+
+local LangToggleBtn = Create("TextButton", {
+    Parent              = LangDropFrame,
+    Size                = UDim2.new(1, 0, 0, langClosedH),
+    BackgroundTransparency = 1,
+    Text                = "",
+    ZIndex              = LangDropFrame.ZIndex + 2,
+})
+
+local langIsOpen = false
+LangToggleBtn.MouseButton1Click:Connect(function()
+    langIsOpen = not langIsOpen
+    Tween(LangDropFrame, {
+        Size = UDim2.new(1, 0, 0, langIsOpen and langOpenH or langClosedH),
+    }, 0.25)
+    Tween(LangArrow, { Rotation = langIsOpen and 180 or 0 }, 0.25)
+end)
+
+local LangOptions = {
+    { name = "Español",  key = "Español"  },
+    { name = "English",  key = "Inglés"   },
+    { name = "Português",key = "Portugués"},
+    { name = "Русский",  key = "Ruso"     },
+    { name = "پښتو",     key = "Pastún"   },
+}
+for i, opt in ipairs(LangOptions) do
+    local OptBtn = Create("TextButton", {
+        Parent              = LangContainer,
+        Size                = UDim2.new(1, 0, 0, langOptionHeight),
+        BackgroundColor3    = Theme.DropdownColor,
+        BackgroundTransparency = 0.3,
+        Text                = "  " .. opt.name,
+        TextColor3          = Theme.SecondaryText,
+        Font                = Enum.Font.Gotham,
+        TextSize            = 12,
+        TextXAlignment      = Enum.TextXAlignment.Left,
+        LayoutOrder         = i,
+        ZIndex              = LangDropFrame.ZIndex + 3,
+    })
+    OptBtn.MouseEnter:Connect(function()
+        Tween(OptBtn, { BackgroundTransparency = 0.0 }, 0.15)
+    end)
+    OptBtn.MouseLeave:Connect(function()
+        Tween(OptBtn, { BackgroundTransparency = 0.3 }, 0.15)
+    end)
+    OptBtn.MouseButton1Click:Connect(function()
+        -- Actualiza el idioma globalmente
+        UpdateLanguage(opt.key)
+        -- Actualiza el título del dropdown de idioma
+        langExtra.CurrentSelectionKey = opt.name
+        LangTitle.Text = (Lang[CurrentLanguage]["LANG_TITLE"] or "Language") .. ": " .. opt.name
+        -- Cierra el dropdown
+        langIsOpen = false
+        Tween(LangDropFrame, { Size = UDim2.new(1, 0, 0, langClosedH) }, 0.2)
+        Tween(LangArrow, { Rotation = 0 }, 0.2)
+    end)
+end
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │          AUTO-LOAD DE CONFIGURACIÓN AL INICIAR          │
+-- └─────────────────────────────────────────────────────────┘
+-- Si el archivo de config existe y AUTO_LOAD estaba activo,
+-- carga automáticamente la configuración guardada.
+task.spawn(function()
+    task.wait(1) -- pequeña espera para que el UI esté listo
+    local loaded = LoadConfig()
+    if loaded and loaded.AUTO_LOAD then
+        print("[LXNDXN] Auto-Load activo: configuración restaurada.")
+        -- Aquí podrías aplicar los valores cargados a todos los toggles
+        -- usando las referencias guardadas si tuvieras un sistema de registro.
+    end
+end)
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │                 NOTIFICACIÓN DE CARGA                   │
+-- └─────────────────────────────────────────────────────────┘
+-- Muestra una notificación flotante temporal al cargar el script.
+local function ShowNotification(message, duration)
+    duration = duration or 3
+    local notif = Create("Frame", {
+        Parent              = ScreenGui,
+        Size                = UDim2.new(0, 280, 0, 48),
+        Position            = UDim2.new(0.5, -140, 1, 0),  -- empieza abajo
+        BackgroundColor3    = Theme.AccentColor,
+        BackgroundTransparency = 0.1,
+        ZIndex              = 100,
+    })
+    Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = notif })
+    Create("TextLabel", {
+        Parent              = notif,
+        Size                = UDim2.new(1, -20, 1, 0),
+        Position            = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text                = message,
+        TextColor3          = Color3.fromRGB(255, 255, 255),
+        Font                = Enum.Font.GothamBold,
+        TextSize            = 13,
+        TextXAlignment      = Enum.TextXAlignment.Left,
+        ZIndex              = 101,
+    })
+    -- Anima hacia arriba
+    Tween(notif, { Position = UDim2.new(0.5, -140, 1, -60) }, 0.4, Enum.EasingStyle.Back)
+    task.delay(duration, function()
+        Tween(notif, { Position = UDim2.new(0.5, -140, 1, 10), BackgroundTransparency = 1 }, 0.3)
+        task.delay(0.35, function() notif:Destroy() end)
+    end)
+end
+
+-- Notificación de bienvenida
+task.delay(0.5, function()
+    ShowNotification("⚡ LXNDXN v3.0 cargado correctamente", 4)
+end)
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │      LIMPIEZA GENERAL AL DESTRUIR EL GUI                │
+-- └─────────────────────────────────────────────────────────┘
+-- Si el ScreenGui es eliminado (por ejemplo al salir),
+-- detiene todos los módulos activos limpiamente.
+ScreenGui.AncestryChanged:Connect(function()
+    if not ScreenGui.Parent then
+        ESP.StopBoxes()
+        ESP.StopTracers()
+        ESP.StopNames()
+        ESP.StopHealth()
+        KatanaESP.Disable()
+        FlyModule.Disable()
+        AntiKatana.Disable()
+        Resolver.Disable()
+        AntiLock.Disable()
+        TriggerBot.Disable()
+        Prediction.Disable()
+        StopFOVCircle()
+        for _, conn in pairs(ESP.Connections) do
+            pcall(function() conn:Disconnect() end)
+        end
+        print("[LXNDXN] UI destruída, todos los módulos detenidos.")
+    end
+end)
+
+-- ================================================================
+-- FIN DEL SCRIPT
+-- LXNDXN UI Framework v3.0
+-- ================================================================
+print("╔══════════════════════════════════╗")
+print("║     LXNDXN UI v3.0 LOADED       ║")
+print("║  Presiona INSERT para abrir/     ║")
+print("║  cerrar el menú.                 ║")
+print("╚══════════════════════════════════╝")
