@@ -311,7 +311,7 @@ Tabs["TAB_VISUALS"].TextColor3 = Theme.AccentColor
 
 -- VISUALES
 CreateToggle(VisualsTab, "ESP_BOX", function(state) end)
-end)CreateToggle(VisualsTab, "TRACERS", function(state) end)
+CreateToggle(VisualsTab, "TRACERS", function(state) end)
 CreateToggle(VisualsTab, "ESP_NAMES", function(state) end)
 CreateToggle(VisualsTab, "ESP_HEALTH", function(state) end)
 CreateToggle(VisualsTab, "KATANA_STATUS", function(state) end)
