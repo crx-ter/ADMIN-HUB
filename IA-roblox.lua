@@ -1642,16 +1642,16 @@ local function argsContainShootData(args)
         if typeof(arg) == "Instance" and arg:IsA("BasePart") then
             return true
         end
-        if typeof(arg) == "Vector3" or typeof(arg) == "CFrame" then
-            return true
-        end
         if type(arg) == "table" then
             for k, v in pairs(arg) do
                 local keyName = tostring(k):lower()
-                if keyName:find("target") or keyName:find("position") or keyName:find("mouse") or keyName:find("hit") then
+                if keyName:find("target") or keyName:find("hit") or keyName:find("position") or keyName:find("mouse") then
                     return true
                 end
                 if typeof(v) == "Instance" and v:IsA("BasePart") then
+                    return true
+                end
+                if typeof(v) == "Vector3" or typeof(v) == "CFrame" then
                     return true
                 end
             end
@@ -1673,22 +1673,48 @@ end
 local function interceptNamecall(self, ...)
     local method = getnamecallmethod()
     local args = { ... }
-    local targetPlayer, targetPart = GetBestSilentAimTarget(Config.FOV_RADIUS)
-    if SilentAim.Active and targetPlayer and targetPart and shouldHit() then
+
+    if method == "FireServer" or method == "InvokeServer" then
+        if not (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
+            return SilentAim.OldNamecall(self, unpack(args))
+        end
+
+        if not SilentAim.Active then
+            return SilentAim.OldNamecall(self, unpack(args))
+        end
+
+        if not isAttackRemote(self) then
+            return SilentAim.OldNamecall(self, unpack(args))
+        end
+
+        if not argsContainShootData(args) then
+            return SilentAim.OldNamecall(self, unpack(args))
+        end
+
+        local targetPlayer, targetPart = GetBestSilentAimTarget(Config.FOV_RADIUS)
+        if not targetPlayer or not targetPart or not shouldHit() then
+            return SilentAim.OldNamecall(self, unpack(args))
+        end
+
         local targetPos = predictPosition(targetPart)
-        if method == "FireServer" or method == "InvokeServer" then
-            if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
-                if isAttackRemote(self) or argsContainShootData(args) then
-                    return SilentAim.OldNamecall(self, redirectArguments(args, targetPart, targetPos))
-                end
-            end
-        elseif self == workspace and method == "Raycast" then
-            local origin, direction, params = decodeRaycastArguments(args)
-            if origin and direction then
+        return SilentAim.OldNamecall(self, redirectArguments(args, targetPart, targetPos))
+    elseif self == workspace and method == "Raycast" then
+        if not SilentAim.Active then
+            return SilentAim.OldNamecall(self, unpack(args))
+        end
+
+        local origin, direction, params = decodeRaycastArguments(args)
+        if origin and direction then
+            local targetPlayer, targetPart = GetBestSilentAimTarget(Config.FOV_RADIUS)
+            if targetPlayer and targetPart and shouldHit() then
+                local targetPos = predictPosition(targetPart)
                 return SilentAim.OldNamecall(self, origin, targetPos - origin, params)
             end
         end
+
+        return SilentAim.OldNamecall(self, unpack(args))
     end
+
     return SilentAim.OldNamecall(self, unpack(args))
 end
 
