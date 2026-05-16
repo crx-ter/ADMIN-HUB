@@ -343,6 +343,47 @@ local function GetClosestPlayerToMouse(maxRadius)
     return closestPlayer, closestDist
 end
 
+local function GetBestSilentAimTarget(maxRadius)
+    maxRadius = maxRadius or Config.FOV_RADIUS
+    local bestPlayer, bestPart, bestScore = nil, nil, math.huge
+    local viewportCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local camPos = Camera.CFrame.Position
+    local camLook = Camera.CFrame.LookVector
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local part = getTargetPartFromPlayer(player)
+                if part then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - viewportCenter).Magnitude
+                        if screenDist <= maxRadius then
+                            local toTarget = (part.Position - camPos)
+                            if toTarget.Magnitude > 0 then
+                                local dot = math.clamp(camLook:Dot(toTarget.Unit), -1, 1)
+                                local angle = math.deg(math.acos(dot))
+                                if angle <= 90 then
+                                    local distance = toTarget.Magnitude
+                                    local score = screenDist + angle * 0.2 + distance * 0.01
+                                    if score < bestScore then
+                                        bestScore = score
+                                        bestPlayer = player
+                                        bestPart = part
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return bestPlayer, bestPart, bestScore
+end
+
 -- ┌─────────────────────────────────────────────────────────┐
 -- │       CONSTRUCCIÓN DE LA INTERFAZ DE USUARIO            │
 -- └─────────────────────────────────────────────────────────┘
@@ -1094,6 +1135,7 @@ local ESP = {
     HealthBillboards= {},  -- [player] = BillboardGui
     -- Conexiones de eventos
     Connections     = {},
+    HealthConnections= {},
 }
 
 -- Limpia todas las instancias ESP de un jugador al salir
@@ -1113,6 +1155,12 @@ local function ESP_CleanPlayer(player)
     if ESP.HealthBillboards[player] then
         pcall(function() ESP.HealthBillboards[player]:Destroy() end)
         ESP.HealthBillboards[player] = nil
+    end
+    if ESP.HealthConnections[player] then
+        for _, conn in pairs(ESP.HealthConnections[player]) do
+            pcall(function() conn:Disconnect() end)
+        end
+        ESP.HealthConnections[player] = nil
     end
 end
 
@@ -1339,7 +1387,17 @@ local function ESP_Health_Create(player)
     local head      = player.Character:FindFirstChild("Head")
     local humanoid  = player.Character:FindFirstChildOfClass("Humanoid")
     if not head or not humanoid then return end
-    if player.Character:FindFirstChild("LXNDXN_Health") then return end
+
+    if ESP.HealthBillboards[player] then
+        pcall(function() ESP.HealthBillboards[player]:Destroy() end)
+        ESP.HealthBillboards[player] = nil
+    end
+    if ESP.HealthConnections[player] then
+        for _, conn in pairs(ESP.HealthConnections[player]) do
+            pcall(function() conn:Disconnect() end)
+        end
+        ESP.HealthConnections[player] = nil
+    end
 
     local bb            = Instance.new("BillboardGui")
     bb.Name             = "LXNDXN_Health"
@@ -1378,9 +1436,9 @@ local function ESP_Health_Create(player)
 
     bb.Parent           = head
     ESP.HealthBillboards[player] = bb
+    ESP.HealthConnections[player] = {}
 
-    -- Listener para actualizar la barra en tiempo real
-    humanoid.HealthChanged:Connect(function(hp)
+    ESP.HealthConnections[player].HumanoidHealth = humanoid.HealthChanged:Connect(function(hp)
         if not ESP.HealthEnabled then return end
         local pct       = hp / humanoid.MaxHealth
         barFill.Size    = UDim2.new(pct, 0, 1, 0)
@@ -1391,16 +1449,31 @@ local function ESP_Health_Create(player)
         )
         healthText.Text = math.floor(hp) .. "/" .. math.floor(humanoid.MaxHealth)
     end)
+
+    ESP.HealthConnections[player].CharacterRemoving = player.CharacterRemoving:Connect(function()
+        ESP_CleanPlayer(player)
+    end)
 end
 
 function ESP.StartHealth()
     ESP.HealthEnabled = true
-    for _, p in ipairs(Players:GetPlayers()) do ESP_Health_Create(p) end
+    for _, p in ipairs(Players:GetPlayers()) do
+        ESP_Health_Create(p)
+        ESP.Connections["health_charadded_" .. p.UserId] = p.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            if ESP.HealthEnabled then
+                ESP_Health_Create(p)
+            end
+        end)
+    end
     ESP.Connections["health_playeradded"] = Players.PlayerAdded:Connect(function(p)
-        p.CharacterAdded:Connect(function()
+        ESP.Connections["health_charadded_" .. p.UserId] = p.CharacterAdded:Connect(function()
             task.wait(0.5)
             if ESP.HealthEnabled then ESP_Health_Create(p) end
         end)
+    end)
+    ESP.Connections["health_playerremoving"] = Players.PlayerRemoving:Connect(function(p)
+        ESP_CleanPlayer(p)
     end)
 end
 
@@ -1410,9 +1483,17 @@ function ESP.StopHealth()
         pcall(function() bb:Destroy() end)
         ESP.HealthBillboards[p] = nil
     end
-    if ESP.Connections["health_playeradded"] then
-        pcall(function() ESP.Connections["health_playeradded"]:Disconnect() end)
-        ESP.Connections["health_playeradded"] = nil
+    for player, conns in pairs(ESP.HealthConnections) do
+        for _, conn in pairs(conns) do
+            pcall(function() conn:Disconnect() end)
+        end
+        ESP.HealthConnections[player] = nil
+    end
+    for key, conn in pairs(ESP.Connections) do
+        if key:find("health_") then
+            pcall(function() conn:Disconnect() end)
+            ESP.Connections[key] = nil
+        end
     end
 end
 
@@ -1485,41 +1566,58 @@ local function getTargetPartFromPlayer(player)
 end
 
 local function attemptFireAt(player, part)
-    if not player or not part then return end
-    -- Hit chance check
+    if not player or not part then return false end
+
     if Config.HIT_CHANCE_ON then
-        local roll = math.random(0, 100)
-        if roll > (Config.HIT_CHANCE_VAL or 100) then
-            return -- falló la comprobación de probabilidad
+        local chance = math.clamp((Config.HIT_CHANCE_VAL or 100) / 100, 0, 1)
+        if math.random() > chance then
+            return false
         end
     end
 
     local predictedPos = part.Position
     if Config.PREDICTION then
-        local vel = (part.AssemblyLinearVelocity or Vector3.new())
-        predictedPos = predictedPos + vel * 0.12
+        local vel = part.AssemblyLinearVelocity or Vector3.new()
+        local distance = (part.Position - Camera.CFrame.Position).Magnitude
+        local factor = math.clamp(0.12 + distance / 900, 0.08, 0.22)
+        predictedPos = predictedPos + vel * factor
     end
 
-    -- Intenta usar un Remote en ReplicatedStorage si existe
-    local ok
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-    if remotes and remotes:FindFirstChild("Attack") then
+    local function safeFire(remote, payload)
         pcall(function()
-            remotes.Attack:FireServer(part)
+            if remote:IsA("RemoteFunction") then
+                remote:InvokeServer(payload)
+            else
+                remote:FireServer(payload)
+            end
         end)
-        return
     end
 
-    -- Alternativa: remote directo
-    if ReplicatedStorage:FindFirstChild("Attack") then
-        pcall(function()
-            ReplicatedStorage.Attack:FireServer(predictedPos)
-        end)
-        return
+    local remotesRoot = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
+    local candidate = nil
+    for _, child in ipairs(remotesRoot:GetDescendants()) do
+        if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+            local name = child.Name:lower()
+            if name:find("attack") or name:find("fire") or name:find("shoot") or name:find("hit") or name:find("weapon") then
+                candidate = child
+                break
+            end
+        end
     end
 
-    -- Si no hay remote conocido, informamos (demostración)
-    warn("[LXNDXN] SilentAim: no se encontró Remote 'Attack' en ReplicatedStorage. Acción demo ignorada.")
+    if candidate then
+        safeFire(candidate, part)
+        return true
+    end
+
+    local direct = ReplicatedStorage:FindFirstChild("Attack")
+    if direct and (direct:IsA("RemoteEvent") or direct:IsA("RemoteFunction")) then
+        safeFire(direct, part)
+        return true
+    end
+
+    warn("[LXNDXN] SilentAim: no se encontró Remote de ataque conocido. Acción ignorada.")
+    return false
 end
 
 function SilentAim.Enable()
@@ -1528,13 +1626,9 @@ function SilentAim.Enable()
     SilentAim.InputConn = UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            -- Obtenemos objetivo usando el sistema existente (centrado en pantalla / FOV)
-            local targetPlayer = GetClosestPlayerToMouse(Config.FOV_RADIUS)
-            if targetPlayer then
-                local part = getTargetPartFromPlayer(targetPlayer)
-                if part and checkVisibility(part) then
-                    attemptFireAt(targetPlayer, part)
-                end
+            local targetPlayer, targetPart = GetBestSilentAimTarget(Config.FOV_RADIUS)
+            if targetPlayer and targetPart and checkVisibility(targetPart) then
+                attemptFireAt(targetPlayer, targetPart)
             end
         end
     end)
