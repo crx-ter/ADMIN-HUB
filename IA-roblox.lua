@@ -365,7 +365,7 @@ local FloatButton = Create("TextButton", {
     AnchorPoint         = Vector2.new(0.5, 0.5),
     BackgroundColor3    = Theme.AccentColor,
     BackgroundTransparency = 0.15,
-    Text                = "⚡",
+    Text                = "😶‍🌫️",
     TextColor3          = Color3.fromRGB(255, 255, 255),
     TextTransparency    = 0,
     TextScaled          = true,
@@ -1455,43 +1455,109 @@ end
 -- o la función de envío de paquetes del juego específico.
 -- Esta es una DEMOSTRACIÓN de la arquitectura correcta.
 
-local SilentAim = {}
-SilentAim.Active        = false
-SilentAim.OriginalRaycast = nil
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
 
-function SilentAim.Enable()
-    SilentAim.Active = true
-    -- [EJEMPLO] Hook conceptual de cómo funcionaría:
-    -- En un juego real, interceptarías la función de raycast
-    -- del gun system del juego y redirigirías el origen/dirección
-    -- hacia el objetivo más cercano dentro del FOV.
-    --
-    -- Ejemplo de arquitectura:
-    --[[
-        local oldRaycast = workspace.Raycast  -- NO funciona así en Roblox real
-        workspace.Raycast = function(origin, direction, params)
-            if SilentAim.Active then
-                local target, _ = GetClosestPlayerToMouse(Config.FOV_RADIUS)
-                if target and target.Character then
-                    local partName = "Head"
-                    if Config.SILENT_AIM_DIR == "DIR_CHEST" then partName = "UpperTorso" end
-                    local targetPart = target.Character:FindFirstChild(partName)
-                    if targetPart then
-                        -- Redirige el disparo hacia el objetivo
-                        direction = (targetPart.Position - origin).Unit * direction.Magnitude
-                    end
+-- Configuración simulada del menú de la UI
+local Config = {
+SilentAim = true,
+TargetPart = "Head",
+FOV_Radius = 150
+}
+
+-- === 1. LÓGICA DE DETECCIÓN 
+local function GetClosestPlayerToCursor()
+local closestTarget = nil
+local shortestDistance = Config.FOV_Radius
+-- En PC, usamos la posición del mouse. En móvil, usaríamos el centro de la pantalla.
+local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(Config.TargetPart) then
+        local targetPart = player.Character[Config.TargetPart]
+        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+
+        if humanoid and humanoid.Health > 0 then
+            local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+
+            if onScreen then
+                local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    closestTarget = targetPart
                 end
             end
-            return oldRaycast(origin, direction, params)
         end
-    ]]
-    print("[LXNDXN] Silent Aim: Activado (modo demostración)")
+    end
+end
+return closestTarget
+
+
 end
 
-function SilentAim.Disable()
-    SilentAim.Active = false
-    print("[LXNDXN] Silent Aim: Desactivado")
+-- === 2. LA INTERCEPTACIÓN (EL CORAZÓN DEL EXPLOIT) 
+local gameMetatable = getrawmetatable(game)
+
+-- 2. Permitimos modificar esta metatabla (por defecto está protegida/bloqueada por Roblox).
+setreadonly(gameMetatable, false)
+
+-- 3. Guardamos la función original de "__namecall".
+-- __namecall se dispara CADA VEZ que un script usa los dos puntos ":".
+-- Por ejemplo: Workspace:Raycast(), Player:GetMouse(), Part:Destroy(), Event:FireServer().
+local originalNamecall = gameMetatable.__namecall
+
+-- 4. Reemplazamos la función original con nuestra propia función maliciosa.
+gameMetatable.__namecall = newcclosure(function(self, ...)
+-- 'self' es el objeto que está llamando a la función (ej. Workspace).
+-- '...' son los argumentos de la función.
+local args = {...}
+
+-- Obtenemos el nombre del método que el juego intentó ejecutar (ej. "Raycast").
+local method = getnamecallmethod()
+
+-- Verificamos si el juego está intentando hacer un Raycast (disparar una bala).
+-- Y verificamos si nuestro Silent Aim está activo.
+if Config.SilentAim and method == "Raycast" then
+    
+    -- Buscamos si hay un enemigo cerca de la mira
+    local targetPart = GetClosestPlayerToCursor()
+    
+    if targetPart then
+        -- El script original del juego mandó estos argumentos:
+        -- args[1] = Origin (De dónde sale la bala)
+        -- args[2] = Direction (Hacia dónde miraba el jugador)
+        -- args[3] = RaycastParams (Filtros)
+        
+        local origin = args[1]
+        local originalDirection = args[2]
+        
+        -- MAGIA DEL HACKER: 
+        -- Calculamos la nueva dirección obligando a la bala a mirar hacia el enemigo.
+        -- Usamos .Magnitude para mantener el mismo largo/velocidad que el juego esperaba.
+        local newDirection = (targetPart.Position - origin).Unit * originalDirection.Magnitude
+        
+        -- ¡Sobrescribimos el argumento original!
+        args[2] = newDirection
+        
+        -- Retornamos la llamada original, pero con nuestros argumentos alterados.
+        -- El juego "cree" que calculó esta trayectoria normalmente y la acepta.
+        return originalNamecall(self, unpack(args))
+    end
 end
+
+-- Si no es un Raycast, o no hay nadie en el FOV, dejamos que el juego funcione normal.
+return originalNamecall(self, unpack(args))
+
+
+end)
+
+-- 5. Volvemos a proteger la metatabla para evitar que otros scripts detecten la manipulación.
+setreadonly(gameMetatable, true)
+
+print("[PERSPECTIVA EXPLOIT] Motor interceptado. Silent Aim activo.")
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │    MÓDULO TRIGGER BOT: Disparo Automático al Apuntar   │
