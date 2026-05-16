@@ -325,13 +325,12 @@ local function GetClosestPlayerToMouse(maxRadius)
                       or player.Character:FindFirstChild("HumanoidRootPart")
 
             if part then
-                -- Verificamos que el jugador esté vivo
                 local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
                 if humanoid and humanoid.Health > 0 then
                     local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
                     if onScreen then
                         local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - viewportCenter).Magnitude
-                        if dist2D < maxRadius and dist2D < closestDist then
+                        if dist2D <= maxRadius and dist2D < closestDist then
                             closestDist   = dist2D
                             closestPlayer = player
                         end
@@ -1530,12 +1529,12 @@ local function StopFOVCircle()
 end
 
 -- ┌─────────────────────────────────────────────────────────┐
--- │    MÓDULO SILENT AIM: Redireccionamiento de Disparo     │
--- │    [LÓGICA DE EJEMPLO - Requiere hooks del juego]       │
--- └─────────────────────────────────────────────────────────┘
--- El silent aim real necesita hookear la función de raycast
--- o la función de envío de paquetes del juego específico.
--- Esta es una DEMOSTRACIÓN de la arquitectura correcta.
+-- Esta implementación usa:
+-- 1) Selección de objetivo por parte configurada (cabeza/pecho/general)
+-- 2) FOV real en pantalla
+-- 3) Raycast de visibilidad
+-- 4) Hit chance y predicción ajustada por distancia
+-- 5) Búsqueda robusta de RemoteEvents/Functions de ataque
 
 local SilentAim = {}
 SilentAim.Active        = false
@@ -1584,36 +1583,69 @@ local function attemptFireAt(player, part)
     end
 
     local function safeFire(remote, payload)
-        pcall(function()
+        if not remote then return false end
+        if type(payload) == "table" and payload.__args then
             if remote:IsA("RemoteFunction") then
-                remote:InvokeServer(payload)
+                return pcall(function() remote:InvokeServer(table.unpack(payload.__args)) end)
             else
-                remote:FireServer(payload)
+                return pcall(function() remote:FireServer(table.unpack(payload.__args)) end)
             end
-        end)
+        else
+            if remote:IsA("RemoteFunction") then
+                return pcall(function() remote:InvokeServer(payload) end)
+            else
+                return pcall(function() remote:FireServer(payload) end)
+            end
+        end
     end
 
-    local remotesRoot = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
+    local function isAttackRemote(remote)
+        local name = remote.Name:lower()
+        return name:find("attack") or name:find("fire") or name:find("shoot") or name:find("hit") or name:find("weapon") or name:find("bullet") or name:find("damage")
+    end
+
     local candidate = nil
-    for _, child in ipairs(remotesRoot:GetDescendants()) do
+    for _, child in ipairs(game:GetDescendants()) do
         if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-            local name = child.Name:lower()
-            if name:find("attack") or name:find("fire") or name:find("shoot") or name:find("hit") or name:find("weapon") then
+            if isAttackRemote(child) then
                 candidate = child
                 break
             end
         end
     end
 
-    if candidate then
-        safeFire(candidate, part)
+    if candidate and safeFire(candidate, part) then
         return true
     end
 
-    local direct = ReplicatedStorage:FindFirstChild("Attack")
-    if direct and (direct:IsA("RemoteEvent") or direct:IsA("RemoteFunction")) then
-        safeFire(direct, part)
-        return true
+    local fallback = ReplicatedStorage:FindFirstChild("Attack")
+    if fallback and (fallback:IsA("RemoteEvent") or fallback:IsA("RemoteFunction")) then
+        if safeFire(fallback, part) then
+            return true
+        end
+    end
+
+    local payloads = {
+        part,
+        predictedPos,
+        part.Position,
+        part.CFrame,
+        { __args = { part, predictedPos } },
+        { __args = { player, part } },
+        { __args = { player, part, predictedPos } },
+        { __args = { player.Name, part } },
+        { __args = { { Target = part, Position = predictedPos } } },
+        { __args = { { Player = player, Part = part, Position = predictedPos } } },
+        { __args = { { TargetUserId = player.UserId, Position = predictedPos } } },
+    }
+
+    for _, payload in ipairs(payloads) do
+        if candidate and safeFire(candidate, payload) then
+            return true
+        end
+        if fallback and safeFire(fallback, payload) then
+            return true
+        end
     end
 
     warn("[LXNDXN] SilentAim: no se encontró Remote de ataque conocido. Acción ignorada.")
