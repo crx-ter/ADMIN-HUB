@@ -2607,11 +2607,11 @@ local LangOptions = {
 }
 
 local LangDisplayName = {
-    Español   = "Español",
-    Inglés    = "English",
-    Portugués = "Português",
-    Ruso      = "Русский",
-    Pastún    = "پښتو",
+    ["Español"]   = "Español",
+    ["Inglés"]    = "English",
+    ["Portugués"] = "Português",
+    ["Ruso"]      = "Русский",
+    ["Pastún"]    = "پښتو",
 }
 
 local function SetLanguageSelection(langKey, skipCallback)
