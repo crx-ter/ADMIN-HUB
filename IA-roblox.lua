@@ -32,13 +32,11 @@ local Config = {
     ESP_HEALTH      = false,
     KATANA_STATUS   = false,
     -- COMBATE
-    -- ═══════════════════════════════════════════════════════════
-    -- SILENT AIM: Agrega aquí tus claves cuando lo integres:
-    --   SILENT_AIM      = false,
-    --   SILENT_AIM_DIR  = "DIR_HEAD",   -- "DIR_HEAD" | "DIR_CHEST" | "DIR_ALL"
-    --   HIT_CHANCE_ON   = false,
-    --   HIT_CHANCE_VAL  = 100,
-    --   PREDICTION      = false,
+    SILENT_AIM      = false,
+    SILENT_AIM_DIR  = "DIR_HEAD",   -- "DIR_HEAD" | "DIR_CHEST" | "DIR_ALL"
+    HIT_CHANCE_ON   = false,
+    HIT_CHANCE_VAL  = 100,
+    PREDICTION      = false,
     -- ═══════════════════════════════════════════════════════════
     SHOW_FOV        = false,
     FOV_RADIUS      = 80,
@@ -84,6 +82,10 @@ local Lang = {
         AUTO_LOAD="Carga Automática", PERF_MODE="Modo Rendimiento",
         PIN_BTN="Fijar Botón", HIDE_BTN="Ocultar Botón",
         LANG_TITLE="Idioma",
+        SILENT_AIM="Silent Aim",
+        HIT_CHANCE_ON="Probabilidad de impacto",
+        HIT_CHANCE_VAL="Probabilidad %",
+        PREDICTION="Predicción",
         -- Dropdowns Silent Aim (conectar aquí):
         DIR_TITLE="Dirección", DIR_HEAD="Cabeza", DIR_CHEST="Pecho", DIR_ALL="General",
     },
@@ -100,6 +102,10 @@ local Lang = {
         AUTO_LOAD="Auto Load", PERF_MODE="Performance Mode",
         PIN_BTN="Pin Button", HIDE_BTN="Hide Button",
         LANG_TITLE="Language",
+        SILENT_AIM="Silent Aim",
+        HIT_CHANCE_ON="Hit Chance",
+        HIT_CHANCE_VAL="Hit Chance %",
+        PREDICTION="Prediction",
         DIR_TITLE="Target Part", DIR_HEAD="Head", DIR_CHEST="Chest", DIR_ALL="General",
     },
     ["Portugués"] = {
@@ -115,6 +121,10 @@ local Lang = {
         AUTO_LOAD="Carregamento Automático", PERF_MODE="Modo Desempenho",
         PIN_BTN="Fixar Botão", HIDE_BTN="Ocultar Botão",
         LANG_TITLE="Idioma",
+        SILENT_AIM="Silent Aim",
+        HIT_CHANCE_ON="Chance de Acerto",
+        HIT_CHANCE_VAL="Chance %",
+        PREDICTION="Predição",
         DIR_TITLE="Direção", DIR_HEAD="Cabeça", DIR_CHEST="Peito", DIR_ALL="Geral",
     },
     ["Ruso"] = {
@@ -383,6 +393,208 @@ local function predictPosition(part)
     local totalFactor = math.clamp(baseFactor + distFactor, 0.04, 0.26)
 
     return pos + vel * totalFactor
+end
+
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │                 MÓDULO SILENT AIM                           │
+-- │                                                             │
+-- │  Lógica de Silent Aim para Delta Mobile con FOV, hit chance,│
+-- │  predicción y redirección conservadora de remotes de disparo.│
+-- └─────────────────────────────────────────────────────────────┘
+local SilentAim = {
+    Active  = false,
+    Hooked  = false,
+    OldNamecall = nil,
+}
+
+local function shouldHit()
+    if not Config.HIT_CHANCE_ON then
+        return true
+    end
+    local pct = math.clamp((Config.HIT_CHANCE_VAL or 100) / 100, 0, 1)
+    return math.random() <= pct
+end
+
+local function isAttackRemote(remote)
+    if not remote or typeof(remote) ~= "Instance" then
+        return false
+    end
+    local name = tostring(remote.Name):lower()
+    return name:find("attack")
+        or name:find("fire")
+        or name:find("shoot")
+        or name:find("hit")
+        or name:find("weapon")
+        or name:find("bullet")
+        or name:find("damage")
+        or name:find("gun")
+        or name:find("projectile")
+        or name:find("shooting")
+end
+
+local function patchTableFields(tbl, targetPart, targetPos)
+    local patched = false
+    for key, value in pairs(tbl) do
+        if type(value) == "table" then
+            if patchTableFields(value, targetPart, targetPos) then
+                patched = true
+            end
+        elseif typeof(value) == "Instance" and value:IsA("BasePart") then
+            tbl[key] = targetPart
+            patched = true
+        elseif typeof(value) == "Vector3" then
+            local lowerKey = tostring(key):lower()
+            if lowerKey:find("pos") or lowerKey:find("target") or lowerKey:find("hit") or lowerKey:find("mouse") then
+                tbl[key] = targetPos
+                patched = true
+            end
+        elseif typeof(value) == "CFrame" then
+            local lowerKey = tostring(key):lower()
+            if lowerKey:find("cframe") or lowerKey:find("aim") or lowerKey:find("target") then
+                tbl[key] = CFrame.new(value.Position, targetPos)
+                patched = true
+            end
+        elseif type(key) == "string" then
+            local lowerKey = key:lower()
+            if lowerKey == "target" or lowerKey == "part" or lowerKey == "hitpart" or lowerKey == "victim" then
+                tbl[key] = targetPart
+                patched = true
+            elseif lowerKey == "position" or lowerKey == "pos" or lowerKey == "hitposition" or lowerKey == "hitpos" then
+                tbl[key] = targetPos
+                patched = true
+            end
+        end
+    end
+    return patched
+end
+
+local function redirectArguments(args, targetPart, targetPos)
+    local newArgs = {}
+    for i, arg in ipairs(args) do
+        if typeof(arg) == "Instance" and arg:IsA("BasePart") then
+            newArgs[i] = targetPart
+        elseif typeof(arg) == "Vector3" then
+            newArgs[i] = targetPos
+        elseif typeof(arg) == "CFrame" then
+            newArgs[i] = CFrame.new(arg.Position, targetPos)
+        elseif type(arg) == "table" then
+            local clone = {}
+            for k, v in pairs(arg) do clone[k] = v end
+            patchTableFields(clone, targetPart, targetPos)
+            newArgs[i] = clone
+        else
+            newArgs[i] = arg
+        end
+    end
+    return unpack(newArgs)
+end
+
+local function argsContainShootData(args)
+    for _, arg in ipairs(args) do
+        if typeof(arg) == "Instance" and arg:IsA("BasePart") then
+            return true
+        end
+        if typeof(arg) == "Vector3" or typeof(arg) == "CFrame" then
+            return true
+        end
+        if type(arg) == "table" then
+            local hasKey = false
+            local hasValue = false
+            for k, v in pairs(arg) do
+                local keyName = tostring(k):lower()
+                if keyName:find("target") or keyName:find("hit") or keyName:find("position") or keyName:find("mouse") or keyName:find("part") then
+                    hasKey = true
+                end
+                if typeof(v) == "Instance" and v:IsA("BasePart") then
+                    hasValue = true
+                elseif typeof(v) == "Vector3" or typeof(v) == "CFrame" then
+                    hasValue = true
+                end
+            end
+            if hasKey and hasValue then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function interceptNamecall(self, ...)
+    local method = getnamecallmethod()
+    local args = { ... }
+
+    if method ~= "FireServer" and method ~= "InvokeServer" then
+        return SilentAim.OldNamecall(self, unpack(args))
+    end
+    if not SilentAim.Active then
+        return SilentAim.OldNamecall(self, unpack(args))
+    end
+    if not (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
+        return SilentAim.OldNamecall(self, unpack(args))
+    end
+    if not isAttackRemote(self) then
+        return SilentAim.OldNamecall(self, unpack(args))
+    end
+    if not argsContainShootData(args) then
+        return SilentAim.OldNamecall(self, unpack(args))
+    end
+
+    local targetPlayer, targetPart = GetBestTarget(Config.FOV_RADIUS)
+    if not targetPlayer or not targetPart or not shouldHit() then
+        return SilentAim.OldNamecall(self, unpack(args))
+    end
+
+    local targetPos = predictPosition(targetPart)
+    return SilentAim.OldNamecall(self, redirectArguments(args, targetPart, targetPos))
+end
+
+local function connectSilentAimHook()
+    if SilentAim.Hooked then return end
+
+    if hookmetamethod then
+        SilentAim.OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            return interceptNamecall(self, ...)
+        end)
+    else
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        SilentAim.OldNamecall = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            return interceptNamecall(self, ...)
+        end)
+        setreadonly(mt, true)
+    end
+
+    SilentAim.Hooked = true
+end
+
+local function disconnectSilentAimHook()
+    if not SilentAim.Hooked then return end
+
+    if hookmetamethod and SilentAim.OldNamecall then
+        hookmetamethod(game, "__namecall", SilentAim.OldNamecall)
+    else
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        mt.__namecall = SilentAim.OldNamecall
+        setreadonly(mt, true)
+    end
+
+    SilentAim.Hooked = false
+    SilentAim.OldNamecall = nil
+end
+
+function SilentAim.Enable()
+    if SilentAim.Active then return end
+    SilentAim.Active = true
+    connectSilentAimHook()
+    print("[LXNDXN] Silent Aim activado")
+end
+
+function SilentAim.Disable()
+    SilentAim.Active = false
+    disconnectSilentAimHook()
+    print("[LXNDXN] Silent Aim desactivado")
 end
 
 -- ┌─────────────────────────────────────────────────────────────┐
@@ -1665,15 +1877,13 @@ CreateSectionLabel(CombatTab, "TARGETING", 1)
 ╚══════════════════════════════════════════════════════════════════╝
 ]]
 
--- DESCOMENTA ESTO CUANDO TENGAS TU SILENT AIM LISTO:
---[[
 local aimDropdown
 local _, setAimToggle = CreateToggle(CombatTab, "SILENT_AIM", function(state)
     Config.SILENT_AIM = state
     aimDropdown.Visible = state
     if state then
         Prediction.Enable()
-        SilentAim.Enable()   -- ← tu módulo
+        SilentAim.Enable()
     else
         SilentAim.Disable()
         Prediction.Disable()
@@ -1697,10 +1907,13 @@ hitChanceSlider, _ = CreateSlider(CombatTab, "HIT_CHANCE_VAL", 0, 100, 100, func
     Config.HIT_CHANCE_VAL = val
 end, 5)
 hitChanceSlider.Visible = false
-]]
+
+CreateToggle(CombatTab, "PREDICTION", function(state)
+    Config.PREDICTION = state
+end, 6)
 
 -- FOV
-CreateSectionLabel(CombatTab, "FOV", 6)
+CreateSectionLabel(CombatTab, "FOV", 7)
 
 local fovSlider
 CreateToggle(CombatTab, "SHOW_FOV", function(state)
