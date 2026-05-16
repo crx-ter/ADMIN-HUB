@@ -297,6 +297,10 @@ local function UpdateCanvasSize(scrollFrame)
     end
 end
 
+local ToggleSetters = {}
+local SliderSetters = {}
+local DropdownSetters = {}
+
 -- Redondea un número a N decimales
 local function Round(n, decimals)
     local factor = 10 ^ (decimals or 0)
@@ -340,6 +344,20 @@ local function GetClosestPlayerToMouse(maxRadius)
         end
     end
     return closestPlayer, closestDist
+end
+
+local function getTargetPart(player)
+    if not player or not player.Character then
+        return nil
+    end
+    local partName = "HumanoidRootPart"
+    if Config.SILENT_AIM_DIR == "DIR_HEAD" then
+        partName = "Head"
+    elseif Config.SILENT_AIM_DIR == "DIR_CHEST" then
+        partName = "UpperTorso"
+    end
+    return player.Character:FindFirstChild(partName)
+        or player.Character:FindFirstChild("HumanoidRootPart")
 end
 
 local function GetBestSilentAimTarget(maxRadius)
@@ -831,6 +849,10 @@ local function CreateToggle(parent, key, callback, layoutOrder)
         SetToggle(not toggled)
     end)
 
+    if key then
+        ToggleSetters[key] = SetToggle
+    end
+
     -- Exposición pública del toggle para control externo
     return ToggleFrame, SetToggle
 end
@@ -920,6 +942,15 @@ local function CreateSlider(parent, key, minVal, maxVal, defaultVal, callback, l
     local currentValue = defaultVal
     local isDragging   = false
 
+    local function SetSliderValue(value, skipCallback)
+        local clamped = math.clamp(Round(value), minVal, maxVal)
+        currentValue = clamped
+        local relativeX = (currentValue - minVal) / (maxVal - minVal)
+        Fill.Size       = UDim2.new(relativeX, 0, 1, 0)
+        ValueLabel.Text = tostring(currentValue)
+        if callback and not skipCallback then callback(currentValue) end
+    end
+
     local function UpdateSlider(inputX)
         local relativeX = math.clamp(
             (inputX - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1
@@ -959,7 +990,11 @@ local function CreateSlider(parent, key, minVal, maxVal, defaultVal, callback, l
         end
     end)
 
-    return SliderFrame, function() return currentValue end
+    if key then
+        SliderSetters[key] = SetSliderValue
+    end
+
+    return SliderFrame, function() return currentValue end, SetSliderValue
 end
 
 -- ──────────────────────────────────────────────────────────
@@ -1015,6 +1050,16 @@ local function CreateDropdown(parent, titleKey, optionKeys, defaultKey, callback
 
     local isOpen = false
 
+    local function SetDropdownSelection(optKey, skipCallback)
+        extraData.CurrentSelectionKey = optKey
+        TitleLabel.Text = (Lang[CurrentLanguage][titleKey] or titleKey)
+                       .. ": "
+                       .. (Lang[CurrentLanguage][optKey] or optKey)
+        if callback and not skipCallback then
+            callback(optKey)
+        end
+    end
+
     local ToggleBtn = Create("TextButton", {
         Parent              = DropFrame,
         Size                = UDim2.new(1, 0, 0, closedHeight),
@@ -1047,14 +1092,10 @@ local function CreateDropdown(parent, titleKey, optionKeys, defaultKey, callback
         RegisterTranslation(OptBtn, "DropdownOption", optKey)
 
         OptBtn.MouseButton1Click:Connect(function()
-            extraData.CurrentSelectionKey  = optKey
-            TitleLabel.Text = (Lang[CurrentLanguage][titleKey] or titleKey)
-                           .. ": "
-                           .. (Lang[CurrentLanguage][optKey] or optKey)
+            SetDropdownSelection(optKey)
             isOpen = false
             Tween(DropFrame, { Size = UDim2.new(1, 0, 0, closedHeight) }, 0.2)
             Tween(Arrow, { Rotation = 0 }, 0.2)
-            if callback then callback(optKey) end
         end)
 
         -- Hover effect
@@ -1066,7 +1107,12 @@ local function CreateDropdown(parent, titleKey, optionKeys, defaultKey, callback
         end)
     end
 
-    return DropFrame
+    SetDropdownSelection(defaultKey, true)
+    if titleKey then
+        DropdownSetters[titleKey] = SetDropdownSelection
+    end
+
+    return DropFrame, SetDropdownSelection
 end
 
 -- ──────────────────────────────────────────────────────────
@@ -1555,8 +1601,8 @@ local function shouldHit()
 end
 
 local function getPredictionVelocity(part, player)
-    if Prediction and Prediction.Active and Prediction.VelCache[player] then
-        return Prediction.VelCache[player]
+    if Prediction and Prediction.Active and Prediction.VelocityCache[player] then
+        return Prediction.VelocityCache[player]
     end
     return part.AssemblyLinearVelocity or Vector3.new()
 end
@@ -1795,6 +1841,7 @@ TriggerBot.Active   = false
 TriggerBot.Thread   = nil
 
 function TriggerBot.Enable()
+    if TriggerBot.Active then return end
     TriggerBot.Active = true
     TriggerBot.Thread = task.spawn(function()
         while TriggerBot.Active do
@@ -1835,6 +1882,7 @@ FlyModule.BodyGyro      = nil
 FlyModule.RenderConn    = nil
 
 function FlyModule.Enable()
+    if FlyModule.Active then return end
     FlyModule.Active = true
     local character = LocalPlayer.Character
     if not character then return end
@@ -1926,6 +1974,7 @@ AntiKatana.Active   = false
 AntiKatana.Thread   = nil
 
 function AntiKatana.Enable()
+    if AntiKatana.Active then return end
     AntiKatana.Active = true
     AntiKatana.Thread = task.spawn(function()
         while AntiKatana.Active do
@@ -1968,6 +2017,7 @@ Resolver.Active         = false
 Resolver.PreviousAngles = {}  -- historial de ángulos de cada jugador
 
 function Resolver.Enable()
+    if Resolver.Active then return end
     Resolver.Active = true
     -- [EJEMPLO] Guarda el ángulo Y de cada jugador cada frame
     -- para calcular la tendencia y predecir el siguiente ángulo.
@@ -2011,9 +2061,9 @@ AntiLock.Thread     = nil
 local antiLockJitter = 0
 
 function AntiLock.Enable()
+    if AntiLock.Active then return end
     AntiLock.Active = true
     AntiLock.Thread = task.spawn(function()
-        while AntiLock.Active do
             task.wait(0.03)
             -- [EJEMPLO] Aplica pequeñas rotaciones aleatorias al personaje
             -- para dificultar el lock-on de sistemas enemy-aim.
@@ -2048,6 +2098,7 @@ Prediction.Active           = false
 Prediction.VelocityCache    = {}  -- [player] = Vector3 velocidad
 
 function Prediction.Enable()
+    if Prediction.Active then return end
     Prediction.Active = true
     -- Trackea velocidad de cada jugador
     task.spawn(function()
@@ -2139,8 +2190,17 @@ local function KatanaESP_Create(player)
 end
 
 function KatanaESP.Enable()
+    if KatanaESP.Active then return end
     KatanaESP.Active = true
     for _, p in ipairs(Players:GetPlayers()) do KatanaESP_Create(p) end
+    KatanaESP.PlayerAddedConnection = Players.PlayerAdded:Connect(function(p)
+        p.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            if KatanaESP.Active then
+                KatanaESP_Create(p)
+            end
+        end)
+    end)
 end
 
 function KatanaESP.Disable()
@@ -2148,6 +2208,10 @@ function KatanaESP.Disable()
     for p, bb in pairs(KatanaESP.Billboards) do
         pcall(function() bb:Destroy() end)
         KatanaESP.Billboards[p] = nil
+    end
+    if KatanaESP.PlayerAddedConnection then
+        pcall(function() KatanaESP.PlayerAddedConnection:Disconnect() end)
+        KatanaESP.PlayerAddedConnection = nil
     end
 end
 
@@ -2202,6 +2266,10 @@ local function LoadConfig()
         if Config[k] ~= nil then
             Config[k] = v
         end
+    end
+    if Config.LANGUAGE and Lang[Config.LANGUAGE] then
+        CurrentLanguage = Config.LANGUAGE
+        UpdateLanguage(Config.LANGUAGE)
     end
     print("[LXNDXN] Configuración cargada correctamente.")
     return decoded
@@ -2397,19 +2465,30 @@ flySlider.Visible = false
 CreateSectionLabel(SettingsTab, "CONFIG", 1)
 
 -- Guardar configuración
-CreateToggle(SettingsTab, "SAVE_CFG", function(state)
+local saveConfigToggle, setSaveConfigToggle = CreateToggle(SettingsTab, "SAVE_CFG", function(state)
     if state then
         SaveConfig()
-        -- El toggle se auto-apaga después de guardar
         task.delay(0.5, function()
-            -- Referencia al SetToggle si fuera necesario
+            if setSaveConfigToggle then
+                setSaveConfigToggle(false, true)
+            end
         end)
     end
 end, 2)
 
 -- Cargar configuración
-CreateToggle(SettingsTab, "LOAD_CFG", function(state)
-    if state then LoadConfig() end
+local loadConfigToggle, setLoadConfigToggle = CreateToggle(SettingsTab, "LOAD_CFG", function(state)
+    if state then
+        local loaded = LoadConfig()
+        if loaded then
+            ApplyConfig()
+        end
+        task.delay(0.1, function()
+            if setLoadConfigToggle then
+                setLoadConfigToggle(false, true)
+            end
+        end)
+    end
 end, 3)
 
 -- Auto-Load al iniciar
@@ -2525,6 +2604,31 @@ local LangOptions = {
     { name = "Русский",  key = "Ruso"     },
     { name = "پښتو",     key = "Pastún"   },
 }
+
+local LangDisplayName = {
+    Español   = "Español",
+    Inglés    = "English",
+    Portugués = "Português",
+    Ruso      = "Русский",
+    Pastún    = "پښتو",
+}
+
+local function SetLanguageSelection(langKey, skipCallback)
+    if not LangDisplayName[langKey] then
+        langKey = "Español"
+    end
+    Config.LANGUAGE = langKey
+    CurrentLanguage = langKey
+    langExtra.CurrentSelectionKey = LangDisplayName[langKey]
+    LangTitle.Text = (Lang[CurrentLanguage]["LANG_TITLE"] or "Language") .. ": " .. LangDisplayName[langKey]
+    UpdateLanguage(CurrentLanguage)
+    if not skipCallback then
+        -- Marca la opción seleccionada en el drop-down visualmente
+        -- (no hace falta nada adicional porque el texto se actualiza aquí)
+    end
+    DropdownSetters["LANG_TITLE"] = SetLanguageSelection
+end
+
 for i, opt in ipairs(LangOptions) do
     local OptBtn = Create("TextButton", {
         Parent              = LangContainer,
@@ -2546,30 +2650,64 @@ for i, opt in ipairs(LangOptions) do
         Tween(OptBtn, { BackgroundTransparency = 0.3 }, 0.15)
     end)
     OptBtn.MouseButton1Click:Connect(function()
-        -- Actualiza el idioma globalmente
-        UpdateLanguage(opt.key)
-        -- Actualiza el título del dropdown de idioma
-        langExtra.CurrentSelectionKey = opt.name
-        LangTitle.Text = (Lang[CurrentLanguage]["LANG_TITLE"] or "Language") .. ": " .. opt.name
-        -- Cierra el dropdown
+        SetLanguageSelection(opt.key)
         langIsOpen = false
         Tween(LangDropFrame, { Size = UDim2.new(1, 0, 0, langClosedH) }, 0.2)
         Tween(LangArrow, { Rotation = 0 }, 0.2)
     end)
 end
 
+SetLanguageSelection(Config.LANGUAGE or "Español", true)
+
 -- ┌─────────────────────────────────────────────────────────┐
 -- │          AUTO-LOAD DE CONFIGURACIÓN AL INICIAR          │
 -- └─────────────────────────────────────────────────────────┘
 -- Si el archivo de config existe y AUTO_LOAD estaba activo,
 -- carga automáticamente la configuración guardada.
+local function ApplyConfig()
+    if ToggleSetters.ESP_BOX then ToggleSetters.ESP_BOX(Config.ESP_BOX) end
+    if ToggleSetters.TRACERS then ToggleSetters.TRACERS(Config.TRACERS) end
+    if ToggleSetters.ESP_NAMES then ToggleSetters.ESP_NAMES(Config.ESP_NAMES) end
+    if ToggleSetters.ESP_HEALTH then ToggleSetters.ESP_HEALTH(Config.ESP_HEALTH) end
+    if ToggleSetters.KATANA_STATUS then ToggleSetters.KATANA_STATUS(Config.KATANA_STATUS) end
+
+    if ToggleSetters.SILENT_AIM then ToggleSetters.SILENT_AIM(Config.SILENT_AIM) end
+    if DropdownSetters.DIR_TITLE then DropdownSetters.DIR_TITLE(Config.SILENT_AIM_DIR) end
+    if ToggleSetters.HIT_CHANCE_ON then ToggleSetters.HIT_CHANCE_ON(Config.HIT_CHANCE_ON) end
+    if SliderSetters.HIT_CHANCE_VAL then SliderSetters.HIT_CHANCE_VAL(Config.HIT_CHANCE_VAL, true) end
+    if ToggleSetters.SHOW_FOV then ToggleSetters.SHOW_FOV(Config.SHOW_FOV) end
+    if SliderSetters.FOV_RADIUS then SliderSetters.FOV_RADIUS(Config.FOV_RADIUS, true) end
+    if ToggleSetters.PREDICTION then ToggleSetters.PREDICTION(Config.PREDICTION) end
+    if ToggleSetters.TRIGGER_BOT then ToggleSetters.TRIGGER_BOT(Config.TRIGGER_BOT) end
+
+    if ToggleSetters.ANTI_KATANA then ToggleSetters.ANTI_KATANA(Config.ANTI_KATANA) end
+    if ToggleSetters.RESOLVER then ToggleSetters.RESOLVER(Config.RESOLVER) end
+    if ToggleSetters.ANTI_LOCK then ToggleSetters.ANTI_LOCK(Config.ANTI_LOCK) end
+
+    if ToggleSetters.MOD_SPEED then ToggleSetters.MOD_SPEED(Config.MOD_SPEED) end
+    if SliderSetters.WALK_SPEED then SliderSetters.WALK_SPEED(Config.WALK_SPEED, true) end
+    if ToggleSetters.FLY_ON then ToggleSetters.FLY_ON(Config.FLY_ON) end
+    if SliderSetters.FLY_SPEED then SliderSetters.FLY_SPEED(Config.FLY_SPEED, true) end
+
+    if ToggleSetters.AUTO_LOAD then ToggleSetters.AUTO_LOAD(Config.AUTO_LOAD, true) end
+    if ToggleSetters.PERF_MODE then ToggleSetters.PERF_MODE(Config.PERF_MODE) end
+    if ToggleSetters.PIN_BTN then ToggleSetters.PIN_BTN(Config.PIN_BTN, true) end
+    if ToggleSetters.HIDE_BTN then ToggleSetters.HIDE_BTN(Config.HIDE_BTN, true) end
+    if DropdownSetters.LANG_TITLE then DropdownSetters.LANG_TITLE(Config.LANGUAGE, true) end
+
+    -- Botones de acción no deben quedarse en estado activado
+    if ToggleSetters.SAVE_CFG then ToggleSetters.SAVE_CFG(false, true) end
+    if ToggleSetters.LOAD_CFG then ToggleSetters.LOAD_CFG(false, true) end
+end
+
 task.spawn(function()
     task.wait(1) -- pequeña espera para que el UI esté listo
     local loaded = LoadConfig()
+    if loaded then
+        ApplyConfig()
+    end
     if loaded and loaded.AUTO_LOAD then
         print("[LXNDXN] Auto-Load activo: configuración restaurada.")
-        -- Aquí podrías aplicar los valores cargados a todos los toggles
-        -- usando las referencias guardadas si tuvieras un sistema de registro.
     end
 end)
 
