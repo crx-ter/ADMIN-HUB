@@ -2064,6 +2064,7 @@ function AntiLock.Enable()
     if AntiLock.Active then return end
     AntiLock.Active = true
     AntiLock.Thread = task.spawn(function()
+        while AntiLock.Active do
             task.wait(0.03)
             -- [EJEMPLO] Aplica pequeñas rotaciones aleatorias al personaje
             -- para dificultar el lock-on de sistemas enemy-aim.
