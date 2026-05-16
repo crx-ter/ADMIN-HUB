@@ -1,11 +1,3 @@
--- ============================================================
---   LXNDXN UI FRAMEWORK v3.0 - ULTRA ADVANCED EDITION
---   Desarrollado como si fuera un equipo entero de devs
---   Arquitectura modular, sistema de eventos, config persistence,
---   localization dinámica, ESP avanzado, anti-detection básico,
---   y mucho más.
--- ============================================================
-
 -- ┌─────────────────────────────────────────────────────────┐
 -- │               SERVICIOS DE ROBLOX                       │
 -- └─────────────────────────────────────────────────────────┘
@@ -17,6 +9,7 @@ local HttpService       = game:GetService("HttpService")
 local CoreGui           = game:GetService("CoreGui")
 local StarterGui        = game:GetService("StarterGui")
 local Workspace         = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Camera            = Workspace.CurrentCamera
 
 -- ┌─────────────────────────────────────────────────────────┐
@@ -1465,39 +1458,95 @@ end
 
 local SilentAim = {}
 SilentAim.Active        = false
-SilentAim.OriginalRaycast = nil
+SilentAim.InputConn     = nil
+
+local function checkVisibility(targetPart)
+    if not targetPart or not targetPart.Parent then return false end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = { LocalPlayer.Character }
+    params.IgnoreWater = true
+    local origin = Camera.CFrame.Position
+    local direction = targetPart.Position - origin
+    local result = workspace:Raycast(origin, direction, params)
+    if not result then return true end
+    return result.Instance:IsDescendantOf(targetPart.Parent)
+end
+
+local function getTargetPartFromPlayer(player)
+    if not player or not player.Character then return nil end
+    if Config.SILENT_AIM_DIR == "DIR_HEAD" then
+        return player.Character:FindFirstChild("Head")
+    elseif Config.SILENT_AIM_DIR == "DIR_CHEST" then
+        return player.Character:FindFirstChild("UpperTorso") or player.Character:FindFirstChild("Torso")
+    else
+        return player.Character:FindFirstChild("HumanoidRootPart")
+    end
+end
+
+local function attemptFireAt(player, part)
+    if not player or not part then return end
+    -- Hit chance check
+    if Config.HIT_CHANCE_ON then
+        local roll = math.random(0, 100)
+        if roll > (Config.HIT_CHANCE_VAL or 100) then
+            return -- falló la comprobación de probabilidad
+        end
+    end
+
+    local predictedPos = part.Position
+    if Config.PREDICTION then
+        local vel = (part.AssemblyLinearVelocity or Vector3.new())
+        predictedPos = predictedPos + vel * 0.12
+    end
+
+    -- Intenta usar un Remote en ReplicatedStorage si existe
+    local ok
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotes and remotes:FindFirstChild("Attack") then
+        pcall(function()
+            remotes.Attack:FireServer(part)
+        end)
+        return
+    end
+
+    -- Alternativa: remote directo
+    if ReplicatedStorage:FindFirstChild("Attack") then
+        pcall(function()
+            ReplicatedStorage.Attack:FireServer(predictedPos)
+        end)
+        return
+    end
+
+    -- Si no hay remote conocido, informamos (demostración)
+    warn("[LXNDXN] SilentAim: no se encontró Remote 'Attack' en ReplicatedStorage. Acción demo ignorada.")
+end
 
 function SilentAim.Enable()
+    if SilentAim.Active then return end
     SilentAim.Active = true
-    -- [EJEMPLO] Hook conceptual de cómo funcionaría:
-    -- En un juego real, interceptarías la función de raycast
-    -- del gun system del juego y redirigirías el origen/dirección
-    -- hacia el objetivo más cercano dentro del FOV.
-    --
-    -- Ejemplo de arquitectura:
-    --[[
-        local oldRaycast = workspace.Raycast  -- NO funciona así en Roblox real
-        workspace.Raycast = function(origin, direction, params)
-            if SilentAim.Active then
-                local target, _ = GetClosestPlayerToMouse(Config.FOV_RADIUS)
-                if target and target.Character then
-                    local partName = "Head"
-                    if Config.SILENT_AIM_DIR == "DIR_CHEST" then partName = "UpperTorso" end
-                    local targetPart = target.Character:FindFirstChild(partName)
-                    if targetPart then
-                        -- Redirige el disparo hacia el objetivo
-                        direction = (targetPart.Position - origin).Unit * direction.Magnitude
-                    end
+    SilentAim.InputConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            -- Obtenemos objetivo usando el sistema existente (centrado en pantalla / FOV)
+            local targetPlayer = GetClosestPlayerToMouse(Config.FOV_RADIUS)
+            if targetPlayer then
+                local part = getTargetPartFromPlayer(targetPlayer)
+                if part and checkVisibility(part) then
+                    attemptFireAt(targetPlayer, part)
                 end
             end
-            return oldRaycast(origin, direction, params)
         end
-    ]]
-    print("[LXNDXN] Silent Aim: Activado (modo demostración)")
+    end)
+    print("[LXNDXN] Silent Aim: Activado")
 end
 
 function SilentAim.Disable()
     SilentAim.Active = false
+    if SilentAim.InputConn then
+        pcall(function() SilentAim.InputConn:Disconnect() end)
+        SilentAim.InputConn = nil
+    end
     print("[LXNDXN] Silent Aim: Desactivado")
 end
 
@@ -2363,3 +2412,110 @@ print("║     LXNDXN UI v3.0 LOADED       ║")
 print("║  Presiona INSERT para abrir/     ║")
 print("║  cerrar el menú.                 ║")
 print("╚══════════════════════════════════╝")
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │        ANTI-CHEAT SERVER-SIDE (INTEGRADO)              │
+-- └─────────────────────────────────────────────────────────┘
+-- Se añade aquí como bloque que solo se ejecuta en servidores.
+-- Si este archivo corre en cliente, el bloque se ignora.
+if LocalPlayer then
+    print("[LXNDXN] AntiCheat: Entorno cliente detectado — módulo servidor omitido.")
+else
+    local AntiCheatManager = {}
+    AntiCheatManager.__index = AntiCheatManager
+
+    -- Configuraciones de Tolerancia (Umbrales)
+    local AC_CONFIG = {
+        MaxWalkSpeedTolerance = 25,
+        MaxJumpHeightTolerance = 10,
+        MaxWarningsBeforeKick = 3,
+        RateLimitRequestsPerSecond = 10
+    }
+
+    local PlayerData = {}
+
+    function AntiCheatManager.InitPlayer(player)
+        PlayerData[player.UserId] = {
+            LastPosition = nil,
+            LastCheckTime = tick(),
+            Warnings = 0,
+            RemoteRequests = 0,
+            LastRequestReset = tick()
+        }
+
+        player.CharacterAdded:Connect(function(character)
+            local rootPart = character:WaitForChild("HumanoidRootPart")
+            PlayerData[player.UserId].LastPosition = rootPart.Position
+            PlayerData[player.UserId].LastCheckTime = tick()
+        end)
+
+        -- Si el personaje ya existe al momento de añadir el jugador
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            PlayerData[player.UserId].LastPosition = player.Character.HumanoidRootPart.Position
+            PlayerData[player.UserId].LastCheckTime = tick()
+        end
+    end
+
+    function AntiCheatManager.RemovePlayer(player)
+        PlayerData[player.UserId] = nil
+    end
+
+    function AntiCheatManager.CheckMovement()
+        for _, player in ipairs(Players:GetPlayers()) do
+            local data = PlayerData[player.UserId]
+            local character = player.Character
+            if data and character then
+                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if rootPart and humanoid and humanoid.Health > 0 then
+                    local currentTime = tick()
+                    local deltaTime = currentTime - data.LastCheckTime
+                    if deltaTime > 0.1 and deltaTime < 1 then
+                        local currentPos = rootPart.Position
+                        local lastPos = data.LastPosition or currentPos
+                        local distanceTraveled = Vector3.new(currentPos.X, 0, currentPos.Z) - Vector3.new(lastPos.X, 0, lastPos.Z)
+                        local magnitude = distanceTraveled.Magnitude
+                        local maxTheoreticalDistance = AC_CONFIG.MaxWalkSpeedTolerance * deltaTime
+                        if magnitude > maxTheoreticalDistance then
+                            data.Warnings = data.Warnings + 1
+                            warn("[Anti-Cheat]: " .. player.Name .. " detectado moviéndose muy rápido. Dist: " .. tostring(magnitude) .. " Max: " .. tostring(maxTheoreticalDistance))
+                            -- Rubberband al último lugar válido
+                            pcall(function()
+                                rootPart.CFrame = CFrame.new(lastPos)
+                            end)
+                            if data.Warnings >= AC_CONFIG.MaxWarningsBeforeKick then
+                                pcall(function() player:Kick("Comportamiento anómalo detectado (Código: M-01)") end)
+                            end
+                        else
+                            data.LastPosition = currentPos
+                            data.Warnings = math.max(0, data.Warnings - 0.05)
+                        end
+                    end
+                    data.LastCheckTime = currentTime
+                end
+            end
+        end
+    end
+
+    function AntiCheatManager.ValidateRemoteRequest(player)
+        local data = PlayerData[player.UserId]
+        if not data then return false end
+        local currentTime = tick()
+        if currentTime - data.LastRequestReset >= 1 then
+            data.RemoteRequests = 0
+            data.LastRequestReset = currentTime
+        end
+        data.RemoteRequests = data.RemoteRequests + 1
+        if data.RemoteRequests > AC_CONFIG.RateLimitRequestsPerSecond then
+            warn("[Anti-Cheat]: " .. player.Name .. " está enviando demasiadas peticiones al servidor.")
+            return false
+        end
+        return true
+    end
+
+    Players.PlayerAdded:Connect(AntiCheatManager.InitPlayer)
+    Players.PlayerRemoving:Connect(AntiCheatManager.RemovePlayer)
+    RunService.Heartbeat:Connect(AntiCheatManager.CheckMovement)
+
+    print("Anti-Cheat Server-Side (integrado) Inicializado.")
+end
