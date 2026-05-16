@@ -345,7 +345,7 @@ end
 local function GetBestSilentAimTarget(maxRadius)
     maxRadius = maxRadius or Config.FOV_RADIUS
     local bestPlayer, bestPart, bestScore = nil, nil, math.huge
-    local viewportCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local mousePos = UserInputService:GetMouseLocation()
     local camPos = Camera.CFrame.Position
     local camLook = Camera.CFrame.LookVector
 
@@ -357,20 +357,18 @@ local function GetBestSilentAimTarget(maxRadius)
                 if part then
                     local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
                     if onScreen then
-                        local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - viewportCenter).Magnitude
+                        local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                         if screenDist <= maxRadius then
                             local toTarget = (part.Position - camPos)
                             if toTarget.Magnitude > 0 then
                                 local dot = math.clamp(camLook:Dot(toTarget.Unit), -1, 1)
                                 local angle = math.deg(math.acos(dot))
-                                if angle <= 90 then
-                                    local distance = toTarget.Magnitude
-                                    local score = screenDist + angle * 0.2 + distance * 0.01
-                                    if score < bestScore then
-                                        bestScore = score
-                                        bestPlayer = player
-                                        bestPart = part
-                                    end
+                                local distance = toTarget.Magnitude
+                                local score = screenDist + angle * 0.25 + distance * 0.008
+                                if score < bestScore then
+                                    bestScore = score
+                                    bestPlayer = player
+                                    bestPart = part
                                 end
                             end
                         end
@@ -1529,150 +1527,219 @@ local function StopFOVCircle()
 end
 
 -- ┌─────────────────────────────────────────────────────────┐
--- Esta implementación usa:
--- 1) Selección de objetivo por parte configurada (cabeza/pecho/general)
--- 2) FOV real en pantalla
--- 3) Raycast de visibilidad
--- 4) Hit chance y predicción ajustada por distancia
--- 5) Búsqueda robusta de RemoteEvents/Functions de ataque
+-- │    MÓDULO SILENT AIM: Interceptación y redirección     │
+-- └─────────────────────────────────────────────────────────┘
+-- Esta implementación está diseñada para ser un Silent Aim real:
+-- 1) Calcula el objetivo más cercano al cursor dentro de FOV.
+-- 2) Selecciona la parte indicada (cabeza, pecho o general).
+-- 3) Intercepta FireServer/InvokeServer y Raycast si el exploit lo permite.
+-- 4) Redirige el payload a la posición/pieza objetivo.
+-- 5) Respeta Hit Chance y utiliza predicción según distancia.
 
 local SilentAim = {}
-SilentAim.Active        = false
-SilentAim.InputConn     = nil
+SilentAim.Active = false
+SilentAim.Hooked = false
+SilentAim.OldNamecall = nil
 
-local function checkVisibility(targetPart)
-    if not targetPart or not targetPart.Parent then return false end
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Blacklist
-    params.FilterDescendantsInstances = { LocalPlayer.Character }
-    params.IgnoreWater = true
-    local origin = Camera.CFrame.Position
-    local direction = targetPart.Position - origin
-    local result = workspace:Raycast(origin, direction, params)
-    if not result then return true end
-    return result.Instance:IsDescendantOf(targetPart.Parent)
-end
-
-local function getTargetPartFromPlayer(player)
-    if not player or not player.Character then return nil end
-    if Config.SILENT_AIM_DIR == "DIR_HEAD" then
-        return player.Character:FindFirstChild("Head")
-    elseif Config.SILENT_AIM_DIR == "DIR_CHEST" then
-        return player.Character:FindFirstChild("UpperTorso") or player.Character:FindFirstChild("Torso")
-    else
-        return player.Character:FindFirstChild("HumanoidRootPart")
-    end
-end
-
-local function attemptFireAt(player, part)
-    if not player or not part then return false end
-
-    if Config.HIT_CHANCE_ON then
-        local chance = math.clamp((Config.HIT_CHANCE_VAL or 100) / 100, 0, 1)
-        if math.random() > chance then
-            return false
-        end
-    end
-
-    local predictedPos = part.Position
-    if Config.PREDICTION then
-        local vel = part.AssemblyLinearVelocity or Vector3.new()
-        local distance = (part.Position - Camera.CFrame.Position).Magnitude
-        local factor = math.clamp(0.12 + distance / 900, 0.08, 0.22)
-        predictedPos = predictedPos + vel * factor
-    end
-
-    local function safeFire(remote, payload)
-        if not remote then return false end
-        if type(payload) == "table" and payload.__args then
-            if remote:IsA("RemoteFunction") then
-                return pcall(function() remote:InvokeServer(table.unpack(payload.__args)) end)
-            else
-                return pcall(function() remote:FireServer(table.unpack(payload.__args)) end)
-            end
-        else
-            if remote:IsA("RemoteFunction") then
-                return pcall(function() remote:InvokeServer(payload) end)
-            else
-                return pcall(function() remote:FireServer(payload) end)
-            end
-        end
-    end
-
-    local function isAttackRemote(remote)
-        local name = remote.Name:lower()
-        return name:find("attack") or name:find("fire") or name:find("shoot") or name:find("hit") or name:find("weapon") or name:find("bullet") or name:find("damage")
-    end
-
-    local candidate = nil
-    for _, child in ipairs(game:GetDescendants()) do
-        if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-            if isAttackRemote(child) then
-                candidate = child
-                break
-            end
-        end
-    end
-
-    if candidate and safeFire(candidate, part) then
+local function shouldHit()
+    if not Config.HIT_CHANCE_ON then
         return true
     end
+    local chance = math.clamp((Config.HIT_CHANCE_VAL or 100) / 100, 0, 1)
+    return math.random() <= chance
+end
 
-    local fallback = ReplicatedStorage:FindFirstChild("Attack")
-    if fallback and (fallback:IsA("RemoteEvent") or fallback:IsA("RemoteFunction")) then
-        if safeFire(fallback, part) then
-            return true
+local function getCursorPosition()
+    return UserInputService:GetMouseLocation()
+end
+
+local function predictPosition(part)
+    if not part then return nil end
+    local pos = part.Position
+    if not Config.PREDICTION then
+        return pos
+    end
+    local vel = part.AssemblyLinearVelocity or Vector3.new()
+    local distance = (pos - Camera.CFrame.Position).Magnitude
+    local factor = math.clamp(0.12 + distance / 900, 0.08, 0.22)
+    return pos + vel * factor
+end
+
+local function isAttackRemote(remote)
+    if not remote or not remote.Name then
+        return false
+    end
+    local name = tostring(remote.Name):lower()
+    return name:find("attack")
+        or name:find("fire")
+        or name:find("shoot")
+        or name:find("hit")
+        or name:find("weapon")
+        or name:find("bullet")
+        or name:find("damage")
+        or name:find("gun")
+end
+
+local function patchTableFields(tbl, targetPart, targetPos)
+    local ok = false
+    for key, value in pairs(tbl) do
+        if type(value) == "table" then
+            if patchTableFields(value, targetPart, targetPos) then
+                ok = true
+            end
+        elseif typeof(value) == "Instance" and value:IsA("BasePart") then
+            tbl[key] = targetPart
+            ok = true
+        elseif typeof(value) == "Vector3" then
+            local name = tostring(key):lower()
+            if name:find("pos") or name:find("aim") or name:find("target") or name:find("mouse") then
+                tbl[key] = targetPos
+                ok = true
+            end
+        elseif typeof(value) == "CFrame" then
+            local name = tostring(key):lower()
+            if name:find("cframe") or name:find("aim") or name:find("target") then
+                tbl[key] = CFrame.new(value.Position, targetPos)
+                ok = true
+            end
+        elseif type(key) == "string" then
+            local lowerKey = key:lower()
+            if lowerKey == "target" or lowerKey == "part" or lowerKey == "hitpart" or lowerKey == "victim" then
+                tbl[key] = targetPart
+                ok = true
+            elseif lowerKey == "position" or lowerKey == "pos" or lowerKey == "mouse" or lowerKey == "hitposition" or lowerKey == "hitpos" then
+                tbl[key] = targetPos
+                ok = true
+            end
         end
     end
+    return ok
+end
 
-    local payloads = {
-        part,
-        predictedPos,
-        part.Position,
-        part.CFrame,
-        { __args = { part, predictedPos } },
-        { __args = { player, part } },
-        { __args = { player, part, predictedPos } },
-        { __args = { player.Name, part } },
-        { __args = { { Target = part, Position = predictedPos } } },
-        { __args = { { Player = player, Part = part, Position = predictedPos } } },
-        { __args = { { TargetUserId = player.UserId, Position = predictedPos } } },
-    }
-
-    for _, payload in ipairs(payloads) do
-        if candidate and safeFire(candidate, payload) then
-            return true
-        end
-        if fallback and safeFire(fallback, payload) then
-            return true
+local function redirectArguments(args, targetPart, targetPos)
+    local newArgs = {}
+    for index, arg in ipairs(args) do
+        if typeof(arg) == "Instance" and arg:IsA("BasePart") then
+            newArgs[index] = targetPart
+        elseif typeof(arg) == "Vector3" then
+            newArgs[index] = targetPos
+        elseif typeof(arg) == "CFrame" then
+            newArgs[index] = CFrame.new(arg.Position, targetPos)
+        elseif type(arg) == "table" then
+            local clone = {}
+            for k,v in pairs(arg) do clone[k] = v end
+            patchTableFields(clone, targetPart, targetPos)
+            newArgs[index] = clone
+        else
+            newArgs[index] = arg
         end
     end
+    return unpack(newArgs)
+end
 
-    warn("[LXNDXN] SilentAim: no se encontró Remote de ataque conocido. Acción ignorada.")
+local function argsContainShootData(args)
+    for _, arg in ipairs(args) do
+        if typeof(arg) == "Instance" and arg:IsA("BasePart") then
+            return true
+        end
+        if typeof(arg) == "Vector3" or typeof(arg) == "CFrame" then
+            return true
+        end
+        if type(arg) == "table" then
+            for k, v in pairs(arg) do
+                local keyName = tostring(k):lower()
+                if keyName:find("target") or keyName:find("position") or keyName:find("mouse") or keyName:find("hit") then
+                    return true
+                end
+                if typeof(v) == "Instance" and v:IsA("BasePart") then
+                    return true
+                end
+            end
+        end
+    end
     return false
 end
 
-function SilentAim.Enable()
-    if SilentAim.Active then return end
-    SilentAim.Active = true
-    SilentAim.InputConn = UserInputService.InputBegan:Connect(function(input, gpe)
-        if gpe then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local targetPlayer, targetPart = GetBestSilentAimTarget(Config.FOV_RADIUS)
-            if targetPlayer and targetPart and checkVisibility(targetPart) then
-                attemptFireAt(targetPlayer, targetPart)
+local function decodeRaycastArguments(args)
+    local origin = args[1]
+    local direction = args[2]
+    local params = args[3]
+    if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+        return origin, direction, params
+    end
+    return nil
+end
+
+local function interceptNamecall(self, ...)
+    local method = getnamecallmethod()
+    local args = { ... }
+    local targetPlayer, targetPart = GetBestSilentAimTarget(Config.FOV_RADIUS)
+    if SilentAim.Active and targetPlayer and targetPart and shouldHit() then
+        local targetPos = predictPosition(targetPart)
+        if method == "FireServer" or method == "InvokeServer" then
+            if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
+                if isAttackRemote(self) or argsContainShootData(args) then
+                    return SilentAim.OldNamecall(self, redirectArguments(args, targetPart, targetPos))
+                end
+            end
+        elseif self == workspace and method == "Raycast" then
+            local origin, direction, params = decodeRaycastArguments(args)
+            if origin and direction then
+                return SilentAim.OldNamecall(self, origin, targetPos - origin, params)
             end
         end
-    end)
+    end
+    return SilentAim.OldNamecall(self, unpack(args))
+end
+
+local function connectSilentAimHook()
+    if SilentAim.Hooked then
+        return
+    end
+    if hookmetamethod then
+        SilentAim.OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            return interceptNamecall(self, ...)
+        end)
+    else
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        SilentAim.OldNamecall = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            return interceptNamecall(self, ...)
+        end)
+        setreadonly(mt, true)
+    end
+    SilentAim.Hooked = true
+end
+
+local function disconnectSilentAimHook()
+    if not SilentAim.Hooked then
+        return
+    end
+    if hookmetamethod and SilentAim.OldNamecall then
+        hookmetamethod(game, "__namecall", SilentAim.OldNamecall)
+    else
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        mt.__namecall = SilentAim.OldNamecall
+        setreadonly(mt, true)
+    end
+    SilentAim.Hooked = false
+    SilentAim.OldNamecall = nil
+end
+
+function SilentAim.Enable()
+    if SilentAim.Active then
+        return
+    end
+    SilentAim.Active = true
+    connectSilentAimHook()
     print("[LXNDXN] Silent Aim: Activado")
 end
 
 function SilentAim.Disable()
     SilentAim.Active = false
-    if SilentAim.InputConn then
-        pcall(function() SilentAim.InputConn:Disconnect() end)
-        SilentAim.InputConn = nil
-    end
+    disconnectSilentAimHook()
     print("[LXNDXN] Silent Aim: Desactivado")
 end
 
