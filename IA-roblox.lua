@@ -1452,6 +1452,38 @@ local function GetClosestTarget(radiusPx: number?): (Player?, number)
     return best, bestDist
 end
 
+local function GetClosestTargetFromCursor(radiusPx: number?): (Player?, number)
+    radiusPx = radiusPx or Config.FOV_RADIUS
+    local best: Player? = nil
+    local bestDist: number = math.huge
+    local mouseLocation = UserInputService:GetMouseLocation()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        if not char then continue end
+
+        local partName = Config.SILENT_AIM_PART or "Head"
+        local part     = char:FindFirstChild(partName)
+                      or char:FindFirstChild("HumanoidRootPart")
+        if not part then continue end
+
+        local hum = GetHumanoid(char)
+        if not hum or hum.Health <= 0 then continue end
+
+        local sp, onScreen = Camera:WorldToViewportPoint((part :: BasePart).Position)
+        if onScreen then
+            local d = (Vector2.new(sp.X, sp.Y) - mouseLocation).Magnitude
+            if d < radiusPx and d < bestDist then
+                bestDist = d
+                best     = player
+            end
+        end
+    end
+
+    return best, bestDist
+end
+
 -- ── 16.2  MÓDULO ESP ─────────────────────────────────────────────
 local ESP = {
     BoxEnabled    = false,
@@ -1855,34 +1887,56 @@ function SilentAim.Enable()
         Notify("SilentAim is disabled for safety. Enable ALLOW_COMBAT_LOGIC in config for dev testing.", "warn")
         return
     end
-    SilentAim.Active = true
     -- EJEMPLO DE HOOK (requiere ejecutor con hookfunction):
-    local oldFunc = hookfunction(GunModule.GetRayDirection, function(origin, ...)
-        if not SilentAim.Active then return oldFunc(origin, ...) end
+    local oldFunc = nil
+    if type(hookfunction) == "function" and GunModule and GunModule.GetRayDirection then
+        oldFunc = hookfunction(GunModule.GetRayDirection, function(origin, ...)
+            if not SilentAim.Active then return oldFunc(origin, ...) end
 
-        -- Hit chance: si el número aleatorio supera el umbral, falla
-        if Config.HIT_CHANCE_ON and math.random(1,100) > Config.HIT_CHANCE_VAL then
-            return oldFunc(origin, ...)
-        end
+            -- Hit chance: si la configuración falla, no redirigimos
+            if Config.HIT_CHANCE_ON and math.random(1,100) > Config.HIT_CHANCE_VAL then
+                return oldFunc(origin, ...)
+            end
 
-        local target, _ = GetClosestTarget(Config.FOV_RADIUS)
-        if not target or not target.Character then return oldFunc(origin, ...) end
+            local target, _ = GetClosestTargetFromCursor(Config.FOV_RADIUS)
+            if not target or not target.Character then return oldFunc(origin, ...) end
 
-        local part = target.Character:FindFirstChild(Config.SILENT_AIM_PART)
-                  or target.Character:FindFirstChild("HumanoidRootPart")
-        if not part then return oldFunc(origin, ...) end
+            local part = target.Character:FindFirstChild(Config.SILENT_AIM_PART)
+                      or target.Character:FindFirstChild("HumanoidRootPart")
+            if not part then return oldFunc(origin, ...) end
 
-        -- Predicción de movimiento
-        local targetPos = (part :: BasePart).Position
-        if Config.PREDICTION then
-            local vel = part:IsA("BasePart") and (part :: BasePart).AssemblyLinearVelocity or Vector3.zero
-            targetPos = targetPos + vel * Config.PREDICTION_FACTOR
-        end
+            -- Predicción de movimiento
+            local targetPos = (part :: BasePart).Position
+            if Config.PREDICTION then
+                local vel = part:IsA("BasePart") and (part :: BasePart).AssemblyLinearVelocity or Vector3.zero
+                targetPos = targetPos + vel * Config.PREDICTION_FACTOR
+            end
 
-        return (targetPos - origin).Unit
-    end)
-    
+            return (targetPos - origin).Unit
+        end)
+    else
+        Notify("SilentAim hook unavailable en este entorno. Activa un executor compatible.", "warn")
+    end
+
+    SilentAim.Active = true
     print("[LXNDXN SilentAim] Activado — modo demostración")
+end
+
+function SilentAim.GetAimDirection(origin: Vector3): Vector3?
+    local target, _ = GetClosestTargetFromCursor(Config.FOV_RADIUS)
+    if not target or not target.Character then return nil end
+
+    local part = target.Character:FindFirstChild(Config.SILENT_AIM_PART)
+              or target.Character:FindFirstChild("HumanoidRootPart")
+    if not part then return nil end
+
+    local targetPos = (part :: BasePart).Position
+    if Config.PREDICTION then
+        local vel = (part :: BasePart).AssemblyLinearVelocity or Vector3.zero
+        targetPos = targetPos + vel * Config.PREDICTION_FACTOR
+    end
+
+    return (targetPos - origin).Unit
 end
 
 function SilentAim.Disable()
