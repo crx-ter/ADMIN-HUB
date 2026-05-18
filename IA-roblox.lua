@@ -44,6 +44,7 @@ local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local Players          = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local HttpService      = game:GetService("HttpService")
 local CoreGui          = game:GetService("CoreGui")
 local Workspace        = game:GetService("Workspace")
@@ -161,7 +162,18 @@ local Config: {[string]: any} = {
     LANGUAGE            = "Español",
     KEYBIND_TOGGLE      = Enum.KeyCode.Insert,
     SHOW_WATERMARK      = true,
+    -- Modo debug seguro: habilita herramientas de depuración (Studio o dev only)
+    DEBUG_MODE          = true,
+    -- Control explícito para permitir lógica de combate experimental (por seguridad)
+    ALLOW_COMBAT_LOGIC  = false,
 }
+
+-- Dev guard: devuelve true si el script puede activar herramientas de depuración
+local function IsDevAllowed()
+    -- Permitido siempre en Studio o si el usuario activó DEBUG_MODE
+    if RunService:IsStudio() then return true end
+    return Config.DEBUG_MODE == true
+end
 
 -- ══════════════════════════════════════════════════════════════════
 --  SECCIÓN 6 ─ LOCALIZACIÓN (i18n) AVANZADA
@@ -1470,6 +1482,11 @@ local function ESP_MakeHighlight(player: Player, char: Model)
 end
 
 function ESP.StartBoxes()
+    if not IsDevAllowed() then
+        Notify("ESP Boxes are disabled outside Studio/Debug mode.", "warn")
+        Config.ESP_BOX = false
+        return
+    end
     ESP.BoxEnabled = true
     local function Apply(p: Player)
         if p == LocalPlayer then return end
@@ -1520,9 +1537,20 @@ function ESP.StartTracers()
     for _, p in ipairs(Players:GetPlayers()) do MakeLine(p) end
     TrackConnection(Players.PlayerAdded:Connect(MakeLine))
 
+    if not IsDevAllowed() then
+        Notify("Tracers are disabled outside Studio/Debug mode.", "warn")
+        Config.TRACERS = false
+        return
+    end
     if _tracerLoop then _tracerLoop:Disconnect() end
+    local _tracerLast = 0
     _tracerLoop = TrackConnection(RunService.RenderStepped:Connect(function()
         if not ESP.TracerEnabled then return end
+        if Config.PERF_MODE then
+            local now = tick()
+            if now - _tracerLast < 0.08 then return end
+            _tracerLast = now
+        end
         local vp     = Camera.ViewportSize
         local origin = Vector2.new(vp.X / 2, vp.Y)  -- centro inferior de pantalla
 
@@ -1597,6 +1625,11 @@ end
 
 function ESP.StartNames()
     ESP.NamesEnabled = true
+    if not IsDevAllowed() then
+        Notify("Name ESP is disabled outside Studio/Debug mode.", "warn")
+        Config.ESP_NAMES = false
+        return
+    end
     for _, p in ipairs(Players:GetPlayers()) do ESP_MakeName(p) end
     TrackConnection(Players.PlayerAdded:Connect(function(p)
         TrackConnection(p.CharacterAdded:Connect(function()
@@ -1668,6 +1701,11 @@ end
 
 function ESP.StartHealth()
     ESP.HealthEnabled = true
+    if not IsDevAllowed() then
+        Notify("Health ESP is disabled outside Studio/Debug mode.", "warn")
+        Config.ESP_HEALTH = false
+        return
+    end
     for _, p in ipairs(Players:GetPlayers()) do ESP_MakeHealth(p) end
     TrackConnection(Players.PlayerAdded:Connect(function(p)
         TrackConnection(p.CharacterAdded:Connect(function()
@@ -1689,6 +1727,11 @@ local _distLoop: RBXScriptConnection?
 
 function ESP.StartDistance()
     ESP.DistEnabled = true
+    if not IsDevAllowed() then
+        Notify("Distance ESP is disabled outside Studio/Debug mode.", "warn")
+        Config.DISTANCE_ESP = false
+        return
+    end
     local function MakeDist(player: Player)
         if player == LocalPlayer then return end
         if not player.Character then return end
@@ -1717,8 +1760,14 @@ function ESP.StartDistance()
 
     -- Actualiza distancia cada frame
     if _distLoop then _distLoop:Disconnect() end
+    local _distLast = 0
     _distLoop = TrackConnection(RunService.Heartbeat:Connect(function()
         if not ESP.DistEnabled then return end
+        if Config.PERF_MODE then
+            local now = tick()
+            if now - _distLast < 0.12 then return end
+            _distLast = now
+        end
         local localChar = LocalPlayer.Character
         local localHRP  = localChar and localChar:FindFirstChild("HumanoidRootPart") :: BasePart?
         for player, bb in pairs(ESP.DistBBs) do
@@ -1748,6 +1797,11 @@ local _fovCircle: any?   -- Drawing.Circle
 local _fovLoop:   RBXScriptConnection?
 
 local function FOV_Start()
+    if not IsDevAllowed() then
+        Notify("FOV display is disabled outside Studio/Debug mode.", "warn")
+        Config.SHOW_FOV = false
+        return
+    end
     if _fovCircle then pcall(function() _fovCircle:Remove() end) end
     local c          = Drawing.new("Circle")
     TrackDrawing(c)
@@ -1760,8 +1814,14 @@ local function FOV_Start()
     _fovCircle       = c
 
     if _fovLoop then _fovLoop:Disconnect() end
+    local _fovLast = 0
     _fovLoop = TrackConnection(RunService.RenderStepped:Connect(function()
         if not Config.SHOW_FOV or not _fovCircle then return end
+        if Config.PERF_MODE then
+            local now = tick()
+            if now - _fovLast < 0.08 then return end
+            _fovLast = now
+        end
         _fovCircle.Radius   = Config.FOV_RADIUS
         _fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         _fovCircle.Filled   = Config.FOV_FILLED
@@ -1797,6 +1857,10 @@ end
 local SilentAim = { Active = false }
 
 function SilentAim.Enable()
+    if not IsDevAllowed() or not Config.ALLOW_COMBAT_LOGIC then
+        Notify("SilentAim is disabled for safety. Enable ALLOW_COMBAT_LOGIC in config for dev testing.", "warn")
+        return
+    end
     SilentAim.Active = true
     --[[  EJEMPLO DE HOOK (requiere ejecutor con hookfunction):
     local oldFunc = hookfunction(GunModule.GetRayDirection, function(origin, ...)
@@ -1841,6 +1905,10 @@ end
 local TriggerBot = { Active = false, _thread = nil :: thread? }
 
 function TriggerBot.Enable()
+    if not IsDevAllowed() or not Config.ALLOW_COMBAT_LOGIC then
+        Notify("TriggerBot is disabled for safety. Enable ALLOW_COMBAT_LOGIC in config for dev testing.", "warn")
+        return
+    end
     TriggerBot.Active = true
     TriggerBot._thread = TrackThread(task.spawn(function()
         while TriggerBot.Active do
@@ -1868,6 +1936,72 @@ function TriggerBot.Disable()
         TriggerBot._thread = nil
     end
 end
+
+-- ── 16.7  MÓDULO TARGETING (Seguro para pruebas/offline)
+-- Dev-only: devuelve objetivos candidatos y datos de predicción.
+local Targeting = {}
+
+-- Dev guard
+Targeting.IsAllowed = function()
+    return IsDevAllowed()
+end
+
+-- Filtra jugadores válidos (salud > 0, con Character)
+function Targeting:GetValidPlayers()
+    if not self.IsAllowed() then return {} end
+    local out = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local h = GetHumanoid(p.Character)
+            if h and h.Health > 0 then table.insert(out, p) end
+        end
+    end
+    return out
+end
+
+-- Comprueba si un jugador está dentro del FOV en píxeles
+function Targeting:InFOV(player, radiusPx)
+    if not self.IsAllowed() then return false end
+    radiusPx = radiusPx or Config.FOV_RADIUS
+    local part = (player.Character and (player.Character:FindFirstChild(Config.SILENT_AIM_PART) or player.Character:FindFirstChild("HumanoidRootPart"))) :: BasePart?
+    if not part then return false end
+    local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
+    if not onScreen then return false end
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+    return d <= radiusPx, d
+end
+
+-- Prioridad: closest to screen center among candidates
+function Targeting:SelectPriority(radiusPx)
+    if not self.IsAllowed() then return nil end
+    local best, bestDist = nil, math.huge
+    for _, p in ipairs(self:GetValidPlayers()) do
+        local inFov, d = self:InFOV(p, radiusPx)
+        if inFov and d and d < bestDist then
+            bestDist = d; best = p
+        end
+    end
+    return best, bestDist
+end
+
+-- Predicción simple: posición + velocity * factor
+function Targeting:PredictPosition(part, factor)
+    factor = factor or Config.PREDICTION_FACTOR
+    if not part or not part:IsA("BasePart") then return nil end
+    local vel = (part :: BasePart).AssemblyLinearVelocity or Vector3.new(0,0,0)
+    return part.Position + vel * factor
+end
+
+-- Hit chance simulador (no aplica acciones, sólo devuelve boolean)
+function Targeting:CheckHitChance()
+    if not self.IsAllowed() then return false end
+    if not Config.HIT_CHANCE_ON then return true end
+    return (math.random(1,100) <= math.floor(Config.HIT_CHANCE_VAL or 100))
+end
+
+-- Export Targeting to global for dev inspection
+getgenv().LXNDXN_Targeting = Targeting
 
 -- ── 16.6  MÓDULO VUELO (Implementación real) ──────────────────────
 local FlyModule = {
