@@ -1814,14 +1814,8 @@ local function FOV_Start()
     _fovCircle       = c
 
     if _fovLoop then _fovLoop:Disconnect() end
-    local _fovLast = 0
     _fovLoop = TrackConnection(RunService.RenderStepped:Connect(function()
         if not Config.SHOW_FOV or not _fovCircle then return end
-        if Config.PERF_MODE then
-            local now = tick()
-            if now - _fovLast < 0.08 then return end
-            _fovLast = now
-        end
         _fovCircle.Radius   = Config.FOV_RADIUS
         _fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         _fovCircle.Filled   = Config.FOV_FILLED
@@ -1862,7 +1856,7 @@ function SilentAim.Enable()
         return
     end
     SilentAim.Active = true
-    --[[  EJEMPLO DE HOOK (requiere ejecutor con hookfunction):
+    -- EJEMPLO DE HOOK (requiere ejecutor con hookfunction):
     local oldFunc = hookfunction(GunModule.GetRayDirection, function(origin, ...)
         if not SilentAim.Active then return oldFunc(origin, ...) end
 
@@ -1887,7 +1881,7 @@ function SilentAim.Enable()
 
         return (targetPos - origin).Unit
     end)
-    ]]
+    
     print("[LXNDXN SilentAim] Activado — modo demostración")
 end
 
@@ -1917,11 +1911,11 @@ function TriggerBot.Enable()
             if target then
                 task.wait(Config.TRIGGER_DELAY / 1000)  -- delay configurable en ms
                 if TriggerBot.Active then
-                    --[[  EJEMPLO: en un juego real harías:
+                    --  EJEMPLO: en un juego real harías:
                         mouse:Button1Down()
                         task.wait(0.04)
                         mouse:Button1Up()
-                    ]]
+                    
                     -- EventBus:Fire("TriggerBot_Fire", target)  ← para módulos que escuchen
                 end
             end
@@ -2250,18 +2244,18 @@ function AntiLock.Enable()
     AntiLock._thread = TrackThread(task.spawn(function()
         while AntiLock.Active do
             task.wait(0.04)
-            --[[  EJEMPLO: detectar si algún jugador tiene lock-on
+            --  EJEMPLO: detectar si algún jugador tiene lock-on
                   sobre LocalPlayer verificando su línea de visión
                   y aplicando micro-rotaciones al personaje.
 
-                  En un juego real:
+                  --En un juego real:
                   local char = LocalPlayer.Character
                   local hrp  = char and char:FindFirstChild("HumanoidRootPart")
                   if hrp then
                       local jitter = CFrame.Angles(0, math.rad(math.random(-5,5)), 0)
                       hrp.CFrame   = hrp.CFrame * jitter
                   end
-            ]]
+            
         end
     end))
 end
@@ -2283,7 +2277,7 @@ function AntiAim.Enable()
     AntiAim._thread = TrackThread(task.spawn(function()
         while AntiAim.Active do
             task.wait(0.05)
-            --[[
+            --
             local char = LocalPlayer.Character
             local hrp  = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
             if hrp then
@@ -2291,7 +2285,7 @@ function AntiAim.Enable()
                 local spinAngle = math.random(0, 360)
                 hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(spinAngle), 0)
             end
-            ]]
+            
         end
     end))
 end
@@ -2322,9 +2316,9 @@ end
 
 function FakeLag.Disable()
     FakeLag.Active = false
-    --[[
+    --
     sethiddenproperty(LocalPlayer, "SimulationRadius", 1000)
-    ]]
+    
 end
 
 -- ── 16.15 KATANA STATUS ESP  [LÓGICA DE EJEMPLO] ─────────────────
@@ -2357,12 +2351,12 @@ local function KatanaESP_Make(player: Player)
     TrackThread(task.spawn(function()
         while KatanaESP.Active and bb.Parent do
             task.wait(0.2)
-            --[[
+            --
             local tool     = player.Character and player.Character:FindFirstChildOfClass("Tool")
             local hasKatana = tool and tool.Name:lower():find("katana")
             lbl.Text       = hasKatana and "⚔ KATANA" or "✓ SAFE"
             lbl.TextColor3 = hasKatana and Theme.AccentRed or Theme.AccentGreen
-            ]]
+            
         end
     end))
 end
