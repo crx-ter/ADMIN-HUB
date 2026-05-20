@@ -1,4 +1,11 @@
 -- ══════════════════════════════════════════════════════════════════
+-- FIX DE COMPATIBILIDAD: Asegura que getgenv exista
+-- ══════════════════════════════════════════════════════════════════
+if type(getgenv) ~= "function" then
+    getgenv = function() return _G end
+end
+
+-- ══════════════════════════════════════════════════════════════════
 --  SECCIÓN 1 ─ LIMPIEZA DE INSTANCIAS ANTERIORES
 --  Garantiza que si el script se re-ejecuta no deje residuos.
 --  Usa getgenv() para guardar referencias persistentes entre ejecuciones.
@@ -48,7 +55,6 @@ local CollectionService = game:GetService("CollectionService")
 local HttpService      = game:GetService("HttpService")
 local CoreGui          = game:GetService("CoreGui")
 local Workspace        = game:GetService("Workspace")
-local VirtualInputManager = game:GetService("VirtualInputManager") -- Agregado para el TriggerBot nativo
 
 local Camera           = Workspace.CurrentCamera
 local LocalPlayer      = Players.LocalPlayer
@@ -381,8 +387,6 @@ end
 
 -- ══════════════════════════════════════════════════════════════════
 --  SECCIÓN 7 ─ BUS DE EVENTOS INTERNO (PubSub)
---  Permite que módulos se comuniquen sin depender el uno del otro.
---  Ejemplo: ESP escucha "PlayerAdded", FlyModule escucha "Respawn"
 -- ══════════════════════════════════════════════════════════════════
 
 type EventCallback = (...any) -> ()
@@ -969,11 +973,6 @@ end))
 --  SECCIÓN 15 ─ FÁBRICA DE COMPONENTES UI
 -- ══════════════════════════════════════════════════════════════════
 
-local UI_Controllers = {
-    Toggles = {} :: {[string]: SetToggleFn},
-    Sliders = {} :: {[string]: SetSliderFn}
-}
-
 local Tabs:      {[string]: {Button: TextButton, Indicator: Frame}} = {}
 local TabFrames: {[string]: ScrollingFrame} = {}
 local _activeTab: string? = nil
@@ -1180,7 +1179,6 @@ local function CreateToggle(
         Tween(card, { BackgroundTransparency = Theme.CardTransp }, Theme.AnimFast)
     end))
 
-    UI_Controllers.Toggles[key] = Set
     return card, Set
 end
 
@@ -1310,7 +1308,6 @@ local function CreateSlider(
         end
     end))
 
-    UI_Controllers.Sliders[key] = SetValue
     return card, function() return current end, SetValue
 end
 
@@ -1900,18 +1897,13 @@ function SilentAim.EjecutarDisparo()
             if not Config.HIT_CHANCE_ON or suerte <= Config.HIT_CHANCE_VAL then
                 vectorDireccion = (objetivoFijado.Position - origenDisparo).Unit
             else
-                -- [! LÓGICA MEJORADA] Si falla, desviamos intencionalmente el disparo con ruido proporcional a la distancia
-                local distancia = (objetivoFijado.Position - origenDisparo).Magnitude
-                local ruido = Vector3.new(
-                    math.random(-100, 100), 
-                    math.random(-100, 100), 
-                    math.random(-100, 100)
-                ).Unit
-                
-                local factorFallo = distancia * 0.05 -- 5% de desviación basada en la distancia
-                local puntoDesviado = objetivoFijado.Position + (ruido * factorFallo)
-                
-                vectorDireccion = (puntoDesviado - origenDisparo).Unit
+                -- Si falla, desviamos intencionalmente el disparo con ruido vectorial
+                local desvio = Vector3.new(
+                    math.random(-10, 10) / 100, 
+                    math.random(-10, 10) / 100, 
+                    math.random(-10, 10) / 100
+                )
+                vectorDireccion = ((objetivoFijado.Position - origenDisparo).Unit + desvio).Unit
             end
         end
     end
@@ -1944,11 +1936,7 @@ function SilentAim.Disable()
     print("[LXNDXN SilentAim] Desactivado")
 end
 
--- ── 16.5  MÓDULO TRIGGER BOT  [LÓGICA REAL NATIVA] ────────────────
---[[
-    El Trigger Bot usa mouse1click() si está disponible por el ejecutor.
-    Si no, utiliza el VirtualInputManager como fallback (100% legal local).
---]]
+-- ── 16.5  MÓDULO TRIGGER BOT  [LÓGICA DE EJEMPLO] ────────────────
 local TriggerBot = { Active = false, _thread = nil :: thread? }
 
 function TriggerBot.Enable()
@@ -1964,14 +1952,12 @@ function TriggerBot.Enable()
             if target then
                 task.wait(Config.TRIGGER_DELAY / 1000)  -- delay configurable en ms
                 if TriggerBot.Active then
-                    -- [! LÓGICA MEJORADA] Clic de ratón nativo
-                    if mouse1click then
-                        mouse1click()
-                    else
-                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                        task.wait(0.02)
-                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                    end
+                    --  EJEMPLO: en un juego real harías:
+                        -- mouse:Button1Down()
+                        -- task.wait(0.04)
+                        -- mouse:Button1Up()
+                    
+                    -- EventBus:Fire("TriggerBot_Fire", target)  ← para módulos que escuchen
                 end
             end
         end
@@ -2328,45 +2314,23 @@ function AntiLock.Disable()
     if AntiLock._thread then pcall(function() task.cancel(AntiLock._thread) end) end
 end
 
--- ── 16.13 ANTI-AIM  [LÓGICA DE EJEMPLO AVANZADA] ─────────────────────────
+-- ── 16.13 ANTI-AIM  [LÓGICA DE EJEMPLO] ─────────────────────────
 --[[
     Mueve la cabeza/cámara de forma errática para dificultar
-    que otros jugadores te apunten. Usa hookmetamethod para 
-    interceptar la comunicación real con el servidor.
+    que otros jugadores te apunten. REQUIERE hooks de cliente.
 --]]
 local AntiAim = { Active = false, _thread = nil :: thread? }
-
--- [! LÓGICA MEJORADA] Preparación para Hook de Metatablas (__namecall)
-local oldNamecall
-if hookmetamethod then
-    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        
-        -- Si el AntiAim está activo y la llamada viene del juego (no de un script de exploit)
-        if AntiAim.Active and not checkcaller() then
-            -- Interceptar RemoteEvents comunes de actualización de posición o disparos
-            if method == "FireServer" and (self.Name == "UpdateCharacter" or self.Name == "MousePos") then
-                -- Aquí manipulas los argumentos enviados al servidor
-                -- Ejemplo: Engañar al servidor sobre hacia dónde estás mirando
-                -- return oldNamecall(self, Vector3.new(math.random(-10,10), math.random(-10,10), math.random(-10,10)))
-            end
-        end
-        
-        return oldNamecall(self, ...)
-    end)
-end
 
 function AntiAim.Enable()
     AntiAim.Active = true
     AntiAim._thread = TrackThread(task.spawn(function()
         while AntiAim.Active do
             task.wait(0.05)
-            -- Simulación visual (El Hook arriba se encarga de la red)
+            --
             local char = LocalPlayer.Character
             local hrp  = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
             if hrp then
-                -- Spin aleatorio: hace que la hitbox visual sea impredecible localmente
+                -- Spin aleatorio: hace que la hitbox real sea impredecible
                 local spinAngle = math.random(0, 360)
                 hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(spinAngle), 0)
             end
@@ -2902,28 +2866,15 @@ end
 --  SECCIÓN 18 ─ AUTO-LOAD DE CONFIGURACIÓN AL INICIAR
 -- ══════════════════════════════════════════════════════════════════
 TrackThread(task.spawn(function()
-    task.wait(0.8)  -- espera a que la UI esté completamente construida
+    task.wait(0.8)
     if Config.AUTO_LOAD then
-        local ok = LoadConfig()
-        if ok then
-            -- [! LÓGICA MEJORADA] Sincronización visual de Config vs UI
-            for key, value in pairs(Config) do
-                if UI_Controllers.Toggles[key] then
-                    UI_Controllers.Toggles[key](value, true) -- true para no disparar el callback en bucle
-                elseif UI_Controllers.Sliders[key] then
-                    UI_Controllers.Sliders[key](value)
-                end
-            end
-        end
+        LoadConfig()
     end
-    -- Notificación de bienvenida
-    task.wait(0.2)
-    Notify("⚡ LXNDXN v4.0 cargado — INSERT para abrir", "success", 5)
+    Notify("⚡ LXNDXN v4.0 cargado", "success", 5)
 end))
 
 -- ══════════════════════════════════════════════════════════════════
 --  SECCIÓN 19 ─ LIMPIEZA TOTAL AL DESTRUIR EL GUI
---  Si el ScreenGui es eliminado externamente, todo se detiene.
 -- ══════════════════════════════════════════════════════════════════
 TrackConnection(ScreenGui.AncestryChanged:Connect(function()
     if ScreenGui.Parent then return end
@@ -2953,14 +2904,6 @@ TrackConnection(ScreenGui.AncestryChanged:Connect(function()
     end
     table.clear(getgenv().LXNDXN_THREADS)
     getgenv().LXNDXN_GUI = nil
-    print("[LXNDXN] Shutdown completo. Todos los módulos detenidos.")
+    print("[LXNDXN] Shutdown completo.")
 end))
-
--- ══════════════════════════════════════════════════════════════════
-print("╔══════════════════════════════════════════╗")
-print("║     L X N D X N   v4.0   LOADED         ║")
-print("║   INSERT  →  Toggle Menu                ║")
-print("║   getgenv() safe · Full cleanup ready   ║")
-print("╚══════════════════════════════════════════╝")
--- ══════════════════════════════════════════════════════════════════
 ```eof
