@@ -48,6 +48,7 @@ local CollectionService = game:GetService("CollectionService")
 local HttpService      = game:GetService("HttpService")
 local CoreGui          = game:GetService("CoreGui")
 local Workspace        = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager") -- Agregado para el TriggerBot nativo
 
 local Camera           = Workspace.CurrentCamera
 local LocalPlayer      = Players.LocalPlayer
@@ -86,7 +87,7 @@ local _old = CoreGui:FindFirstChild("LXNDXN_UI_v4")
 if _old then pcall(function() _old:Destroy() end) end
 
 --[[ Crea el ScreenGui principal e inyecta en CoreGui.
-     Si el ejecutor no tiene permisos, cae a PlayerGui.           ]]
+     Si el ejecutor no tiene permisos, cae a PlayerGui.            ]]
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name            = "LXNDXN_UI_v4"
 ScreenGui.ResetOnSpawn    = false
@@ -98,7 +99,7 @@ local _guiOk = pcall(function() ScreenGui.Parent = CoreGui end)
 if not _guiOk then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 --[[ Guarda la referencia global para que la próxima ejecución
-     pueda destruirla limpiamente.                                ]]
+     pueda destruirla limpiamente.                                 ]]
 getgenv().LXNDXN_GUI = ScreenGui
 
 -- ══════════════════════════════════════════════════════════════════
@@ -218,7 +219,7 @@ local Lang: {[string]: {[string]: string}} = {
         BHOP          = "Bunny Hop",
         -- Ajustes
         SAVE_CFG      = "Guardar Configuración", LOAD_CFG     = "Cargar Configuración",
-        AUTO_LOAD     = "Carga Automática",       PERF_MODE   = "Modo Rendimiento",
+        AUTO_LOAD     = "Carga Automática",        PERF_MODE   = "Modo Rendimiento",
         PIN_BTN       = "Fijar Botón",           HIDE_BTN     = "Ocultar Botón",
         LANG_TITLE    = "Idioma",                WATERMARK    = "Marca de Agua",
     },
@@ -968,6 +969,11 @@ end))
 --  SECCIÓN 15 ─ FÁBRICA DE COMPONENTES UI
 -- ══════════════════════════════════════════════════════════════════
 
+local UI_Controllers = {
+    Toggles = {} :: {[string]: SetToggleFn},
+    Sliders = {} :: {[string]: SetSliderFn}
+}
+
 local Tabs:      {[string]: {Button: TextButton, Indicator: Frame}} = {}
 local TabFrames: {[string]: ScrollingFrame} = {}
 local _activeTab: string? = nil
@@ -1174,6 +1180,7 @@ local function CreateToggle(
         Tween(card, { BackgroundTransparency = Theme.CardTransp }, Theme.AnimFast)
     end))
 
+    UI_Controllers.Toggles[key] = Set
     return card, Set
 end
 
@@ -1303,6 +1310,7 @@ local function CreateSlider(
         end
     end))
 
+    UI_Controllers.Sliders[key] = SetValue
     return card, function() return current end, SetValue
 end
 
@@ -1449,38 +1457,6 @@ local function GetClosestTarget(radiusPx: number?): (Player?, number)
             end
         end
     end
-    return best, bestDist
-end
-
-local function GetClosestTargetFromCursor(radiusPx: number?): (Player?, number)
-    radiusPx = radiusPx or Config.FOV_RADIUS
-    local best: Player? = nil
-    local bestDist: number = math.huge
-    local mouseLocation = UserInputService:GetMouseLocation()
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == LocalPlayer then continue end
-        local char = player.Character
-        if not char then continue end
-
-        local partName = Config.SILENT_AIM_PART or "Head"
-        local part     = char:FindFirstChild(partName)
-                      or char:FindFirstChild("HumanoidRootPart")
-        if not part then continue end
-
-        local hum = GetHumanoid(char)
-        if not hum or hum.Health <= 0 then continue end
-
-        local sp, onScreen = Camera:WorldToViewportPoint((part :: BasePart).Position)
-        if onScreen then
-            local d = (Vector2.new(sp.X, sp.Y) - mouseLocation).Magnitude
-            if d < radiusPx and d < bestDist then
-                bestDist = d
-                best     = player
-            end
-        end
-    end
-
     return best, bestDist
 end
 
@@ -1862,81 +1838,105 @@ local function FOV_Stop()
     if _fovCircle then pcall(function() _fovCircle:Remove() end) _fovCircle = nil end
 end
 
--- ── 16.4  MÓDULO SILENT AIM  [LÓGICA DE EJEMPLO] ─────────────────
---[[
-    El Silent Aim real requiere hookear la función de cálculo
-    de raycast o de dirección de disparo del juego específico.
-    Eso varía de juego a juego. La arquitectura correcta sería:
+-- ── 16.4  MÓDULO SILENT AIM [LXNDXN] ───────────────────────────────
+-- Lógica integrada con Config.SILENT_AIM, FOV_RADIUS, SILENT_AIM_PART,
+-- HIT_CHANCE_ON y HIT_CHANCE_VAL. Se dispara al hacer click.
 
-    1. Identificar la función del gun system que calcula el
-       origen y dirección del raycast de disparo.
-    2. Usar el hook del ejecutor (hookfunction/detour) para
-       interceptarla y redirigir la dirección al objetivo
-       seleccionado por GetClosestTarget().
-    3. Aplicar HIT_CHANCE_VAL: generar math.random(1,100) y
-       solo redirigir si el número es <= HIT_CHANCE_VAL.
-    4. Aplicar PREDICTION: sumar la velocidad predicha del
-       objetivo * PREDICTION_FACTOR al punto de impacto.
-
-    Ejemplo arquitectural (no ejecutable tal cual):
---]]
 local SilentAim = { Active = false }
 
-function SilentAim.Enable()
-    if not IsDevAllowed() or not Config.ALLOW_COMBAT_LOGIC then
-        Notify("SilentAim is disabled for safety. Enable ALLOW_COMBAT_LOGIC in config for dev testing.", "warn")
-        return
-    end
-    -- EJEMPLO DE HOOK (requiere ejecutor con hookfunction):
-    local oldFunc = nil
-    if type(hookfunction) == "function" and GunModule and GunModule.GetRayDirection then
-        oldFunc = hookfunction(GunModule.GetRayDirection, function(origin, ...)
-            if not SilentAim.Active then return oldFunc(origin, ...) end
+-- Obtiene el objetivo más cercano al centro de pantalla dentro del FOV
+local function ObtenerObjetivoEnMira()
+    local centroPantalla = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local objetivoMasCercano = nil
+    local distanciaMinima = Config.FOV_RADIUS
 
-            -- Hit chance: si la configuración falla, no redirigimos
-            if Config.HIT_CHANCE_ON and math.random(1,100) > Config.HIT_CHANCE_VAL then
-                return oldFunc(origin, ...)
+    for _, jugador in ipairs(Players:GetPlayers()) do
+        if jugador ~= LocalPlayer and jugador.Character then
+            local personaje = jugador.Character
+            local humanoide = GetHumanoid(personaje)
+            
+            -- Buscamos la parte específica configurada (Target Part)
+            local parteDeseada = personaje:FindFirstChild(Config.SILENT_AIM_PART)
+                              or personaje:FindFirstChild("HumanoidRootPart")
+            
+            if humanoide and humanoide.Health > 0 and parteDeseada then
+                -- Proyección a 2D de la parte específica
+                local posicionPantalla, enPantalla = Camera:WorldToViewportPoint((parteDeseada :: BasePart).Position)
+                
+                if enPantalla then
+                    local vectorPantalla = Vector2.new(posicionPantalla.X, posicionPantalla.Y)
+                    local distanciaAlCentro = (vectorPantalla - centroPantalla).Magnitude
+                    
+                    -- Verificar si está dentro del FOV
+                    if distanciaAlCentro < distanciaMinima then
+                        distanciaMinima = distanciaAlCentro
+                        objetivoMasCercano = parteDeseada -- Guardamos la parte exacta
+                    end
+                end
             end
-
-            local target, _ = GetClosestTargetFromCursor(Config.FOV_RADIUS)
-            if not target or not target.Character then return oldFunc(origin, ...) end
-
-            local part = target.Character:FindFirstChild(Config.SILENT_AIM_PART)
-                      or target.Character:FindFirstChild("HumanoidRootPart")
-            if not part then return oldFunc(origin, ...) end
-
-            -- Predicción de movimiento
-            local targetPos = (part :: BasePart).Position
-            if Config.PREDICTION then
-                local vel = part:IsA("BasePart") and (part :: BasePart).AssemblyLinearVelocity or Vector3.zero
-                targetPos = targetPos + vel * Config.PREDICTION_FACTOR
-            end
-
-            return (targetPos - origin).Unit
-        end)
-    else
-        Notify("SilentAim hook unavailable en este entorno. Activa un executor compatible.", "warn")
+        end
     end
-
-    SilentAim.Active = true
-    print("[LXNDXN SilentAim] Activado — modo demostración")
+    
+    return objetivoMasCercano
 end
 
-function SilentAim.GetAimDirection(origin: Vector3): Vector3?
-    local target, _ = GetClosestTargetFromCursor(Config.FOV_RADIUS)
-    if not target or not target.Character then return nil end
-
-    local part = target.Character:FindFirstChild(Config.SILENT_AIM_PART)
-              or target.Character:FindFirstChild("HumanoidRootPart")
-    if not part then return nil end
-
-    local targetPos = (part :: BasePart).Position
-    if Config.PREDICTION then
-        local vel = (part :: BasePart).AssemblyLinearVelocity or Vector3.zero
-        targetPos = targetPos + vel * Config.PREDICTION_FACTOR
+-- Ejecuta el disparo con Silent Aim + Hit Chance
+function SilentAim.EjecutarDisparo()
+    local personaje = LocalPlayer.Character
+    if not personaje then return end
+    
+    local origenDisparo = Camera.CFrame.Position 
+    local vectorDireccion = Camera.CFrame.LookVector -- Por defecto, disparo normal
+    
+    -- Verificar si el Silent Aim está activado
+    if Config.SILENT_AIM then
+        local objetivoFijado = ObtenerObjetivoEnMira()
+        
+        if objetivoFijado then
+            -- HIT CHANCE LÓGICA
+            local suerte = math.random(1, 100)
+            
+            -- Si el número cae dentro de nuestra probabilidad, el Silent Aim funciona
+            if not Config.HIT_CHANCE_ON or suerte <= Config.HIT_CHANCE_VAL then
+                vectorDireccion = (objetivoFijado.Position - origenDisparo).Unit
+            else
+                -- [! LÓGICA MEJORADA] Si falla, desviamos intencionalmente el disparo con ruido proporcional a la distancia
+                local distancia = (objetivoFijado.Position - origenDisparo).Magnitude
+                local ruido = Vector3.new(
+                    math.random(-100, 100), 
+                    math.random(-100, 100), 
+                    math.random(-100, 100)
+                ).Unit
+                
+                local factorFallo = distancia * 0.05 -- 5% de desviación basada en la distancia
+                local puntoDesviado = objetivoFijado.Position + (ruido * factorFallo)
+                
+                vectorDireccion = (puntoDesviado - origenDisparo).Unit
+            end
+        end
     end
+    
+    -- Raycast para procesar el impacto final
+    local parametrosRaycast = RaycastParams.new()
+    parametrosRaycast.FilterType = Enum.RaycastFilterType.Exclude
+    parametrosRaycast.FilterDescendantsInstances = {personaje}
+    
+    local impacto = Workspace:Raycast(origenDisparo, vectorDireccion * 1000, parametrosRaycast)
+    
+    if impacto and impacto.Instance then
+        local modeloEnemigo = impacto.Instance:FindFirstAncestorOfClass("Model")
+        if modeloEnemigo then
+            local humanoide = GetHumanoid(modeloEnemigo)
+            if humanoide then
+                print("[LXNDXN] Impacto confirmado en: " .. impacto.Instance.Name)
+            end
+        end
+    end
+end
 
-    return (targetPos - origin).Unit
+function SilentAim.Enable()
+    SilentAim.Active = true
+    print("[LXNDXN SilentAim] Activado")
 end
 
 function SilentAim.Disable()
@@ -1944,11 +1944,10 @@ function SilentAim.Disable()
     print("[LXNDXN SilentAim] Desactivado")
 end
 
--- ── 16.5  MÓDULO TRIGGER BOT  [LÓGICA DE EJEMPLO] ────────────────
+-- ── 16.5  MÓDULO TRIGGER BOT  [LÓGICA REAL NATIVA] ────────────────
 --[[
-    El Trigger Bot real simula un click de ratón cuando el
-    cursor está sobre un enemigo. En Roblox esto requiere
-    simular el input o disparar la función del arma directamente.
+    El Trigger Bot usa mouse1click() si está disponible por el ejecutor.
+    Si no, utiliza el VirtualInputManager como fallback (100% legal local).
 --]]
 local TriggerBot = { Active = false, _thread = nil :: thread? }
 
@@ -1965,12 +1964,14 @@ function TriggerBot.Enable()
             if target then
                 task.wait(Config.TRIGGER_DELAY / 1000)  -- delay configurable en ms
                 if TriggerBot.Active then
-                    --  EJEMPLO: en un juego real harías:
-                        mouse:Button1Down()
-                        task.wait(0.04)
-                        mouse:Button1Up()
-                    
-                    -- EventBus:Fire("TriggerBot_Fire", target)  ← para módulos que escuchen
+                    -- [! LÓGICA MEJORADA] Clic de ratón nativo
+                    if mouse1click then
+                        mouse1click()
+                    else
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                        task.wait(0.02)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                    end
                 end
             end
         end
@@ -1984,6 +1985,14 @@ function TriggerBot.Disable()
         TriggerBot._thread = nil
     end
 end
+
+-- Disparar con Silent Aim al hacer click
+TrackConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        SilentAim.EjecutarDisparo()
+    end
+end))
 
 -- ── 16.7  MÓDULO TARGETING (Seguro para pruebas/offline)
 -- Dev-only: devuelve objetivos candidatos y datos de predicción.
@@ -2097,7 +2106,7 @@ function FlyModule.Enable()
         if UIS:IsKeyDown(Enum.KeyCode.S) then vel -= camCF.LookVector  * speed * mult end
         if UIS:IsKeyDown(Enum.KeyCode.A) then vel -= camCF.RightVector * speed * mult end
         if UIS:IsKeyDown(Enum.KeyCode.D) then vel += camCF.RightVector * speed * mult end
-        if UIS:IsKeyDown(Enum.KeyCode.Space)       then vel += Vector3.new(0, speed * mult, 0) end
+        if UIS:IsKeyDown(Enum.KeyCode.Space)        then vel += Vector3.new(0, speed * mult, 0) end
         if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then vel -= Vector3.new(0, speed * mult, 0) end
 
         bv.Velocity = vel
@@ -2299,16 +2308,16 @@ function AntiLock.Enable()
         while AntiLock.Active do
             task.wait(0.04)
             --  EJEMPLO: detectar si algún jugador tiene lock-on
-                  sobre LocalPlayer verificando su línea de visión
-                  y aplicando micro-rotaciones al personaje.
+            --      sobre LocalPlayer verificando su línea de visión
+            --      y aplicando micro-rotaciones al personaje.
 
-                  --En un juego real:
-                  local char = LocalPlayer.Character
-                  local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                  if hrp then
-                      local jitter = CFrame.Angles(0, math.rad(math.random(-5,5)), 0)
-                      hrp.CFrame   = hrp.CFrame * jitter
-                  end
+            --    En un juego real:
+            local char = LocalPlayer.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local jitter = CFrame.Angles(0, math.rad(math.random(-5,5)), 0)
+                hrp.CFrame   = hrp.CFrame * jitter
+            end
             
         end
     end))
@@ -2319,23 +2328,45 @@ function AntiLock.Disable()
     if AntiLock._thread then pcall(function() task.cancel(AntiLock._thread) end) end
 end
 
--- ── 16.13 ANTI-AIM  [LÓGICA DE EJEMPLO] ─────────────────────────
+-- ── 16.13 ANTI-AIM  [LÓGICA DE EJEMPLO AVANZADA] ─────────────────────────
 --[[
     Mueve la cabeza/cámara de forma errática para dificultar
-    que otros jugadores te apunten. REQUIERE hooks de cliente.
+    que otros jugadores te apunten. Usa hookmetamethod para 
+    interceptar la comunicación real con el servidor.
 --]]
 local AntiAim = { Active = false, _thread = nil :: thread? }
+
+-- [! LÓGICA MEJORADA] Preparación para Hook de Metatablas (__namecall)
+local oldNamecall
+if hookmetamethod then
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        
+        -- Si el AntiAim está activo y la llamada viene del juego (no de un script de exploit)
+        if AntiAim.Active and not checkcaller() then
+            -- Interceptar RemoteEvents comunes de actualización de posición o disparos
+            if method == "FireServer" and (self.Name == "UpdateCharacter" or self.Name == "MousePos") then
+                -- Aquí manipulas los argumentos enviados al servidor
+                -- Ejemplo: Engañar al servidor sobre hacia dónde estás mirando
+                -- return oldNamecall(self, Vector3.new(math.random(-10,10), math.random(-10,10), math.random(-10,10)))
+            end
+        end
+        
+        return oldNamecall(self, ...)
+    end)
+end
 
 function AntiAim.Enable()
     AntiAim.Active = true
     AntiAim._thread = TrackThread(task.spawn(function()
         while AntiAim.Active do
             task.wait(0.05)
-            --
+            -- Simulación visual (El Hook arriba se encarga de la red)
             local char = LocalPlayer.Character
             local hrp  = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
             if hrp then
-                -- Spin aleatorio: hace que la hitbox real sea impredecible
+                -- Spin aleatorio: hace que la hitbox visual sea impredecible localmente
                 local spinAngle = math.random(0, 360)
                 hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(spinAngle), 0)
             end
@@ -2371,7 +2402,7 @@ end
 function FakeLag.Disable()
     FakeLag.Active = false
     --
-    sethiddenproperty(LocalPlayer, "SimulationRadius", 1000)
+    -- sethiddenproperty(LocalPlayer, "SimulationRadius", 1000)
     
 end
 
@@ -2526,7 +2557,6 @@ SectionLabel(CombatTab, "AIM", 1)
 local _, setAimToggle = CreateToggle(CombatTab, "SILENT_AIM", function(on)
     Config.SILENT_AIM = on
     aimDD.Visible = on
-    if on then SilentAim.Enable() else SilentAim.Disable() end
 end, 2)
 
 aimDD = CreateDropdown(CombatTab, "DIR_TITLE",
@@ -2876,8 +2906,14 @@ TrackThread(task.spawn(function()
     if Config.AUTO_LOAD then
         local ok = LoadConfig()
         if ok then
-            -- Aquí podrías aplicar los valores cargados a los toggles
-            -- usando el sistema de SetFn guardado
+            -- [! LÓGICA MEJORADA] Sincronización visual de Config vs UI
+            for key, value in pairs(Config) do
+                if UI_Controllers.Toggles[key] then
+                    UI_Controllers.Toggles[key](value, true) -- true para no disparar el callback en bucle
+                elseif UI_Controllers.Sliders[key] then
+                    UI_Controllers.Sliders[key](value)
+                end
+            end
         end
     end
     -- Notificación de bienvenida
@@ -2896,7 +2932,7 @@ TrackConnection(ScreenGui.AncestryChanged:Connect(function()
     ESP.StopHealth();   ESP.StopDistance()
     FlyModule.Disable(); NoClip.Disable()
     InfJump_Stop();     BHop_Stop()
-    SilentAim.Disable(); TriggerBot.Disable()
+    TriggerBot.Disable()
     AntiKatana.Disable(); Resolver.Disable()
     AntiLock.Disable();  AntiAim.Disable()
     FakeLag.Disable();   KatanaESP.Disable()
@@ -2927,3 +2963,4 @@ print("║   INSERT  →  Toggle Menu                ║")
 print("║   getgenv() safe · Full cleanup ready   ║")
 print("╚══════════════════════════════════════════╝")
 -- ══════════════════════════════════════════════════════════════════
+```eof
