@@ -1,19 +1,11 @@
 -- ══════════════════════════════════════════════════════════════════
--- FIX DE COMPATIBILIDAD: Asegura que getgenv exista
+-- FIX DE COMPATIBILIDAD (Versión Segura)
 -- ══════════════════════════════════════════════════════════════════
-if type(getgenv) ~= "function" then
-    getgenv = function() return _G end
-end
+getgenv = getgenv or function() return _G end
 
 -- ══════════════════════════════════════════════════════════════════
 --  SECCIÓN 1 ─ LIMPIEZA DE INSTANCIAS ANTERIORES
---  Garantiza que si el script se re-ejecuta no deje residuos.
---  Usa getgenv() para guardar referencias persistentes entre ejecuciones.
 -- ══════════════════════════════════════════════════════════════════
-
---[[ ── 1.1  Destruye la ScreenGui anterior si existe ─────────────
-     getgenv() es el entorno global del ejecutor; persiste entre
-     ejecuciones del mismo script dentro de la misma sesión.      ]]
 if getgenv().LXNDXN_GUI then
     pcall(function() getgenv().LXNDXN_GUI:Destroy() end)
     getgenv().LXNDXN_GUI = nil
