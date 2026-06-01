@@ -1007,12 +1007,44 @@ local function CreateMainWindow()
     ClB.MouseButton1Click:Connect(function()
         Tw(MainWin,TI.MED,{Size=UDim2.new(0,0,0,0)}); task.wait(0.35); ScreenGui:Destroy()
     end)
-    local visible2 = true
-    MinB.MouseButton1Click:Connect(function()
-        visible2 = not visible2
-        if visible2 then MainWin.Visible=true; Tw(MainWin,TI.MED,{Size=UDim2.fromScale(1,1)})
-        else Tw(MainWin,TI.MED,{Size=UDim2.new(1,0,0,HH)}); task.delay(0.35,function() pcall(function() end) end) end
+    -- Bolita para reabrir en mobile
+local RevealBall = MkBtn({
+    Name = "RevealBall",
+    Size = UDim2.new(0, 38, 0, 38),
+    Position = UDim2.new(0, 10, 0.5, -19),
+    BackgroundColor3 = C.P1,
+    Text = "⬡", Font = Enum.Font.GothamBold,
+    TextSize = 18, TextColor3 = Color3.new(1,1,1),
+    Visible = false, ZIndex = 999,
+}, ScreenGui)
+Corner(19, RevealBall)
+Stroke(2, C.A1, RevealBall)
+task.spawn(function()
+    while RevealBall and RevealBall.Parent do
+        Tw(RevealBall, TI.SINE, {BackgroundColor3 = C.P2}); task.wait(1.2)
+        Tw(RevealBall, TI.SINE, {BackgroundColor3 = C.P1}); task.wait(1.2)
+    end
+end)
+
+local visible2 = true
+local function HideOS()
+    visible2 = false
+    Tw(MainWin, TI.MED, {Size = UDim2.new(0,0,0,0)})
+    task.delay(0.35, function()
+        MainWin.Visible = false
+        RevealBall.Visible = true
+        Tw(RevealBall, TI.BOUNCE, {Size = UDim2.new(0,38,0,38)})
     end)
+end
+local function ShowOS()
+    visible2 = true
+    RevealBall.Visible = false
+    MainWin.Visible = true
+    Tw(MainWin, TI.BOUNCE, {Size = UDim2.fromScale(1,1)})
+end
+
+MinB.MouseButton1Click:Connect(HideOS)
+RevealBall.MouseButton1Click:Connect(ShowOS)
 
     -- ── SIDEBAR ───────────────────────────────────────────────────────
     Sidebar = MkFrame({
