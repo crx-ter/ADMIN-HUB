@@ -1,2468 +1,2077 @@
--- ═══════════════════════════════════════════════════════════════════════════════
--- LXNDXN QUANTUM OS v3.0 — DELTA EDITION · MULTI-AGENT AI ORCHESTRATOR
--- Author  : LXNDXN
--- Engine  : Delta Executor (Mobile-Optimised Roblox Lua)
--- Version : 3.0.0-DE
--- Theme   : Cyberpunk Dark · Neon Purple · Glassmorphic
--- AI      : OpenRouter Multi-Agent · Orchestrator: llama-3.3-70b-instruct
--- ═══════════════════════════════════════════════════════════════════════════════
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║  LXNDXN QUANTUM OS  v3.1 · DELTA EDITION · MULTI-AGENT AI ORCHESTRATOR ║
+-- ║  Author  : LXNDXN                                                       ║
+-- ║  Engine  : Delta Executor (Mobile + PC Responsive)                      ║
+-- ║  Version : 3.1.0-DE                                                     ║
+-- ║  Theme   : Cyberpunk Noir · Neon Violet · Glassmorphic Pro              ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 1 - ENVIRONMENT BOOTSTRAP
--- ═══════════════════════════════════════════════════════════════════════════════
-
+-- ═══════════════════════════════════════════════════════════════════════
+-- §1  ENVIRONMENT BOOTSTRAP
+-- ═══════════════════════════════════════════════════════════════════════
 local ENV = getgenv()
+if ENV.QOS_Instance   then pcall(function() ENV.QOS_Instance:Destroy()   end) end
+if ENV.QOS_OracleFloat then pcall(function() ENV.QOS_OracleFloat:Destroy() end) end
+if ENV.QOS_Connections then for _, c in pairs(ENV.QOS_Connections) do pcall(function() c:Disconnect() end) end end
 
-if ENV.QuantumOS_Instance   then pcall(function() ENV.QuantumOS_Instance:Destroy()   end) end
-if ENV.QuantumOS_OracleFloat then pcall(function() ENV.QuantumOS_OracleFloat:Destroy() end) end
-if ENV.QuantumOS_Connections then
-    for _, c in pairs(ENV.QuantumOS_Connections) do pcall(function() c:Disconnect() end) end
-end
+ENV.QOS_Connections  = {}
+ENV.QOS_ActiveTab    = nil
+ENV.QOS_Unlocked     = false
+ENV.QOS_APIKey       = nil
+ENV.QOS_DeviceMode   = nil
 
-ENV.QuantumOS_Connections   = {}
-ENV.QuantumOS_ActiveTab     = nil
-ENV.QuantumOS_Unlocked      = false
-ENV.QuantumOS_OpenRouterKey = nil   -- Se llena al login
-ENV.QuantumOS_DeviceMode    = nil   -- "mobile" o "pc"
-
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 2 - SERVICIOS Y REFERENCIAS
--- ═══════════════════════════════════════════════════════════════════════════════
-
+-- ═══════════════════════════════════════════════════════════════════════
+-- §2  SERVICIOS
+-- ═══════════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService      = game:GetService("HttpService")
-local CoreGui          = game:GetService("CoreGui")
 
-local LocalPlayer  = Players.LocalPlayer
-local PlayerGui    = LocalPlayer:WaitForChild("PlayerGui")
-local Character    = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid     = Character:FindFirstChildOfClass("Humanoid")
+local LP         = Players.LocalPlayer
+local PlayerGui  = LP:WaitForChild("PlayerGui")
+local Character  = LP.Character or LP.CharacterAdded:Wait()
+local Humanoid   = Character:FindFirstChildOfClass("Humanoid")
+local DNAME      = LP.DisplayName
+local UNAME      = LP.Name
+local GNAME      = game.Name or "Roblox"
 
-local DISPLAY_NAME = LocalPlayer.DisplayName
-local USERNAME     = LocalPlayer.Name
-local GAME_NAME    = game.Name or "Roblox"
-local PLACE_ID     = game.PlaceId
+-- ═══════════════════════════════════════════════════════════════════════
+-- §3  DETECCIÓN RESPONSIVE
+-- ═══════════════════════════════════════════════════════════════════════
+local function GetScreenSize()
+    local cam = workspace.CurrentCamera
+    return cam and cam.ViewportSize or Vector2.new(1280, 720)
+end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 3 - PALETA DE COLORES Y CONSTANTES
--- ═══════════════════════════════════════════════════════════════════════════════
+local function IsMobile()
+    local ss = GetScreenSize()
+    return ss.X < 600 or UserInputService.TouchEnabled
+end
 
+-- ═══════════════════════════════════════════════════════════════════════
+-- §4  PALETA DE COLORES
+-- ═══════════════════════════════════════════════════════════════════════
 local C = {
-    PURPLE_NEON   = Color3.fromRGB(160,  32, 240),
-    PURPLE_DIM    = Color3.fromRGB( 90,  15, 140),
-    PURPLE_GLOW   = Color3.fromRGB(180,  80, 255),
-    CYAN_NEON     = Color3.fromRGB(  0, 220, 255),
-    CYAN_DIM      = Color3.fromRGB(  0, 140, 180),
-    PINK_NEON     = Color3.fromRGB(255,  60, 160),
-    GOLD_NEON     = Color3.fromRGB(255, 195,  50),
-
-    BG_DEEP       = Color3.fromRGB(  4,   4,  14),
-    BG_PANEL      = Color3.fromRGB( 10,  10,  26),
-    BG_CARD       = Color3.fromRGB( 16,  16,  40),
-    BG_SIDEBAR    = Color3.fromRGB(  6,   6,  18),
-    BG_GLASS      = Color3.fromRGB( 22,  18,  48),
-    BG_HEADER     = Color3.fromRGB( 12,   8,  30),
-
-    TEXT_WHITE    = Color3.fromRGB(230, 230, 255),
-    TEXT_SOFT     = Color3.fromRGB(160, 155, 200),
-    TEXT_MUTED    = Color3.fromRGB( 90,  85, 130),
-    TEXT_GREEN    = Color3.fromRGB(  0, 220, 130),
-    TEXT_RED      = Color3.fromRGB(255,  70,  70),
-    TEXT_YELLOW   = Color3.fromRGB(255, 210,  60),
-
-    ACCENT_A      = Color3.fromRGB(160,  32, 240),
-    ACCENT_B      = Color3.fromRGB(  0, 180, 255),
-    BORDER        = Color3.fromRGB( 60,  45, 110),
-    BORDER_BRIGHT = Color3.fromRGB(120,  60, 200),
-
-    TOGGLE_ON     = Color3.fromRGB(  0, 190, 120),
-    TOGGLE_OFF    = Color3.fromRGB( 50,  45,  75),
-    SLIDER_BG     = Color3.fromRGB( 28,  22,  60),
-    SLIDER_FILL   = Color3.fromRGB(160,  32, 240),
+    -- Primaries
+    P1      = Color3.fromRGB(148, 28,  230),  -- Violet principal
+    P2      = Color3.fromRGB(186, 80,  255),  -- Violet claro
+    P3      = Color3.fromRGB( 78,  8,  140),  -- Violet oscuro
+    -- Accents
+    A1      = Color3.fromRGB(  0, 210,  255),  -- Cyan brillante
+    A2      = Color3.fromRGB(  0, 140,  190),  -- Cyan medio
+    A3      = Color3.fromRGB(255,  55,  150),  -- Pink accent
+    A4      = Color3.fromRGB(255, 185,   45),  -- Gold
+    -- Backgrounds (profundidad estratificada)
+    BG0     = Color3.fromRGB(  3,   3,  11),   -- Más profundo
+    BG1     = Color3.fromRGB(  7,   6,  19),   -- Panel base
+    BG2     = Color3.fromRGB( 12,  11,  30),   -- Card
+    BG3     = Color3.fromRGB( 18,  16,  42),   -- Card elevada
+    BG4     = Color3.fromRGB( 24,  20,  56),   -- Hover/glass
+    BGH     = Color3.fromRGB(  9,   7,  24),   -- Header
+    BGS     = Color3.fromRGB(  5,   5,  15),   -- Sidebar
+    -- Texto
+    TW      = Color3.fromRGB(235, 232,  255),  -- Blanco
+    TS      = Color3.fromRGB(165, 158,  205),  -- Suave
+    TM      = Color3.fromRGB( 88,  82,  128),  -- Muted
+    TG      = Color3.fromRGB(  0, 215,  125),  -- Verde
+    TR      = Color3.fromRGB(255,  72,   72),  -- Rojo
+    TY      = Color3.fromRGB(255, 208,   55),  -- Amarillo
+    -- Borders
+    BR0     = Color3.fromRGB( 45,  35,   88),  -- Normal
+    BR1     = Color3.fromRGB(100,  55,  175),  -- Bright
+    BR2     = Color3.fromRGB(148,  28,  230),  -- Glow
+    -- Estado
+    TON     = Color3.fromRGB(  0, 190,  115),
+    TOFF    = Color3.fromRGB( 44,  40,   70),
+    SBG     = Color3.fromRGB( 22,  18,   52),
+    SFG     = Color3.fromRGB(148,  28,  230),
 }
 
-local TI_FAST   = TweenInfo.new(0.15, Enum.EasingStyle.Quad,  Enum.EasingDirection.Out)
-local TI_MED    = TweenInfo.new(0.30, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-local TI_SLOW   = TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local TI_BOUNCE = TweenInfo.new(0.45, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
-local TI_SINE   = TweenInfo.new(1.20, Enum.EasingStyle.Sine,  Enum.EasingDirection.InOut)
-local TI_PULSE  = TweenInfo.new(0.90, Enum.EasingStyle.Sine,  Enum.EasingDirection.InOut, -1, true)
+-- ═══════════════════════════════════════════════════════════════════════
+-- §5  TWEEN INFOS
+-- ═══════════════════════════════════════════════════════════════════════
+local TI = {
+    SNAP    = TweenInfo.new(0.10, Enum.EasingStyle.Quad,  Enum.EasingDirection.Out),
+    FAST    = TweenInfo.new(0.18, Enum.EasingStyle.Quad,  Enum.EasingDirection.Out),
+    MED     = TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+    SLOW    = TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+    BOUNCE  = TweenInfo.new(0.48, Enum.EasingStyle.Back,  Enum.EasingDirection.Out),
+    SPRING  = TweenInfo.new(0.60, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
+    SINE    = TweenInfo.new(1.40, Enum.EasingStyle.Sine,  Enum.EasingDirection.InOut),
+    PULSE   = TweenInfo.new(1.00, Enum.EasingStyle.Sine,  Enum.EasingDirection.InOut, -1, true),
+}
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 4 - UTILIDADES UI
--- ═══════════════════════════════════════════════════════════════════════════════
-
+-- ═══════════════════════════════════════════════════════════════════════
+-- §6  UTILIDADES UI
+-- ═══════════════════════════════════════════════════════════════════════
 local function Make(class, props, parent)
-    local inst = Instance.new(class)
-    for k, v in pairs(props) do pcall(function() inst[k] = v end) end
-    if parent then inst.Parent = parent end
-    return inst
+    local i = Instance.new(class)
+    for k, v in pairs(props) do pcall(function() i[k] = v end) end
+    if parent then i.Parent = parent end
+    return i
 end
 
-local function MakeFrame(p, par)  return Make("Frame",           p, par) end
-local function MakeLabel(p, par)  return Make("TextLabel",       p, par) end
-local function MakeButton(p, par) return Make("TextButton",      p, par) end
-local function MakeBox(p, par)    return Make("TextBox",         p, par) end
-local function MakeImage(p, par)  return Make("ImageLabel",      p, par) end
-local function MakeScroll(p, par) return Make("ScrollingFrame",  p, par) end
+local function MkFrame(p, par)  return Make("Frame",          p, par) end
+local function MkLabel(p, par)  return Make("TextLabel",      p, par) end
+local function MkBtn(p, par)    return Make("TextButton",     p, par) end
+local function MkBox(p, par)    return Make("TextBox",        p, par) end
+local function MkImg(p, par)    return Make("ImageLabel",     p, par) end
+local function MkScroll(p, par) return Make("ScrollingFrame", p, par) end
 
-local function Tween(inst, info, props) return TweenService:Create(inst, info, props):Play() end
+local function Tw(inst, ti, props) return TweenService:Create(inst, ti, props):Play() end
 
-local function Corner(r, parent)
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = parent; return c
+local function Corner(r, p)
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = p; return c
 end
 
-local function Stroke(thickness, color, parent)
-    local s = Instance.new("UIStroke"); s.Thickness = thickness; s.Color = color or C.BORDER; s.Parent = parent; return s
+local function Stroke(thick, color, p)
+    local s = Instance.new("UIStroke"); s.Thickness = thick
+    s.Color = color or C.BR0; s.Parent = p; return s
 end
 
-local function Padding(t, r, b, l, parent)
-    local p = Instance.new("UIPadding")
-    p.PaddingTop    = UDim.new(0, t or 0); p.PaddingRight  = UDim.new(0, r or 0)
-    p.PaddingBottom = UDim.new(0, b or 0); p.PaddingLeft   = UDim.new(0, l or 0)
-    p.Parent = parent; return p
+local function Pad(t, r, b, l, p)
+    local u = Instance.new("UIPadding")
+    u.PaddingTop = UDim.new(0, t or 0); u.PaddingRight  = UDim.new(0, r or 0)
+    u.PaddingBottom = UDim.new(0, b or 0); u.PaddingLeft = UDim.new(0, l or 0)
+    u.Parent = p; return u
 end
 
-local function ListLayout(props, parent)
+local function ListL(props, p)
     local l = Instance.new("UIListLayout")
     for k, v in pairs(props or {}) do pcall(function() l[k] = v end) end
-    l.Parent = parent; return l
+    l.Parent = p; return l
 end
 
-local function GridLayout(props, parent)
+local function GridL(props, p)
     local g = Instance.new("UIGridLayout")
     for k, v in pairs(props or {}) do pcall(function() g[k] = v end) end
-    g.Parent = parent; return g
+    g.Parent = p; return g
 end
 
-local function TrackConn(conn) table.insert(ENV.QuantumOS_Connections, conn); return conn end
-
-local function Gradient(c0, c1, rot, parent)
-    local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(c0, c1); g.Rotation = rot or 90; g.Parent = parent; return g
+local function Grad(c0, c1, rot, p)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(c0, c1); g.Rotation = rot or 90
+    g.Parent = p; return g
 end
 
-local function HoverGlow(btn, normalColor, hoverColor)
-    btn.MouseEnter:Connect(function() Tween(btn, TI_FAST, {BackgroundColor3 = hoverColor}) end)
-    btn.MouseLeave:Connect(function() Tween(btn, TI_FAST, {BackgroundColor3 = normalColor}) end)
-end
+local function Track(conn) table.insert(ENV.QOS_Connections, conn); return conn end
 
-local function Typewriter(label, text, speed)
-    speed = speed or 0.04; label.Text = ""
+local function PulseStroke(s, a, b)
     task.spawn(function()
-        for i = 1, #text do label.Text = string.sub(text, 1, i); task.wait(speed) end
-    end)
-end
-
-local function PulseStroke(stroke, c1, c2)
-    task.spawn(function()
-        local dir = true
-        while stroke and stroke.Parent do
-            Tween(stroke, TI_SINE, {Color = dir and c2 or c1}); task.wait(1.2); dir = not dir
+        local d = true
+        while s and s.Parent do
+            Tw(s, TI.SINE, {Color = d and b or a}); task.wait(1.4); d = not d
         end
     end)
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 5 - RAÍZ DEL GUI
--- ═══════════════════════════════════════════════════════════════════════════════
+local function Typewrite(lbl, txt, spd)
+    spd = spd or 0.035; lbl.Text = ""
+    task.spawn(function()
+        for i = 1, #txt do lbl.Text = txt:sub(1, i); task.wait(spd) end
+    end)
+end
 
-local ScreenGui = Make("ScreenGui", {
-    Name="QuantumOS_v30", ResetOnSpawn=false, IgnoreGuiInset=true,
-    ZIndexBehavior=Enum.ZIndexBehavior.Sibling, DisplayOrder=999,
-}, PlayerGui)
+local function Hover(btn, off, on)
+    btn.MouseEnter:Connect(function() Tw(btn, TI.FAST, {BackgroundColor3 = on}) end)
+    btn.MouseLeave:Connect(function() Tw(btn, TI.FAST, {BackgroundColor3 = off}) end)
+end
 
-ENV.QuantumOS_Instance = ScreenGui
-
-local BG = MakeFrame({
-    Name="Background", Size=UDim2.fromScale(1,1),
-    BackgroundColor3=C.BG_DEEP, BorderSizePixel=0, ZIndex=1,
-}, ScreenGui)
-
-MakeImage({
-    Name="GridTexture", Size=UDim2.fromScale(1,1), BackgroundTransparency=1,
-    Image="rbxassetid://6370457276", ImageColor3=C.PURPLE_NEON, ImageTransparency=0.94, ZIndex=2,
-}, BG)
-
--- Partículas de fondo animadas
-local function SpawnBGParticles()
-    for i = 1, 18 do
-        local size = math.random(2, 5)
-        local px = MakeFrame({
-            Size=UDim2.new(0,size,0,size),
-            Position=UDim2.new(math.random()*0.98, 0, math.random()*0.98, 0),
-            BackgroundColor3=(i%3==0) and C.PURPLE_NEON or (i%3==1) and C.CYAN_NEON or C.PINK_NEON,
-            BackgroundTransparency=0.5, ZIndex=3,
-        }, BG)
-        Corner(size, px)
+-- Partículas flotantes genéricas
+local function SpawnParticles(parent, count, zIdx)
+    for i = 1, count do
+        local sz = math.random(2, 5)
+        local px = MkFrame({
+            Size = UDim2.new(0, sz, 0, sz),
+            Position = UDim2.new(math.random() * 0.96, 0, math.random() * 0.96, 0),
+            BackgroundColor3 = (i%3==0) and C.P1 or (i%3==1) and C.A1 or C.A3,
+            BackgroundTransparency = 0.5, ZIndex = zIdx or 3,
+        }, parent)
+        Corner(sz, px)
         task.spawn(function()
             while px and px.Parent do
-                local rx,ry = math.random()*0.96, math.random()*0.96
-                Tween(px, TweenInfo.new(3+math.random()*4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    Position=UDim2.new(rx,0,ry,0), BackgroundTransparency=0.1+math.random()*0.7
+                Tw(px, TweenInfo.new(3.5 + math.random() * 4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    Position = UDim2.new(math.random() * 0.96, 0, math.random() * 0.96, 0),
+                    BackgroundTransparency = 0.1 + math.random() * 0.75,
                 })
-                task.wait(3+math.random()*4)
+                task.wait(3.5 + math.random() * 4)
             end
         end)
     end
 end
-SpawnBGParticles()
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 6 - MULTI-AGENT AI SYSTEM (OpenRouter Orchestrator)
--- ═══════════════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════
+-- §7  ROOT GUI
+-- ═══════════════════════════════════════════════════════════════════════
+local ScreenGui = Make("ScreenGui", {
+    Name = "QuantumOS_v31", ResetOnSpawn = false, IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999,
+}, PlayerGui)
 
--- Orquestador principal: llama-3.3-70b-instruct (decide qué agente usar)
--- Agentes especializados:
---   GAME_ANALYST   → nvidia/nemotron-3-super-120b-a12b:free
---   CODE_EXPERT    → qwen/qwen3-coder:free
---   STRATEGY_AGENT → deepseek/deepseek-v4-flash:free
---   CREATIVE_AGENT → google/gemma-4-31b-it:free
---   FAST_AGENT     → meta-llama/llama-3.2-3b-instruct:free
+ENV.QOS_Instance = ScreenGui
 
+local BG = MkFrame({
+    Name = "BG", Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = C.BG0, BorderSizePixel = 0, ZIndex = 1,
+}, ScreenGui)
+
+-- Grid de fondo sutil
+MkImg({
+    Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+    Image = "rbxassetid://6370457276",
+    ImageColor3 = C.P1, ImageTransparency = 0.955, ZIndex = 2,
+}, BG)
+
+SpawnParticles(BG, 16, 3)
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- §8  AI MULTI-AGENT SYSTEM
+-- ═══════════════════════════════════════════════════════════════════════
 local AI = {}
-
-AI.ORCHESTRATOR = "meta-llama/llama-3.3-70b-instruct:free"
-AI.AGENTS = {
-    GAME_ANALYST   = "nvidia/nemotron-3-super-120b-a12b:free",
-    CODE_EXPERT    = "qwen/qwen3-coder:free",
-    STRATEGY_AGENT = "deepseek/deepseek-v4-flash:free",
-    CREATIVE_AGENT = "google/gemma-4-31b-it:free",
-    FAST_AGENT     = "meta-llama/llama-3.2-3b-instruct:free",
+AI.ORCH  = "meta-llama/llama-3.3-70b-instruct:free"
+AI.MODEL = {
+    GAME     = "nvidia/nemotron-3-super-120b-a12b:free",
+    CODE     = "qwen/qwen3-coder:free",
+    STRATEGY = "deepseek/deepseek-v4-flash:free",
+    CREATIVE = "google/gemma-4-31b-it:free",
+    FAST     = "meta-llama/llama-3.2-3b-instruct:free",
+}
+AI.META = {
+    GAME     = {icon="🎮", name="Game Analyst",   color=Color3.fromRGB(255,145,0)},
+    CODE     = {icon="💻", name="Code Expert",    color=Color3.fromRGB(0,220,180)},
+    STRATEGY = {icon="⚔", name="Strategy Agent", color=Color3.fromRGB(225,55,55)},
+    CREATIVE = {icon="🎨", name="Creative Agent", color=Color3.fromRGB(195,100,255)},
+    FAST     = {icon="⚡", name="Fast Agent",     color=Color3.fromRGB(255,220,55)},
+}
+AI.SYS = {
+    ORCH = [[Eres el Orquestador del Quantum OS (Roblox). Analiza y responde SOLO este JSON (sin texto extra):
+{"agent":"GAME|CODE|STRATEGY|CREATIVE|FAST","reason":"motivo"}
+GAME=mecánicas/items/juego, CODE=scripts/lua/errores, STRATEGY=builds/estrategia, CREATIVE=ideas/personalización, FAST=saludos/simples
+Juego actual: ]]..GNAME,
+    GAME     = "Eres el Game Analyst del Quantum OS. Experto en '"..GNAME.."'. Analiza mecánicas, items, bosses, mapas con detalle. Responde en español, máx 130 palabras.",
+    CODE     = "Eres el Code Expert del Quantum OS. Experto Lua/Roblox para Delta Executor. Ayuda con scripts, bugs, optimización. Responde en español con código limpio. Máx 160 palabras.",
+    STRATEGY = "Eres el Strategy Agent del Quantum OS. Experto en '"..GNAME.."'. Estrategias óptimas, builds, rutas de farming. Responde en español, conciso. Máx 130 palabras.",
+    CREATIVE = "Eres el Creative Agent del Quantum OS. Ayudas con ideas de personalización, roleplay, diseño UI para Roblox. Responde en español con entusiasmo. Máx 110 palabras.",
+    FAST     = "Eres el asistente rápido del Quantum OS para '"..GNAME.."'. Breve, amigable, directo en español. Máx 70 palabras.",
 }
 
-AI.SYSTEM_PROMPTS = {
-    ORCHESTRATOR = [[Eres el Orquestador del Quantum OS, un OS para Roblox con IA multi-agente.
-Tu tarea: analizar el mensaje del usuario y responder en JSON con:
-{"agent":"GAME_ANALYST|CODE_EXPERT|STRATEGY_AGENT|CREATIVE_AGENT|FAST_AGENT","reason":"por qué","context":"información relevante del juego: ]]..GAME_NAME..[["}
-Reglas:
-- GAME_ANALYST: preguntas sobre el juego, items, NPCs, mecánicas
-- CODE_EXPERT: scripts, errores de código, Lua, exploits
-- STRATEGY_AGENT: estrategias, builds, speedruns, eficiencia
-- CREATIVE_AGENT: ideas, roleplay, personalización, creatividad
-- FAST_AGENT: saludos, preguntas simples, respuestas cortas
-Solo responde el JSON, sin texto adicional.]],
-
-    GAME_ANALYST   = "Eres un experto analista del juego de Roblox '"..GAME_NAME.."'. Analiza mecánicas, items, bosses, mapas y da consejos detallados y precisos. Responde en español, máximo 120 palabras.",
-    CODE_EXPERT    = "Eres un experto en Lua y scripting de Roblox para el executor Delta. Ayuda con scripts, errores, optimización de código. Responde en español con código bien documentado, máximo 150 palabras.",
-    STRATEGY_AGENT = "Eres un estratega experto en '"..GAME_NAME.."'. Das estrategias óptimas, builds, rutas de farming, guías paso a paso. Responde en español, conciso y útil, máximo 120 palabras.",
-    CREATIVE_AGENT = "Eres un asistente creativo para Roblox. Ayudas con ideas de personalización, roleplay, builds creativos, diseño de UIs. Responde en español con entusiasmo, máximo 100 palabras.",
-    FAST_AGENT     = "Eres el asistente rápido del Quantum OS para '"..GAME_NAME.."'. Responde de forma breve, amigable y directa en español. Máximo 60 palabras.",
-}
-
-AI.AGENT_META = {
-    GAME_ANALYST   = {icon="🎮", name="Game Analyst",    color=Color3.fromRGB(255,140,0)},
-    CODE_EXPERT    = {icon="💻", name="Code Expert",     color=Color3.fromRGB(0,220,180)},
-    STRATEGY_AGENT = {icon="⚔", name="Strategy Agent",  color=Color3.fromRGB(220,50,50)},
-    CREATIVE_AGENT = {icon="🎨", name="Creative Agent",  color=Color3.fromRGB(200,100,255)},
-    FAST_AGENT     = {icon="⚡", name="Fast Agent",      color=Color3.fromRGB(255,220,60)},
-}
-
--- Función base de llamada HTTP a OpenRouter
-local function OR_Call(model, systemPrompt, userMsg, maxTokens)
-    maxTokens = maxTokens or 300
-    local key = ENV.QuantumOS_OpenRouterKey
+-- Llamada base HTTP a OpenRouter
+local function OR_Call(model, sys, usr, maxTok)
+    maxTok = maxTok or 320
+    local key = ENV.QOS_APIKey
     if not key or key == "" then return nil, "Sin API Key" end
-
-    local ok, result = pcall(function()
+    local ok, res = pcall(function()
         local body = HttpService:JSONEncode({
-            model = model,
-            max_tokens = maxTokens,
-            messages = {
-                {role="system", content=systemPrompt},
-                {role="user",   content=userMsg},
-            },
+            model = model, max_tokens = maxTok,
+            messages = {{role="system",content=sys},{role="user",content=usr}},
         })
-        local response = HttpService:RequestAsync({
+        local r = HttpService:RequestAsync({
             Url    = "https://openrouter.ai/api/v1/chat/completions",
             Method = "POST",
             Headers = {
-                ["Authorization"] = "Bearer " .. key,
+                ["Authorization"] = "Bearer "..key,
                 ["Content-Type"]  = "application/json",
-                ["HTTP-Referer"]  = "https://lxndxn-quantumos.rblx",
+                ["HTTP-Referer"]  = "https://lxndxn-qos.rblx",
                 ["X-Title"]       = "LXNDXN Quantum OS",
             },
             Body = body,
         })
-        if response.StatusCode ~= 200 then
-            return nil, "HTTP " .. response.StatusCode
-        end
-        local data = HttpService:JSONDecode(response.Body)
-        return data.choices and data.choices[1] and data.choices[1].message and data.choices[1].message.content
+        if r.StatusCode ~= 200 then return nil, "HTTP "..r.StatusCode end
+        local d = HttpService:JSONDecode(r.Body)
+        if d.error then return nil, d.error.message or "API error" end
+        return d.choices and d.choices[1] and d.choices[1].message and d.choices[1].message.content
     end)
-
-    if ok then return result, nil
-    else return nil, tostring(result) end
+    if ok then return res, nil else return nil, tostring(res) end
 end
 
--- Verificar API Key con llamada real al modelo rápido
-local function VerifyAPIKey(key, callback)
+-- ── FIX: Verificación robusta de API Key ──────────────────────────────
+-- No buscamos "OK" literal; cualquier respuesta no-vacía y sin error = válida
+local function VerifyAPIKey(key, cb)
     task.spawn(function()
-        local oldKey = ENV.QuantumOS_OpenRouterKey
-        ENV.QuantumOS_OpenRouterKey = key
-        local response, err = OR_Call(
-            AI.AGENTS.FAST_AGENT,
-            "Eres un asistente de verificación. Responde solo: OK",
-            "Verifica esta conexión. Responde solo con la palabra: OK",
-            10
-        )
-        if response and (response:find("OK") or #response > 0) then
-            callback(true, response)
-        else
-            ENV.QuantumOS_OpenRouterKey = oldKey
-            callback(false, err or "Respuesta inválida")
-        end
-    end)
-end
-
--- Función principal del oráculo multi-agente
-local function OracleQuery(userMsg, onThink, onAgent, onResponse, onError)
-    task.spawn(function()
-        -- Paso 1: Orquestador decide qué agente usar
-        if onThink then onThink("Orquestador analizando consulta...") end
-
-        local orchResponse, orchErr = OR_Call(
-            AI.ORCHESTRATOR,
-            AI.SYSTEM_PROMPTS.ORCHESTRATOR,
-            userMsg,
-            80
-        )
-
-        local agentKey = "FAST_AGENT"
-        if orchResponse then
-            local ok, decoded = pcall(function() return HttpService:JSONDecode(orchResponse) end)
-            if ok and decoded and decoded.agent then
-                agentKey = decoded.agent
-            end
-        end
-
-        local meta = AI.AGENT_META[agentKey] or AI.AGENT_META.FAST_AGENT
-        if onAgent then onAgent(agentKey, meta) end
-
-        -- Paso 2: Agente especializado responde
-        if onThink then onThink(meta.icon .. " " .. meta.name .. " procesando...") end
-
-        local agentModel  = AI.AGENTS[agentKey] or AI.AGENTS.FAST_AGENT
-        local agentPrompt = AI.SYSTEM_PROMPTS[agentKey] or AI.SYSTEM_PROMPTS.FAST_AGENT
-
-        local response, err = OR_Call(agentModel, agentPrompt, userMsg, 300)
-
-        if response then
-            if onResponse then onResponse(response, meta) end
-        else
-            if onError then onError(err or "Error desconocido") end
-        end
-    end)
-end
-
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 7 - BOOT SCREEN
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local function CreateBootScreen()
-    local Boot = MakeFrame({
-        Name="BootScreen", Size=UDim2.fromScale(1,1),
-        BackgroundColor3=C.BG_DEEP, ZIndex=100,
-    }, ScreenGui)
-    Gradient(C.BG_DEEP, Color3.fromRGB(8,4,22), 135, Boot)
-
-    local Center = MakeFrame({
-        Size=UDim2.new(0,380,0,440), Position=UDim2.new(0.5,-190,0.5,-220),
-        BackgroundColor3=C.BG_GLASS, BackgroundTransparency=0.3, ZIndex=101,
-    }, Boot)
-    Corner(32, Center)
-    local cs = Stroke(2, C.PURPLE_NEON, Center)
-    PulseStroke(cs, C.PURPLE_DIM, C.PURPLE_GLOW)
-
-    -- Partículas del boot
-    for i = 1, 8 do
-        local px = MakeFrame({
-            Size=UDim2.new(0,3,0,3),
-            Position=UDim2.new(math.random()*0.9,0,math.random()*0.9,0),
-            BackgroundColor3=(i%2==0) and C.PURPLE_NEON or C.CYAN_NEON,
-            BackgroundTransparency=0.3, ZIndex=102,
-        }, Center)
-        Corner(2, px)
-        task.spawn(function()
-            while px and px.Parent do
-                Tween(px, TweenInfo.new(2+math.random(), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    Position=UDim2.new(math.random()*0.9,0,math.random()*0.9,0), BackgroundTransparency=0.6
-                })
-                task.wait(2+math.random())
-            end
-        end)
-    end
-
-    local LogoLabel = MakeLabel({
-        Size=UDim2.new(1,0,0,90), Position=UDim2.new(0,0,0,24),
-        BackgroundTransparency=1, Text="⬡", Font=Enum.Font.GothamBold,
-        TextSize=72, TextColor3=C.PURPLE_NEON, ZIndex=102,
-    }, Center)
-
-    task.spawn(function()
-        while LogoLabel and LogoLabel.Parent do
-            Tween(LogoLabel, TI_SINE, {TextColor3=C.PURPLE_GLOW, TextTransparency=0.1}); task.wait(1.2)
-            Tween(LogoLabel, TI_SINE, {TextColor3=C.PURPLE_NEON, TextTransparency=0.0}); task.wait(1.2)
-        end
-    end)
-
-    MakeLabel({
-        Size=UDim2.new(1,0,0,30), Position=UDim2.new(0,0,0,120),
-        BackgroundTransparency=1, Text="QUANTUM OS  v3.0",
-        Font=Enum.Font.GothamBold, TextSize=24, TextColor3=C.TEXT_WHITE, ZIndex=102,
-    }, Center)
-
-    local Badge = MakeLabel({
-        Size=UDim2.new(0,200,0,26), Position=UDim2.new(0.5,-100,0,155),
-        BackgroundColor3=C.PURPLE_DIM, BackgroundTransparency=0.25,
-        Text="✦ DELTA EDITION · MULTI-AGENT AI ✦",
-        Font=Enum.Font.GothamSemibold, TextSize=11, TextColor3=C.CYAN_NEON, ZIndex=102,
-    }, Center)
-    Corner(13, Badge)
-
-    local WelcomeLabel = MakeLabel({
-        Size=UDim2.new(1,-40,0,50), Position=UDim2.new(0,20,0,195),
-        BackgroundTransparency=1, Text="", Font=Enum.Font.Gotham,
-        TextSize=15, TextColor3=C.TEXT_WHITE, TextWrapped=true, ZIndex=102,
-    }, Center)
-
-    local SubText = MakeLabel({
-        Size=UDim2.new(1,-40,0,50), Position=UDim2.new(0,20,0,248),
-        BackgroundTransparency=1, Text="", Font=Enum.Font.Gotham,
-        TextSize=12, TextColor3=C.TEXT_SOFT, TextWrapped=true, ZIndex=102,
-    }, Center)
-
-    local ProgressBG = MakeFrame({
-        Size=UDim2.new(1,-40,0,6), Position=UDim2.new(0,20,0,330),
-        BackgroundColor3=C.SLIDER_BG, ZIndex=102,
-    }, Center)
-    Corner(3, ProgressBG)
-    local ProgressFill = MakeFrame({Size=UDim2.new(0,0,1,0), BackgroundColor3=C.PURPLE_NEON, ZIndex=103}, ProgressBG)
-    Corner(3, ProgressFill)
-    Gradient(C.PURPLE_NEON, C.CYAN_NEON, 0, ProgressFill)
-
-    local ProgressLabel = MakeLabel({
-        Size=UDim2.new(1,0,0,18), Position=UDim2.new(0,0,1,5),
-        BackgroundTransparency=1, Text="Inicializando sistema...",
-        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_MUTED, ZIndex=102,
-    }, ProgressBG)
-
-    MakeLabel({
-        Size=UDim2.new(1,0,0,18), Position=UDim2.new(0,0,1,-28),
-        BackgroundTransparency=1, Text="LXNDXN · Delta Edition · Multi-Agent AI v3.0",
-        Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_MUTED, ZIndex=102,
-    }, Center)
-
-    task.spawn(function()
-        task.wait(0.5)
-        Typewriter(WelcomeLabel, "Hola, " .. DISPLAY_NAME .. ". Iniciando Quantum OS v3.0...", 0.04)
-        task.wait(1.8)
-        Typewriter(SubText, "Sistema Multi-Agente AI cargando...\nOrquestador · 5 Agentes Especializados activos.", 0.03)
-        task.wait(1.4)
-        local steps = {
-            {0.12, "Cargando kernel del OS..."},
-            {0.28, "Verificando Delta Executor..."},
-            {0.44, "Inicializando sistema UI..."},
-            {0.60, "Conectando al Orquestador AI..."},
-            {0.74, "Activando agentes especializados..."},
-            {0.88, "Estableciendo sesión segura..."},
-            {1.00, "Sistema listo. Acceso requerido."},
-        }
-        for _, step in ipairs(steps) do
-            Tween(ProgressFill, TI_MED, {Size=UDim2.new(step[1],0,1,0)})
-            ProgressLabel.Text = step[2]; task.wait(0.42)
-        end
-        task.wait(0.5)
-        Tween(Boot,   TI_SLOW, {BackgroundTransparency=1})
-        Tween(Center, TI_SLOW, {BackgroundTransparency=1})
-        task.wait(0.65)
-        Boot:Destroy()
-    end)
-
-    return Boot
-end
-
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 8 - LOGIN SCREEN ÉPICO (Full-screen · OpenRouter API Key)
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local LoginScreenRef = nil
-local toastQueue = {}
-local toastActive = false
-local ShowToast   -- forward declaration
-local PushNotification  -- forward declaration
-
-local function CreateLoginScreen(onSuccess)
-    local Login = MakeFrame({
-        Name="LoginScreen", Size=UDim2.fromScale(1,1),
-        BackgroundColor3=C.BG_DEEP, ZIndex=90,
-    }, ScreenGui)
-
-    -- Fondo con gradiente épico
-    Gradient(Color3.fromRGB(4,2,14), Color3.fromRGB(14,6,38), 135, Login)
-
-    -- Líneas de scan animadas
-    local function SpawnScanLine()
-        task.spawn(function()
-            while Login and Login.Parent do
-                local line = MakeFrame({
-                    Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,0,0),
-                    BackgroundColor3=C.PURPLE_NEON, BackgroundTransparency=0.85, ZIndex=91,
-                }, Login)
-                Tween(line, TweenInfo.new(2.5+math.random()*2, Enum.EasingStyle.Linear), {Position=UDim2.new(0,0,1,0)})
-                task.wait(3+math.random()*3)
-                pcall(function() line:Destroy() end)
-            end
-        end)
-    end
-    for i = 1, 4 do task.delay(i*0.7, SpawnScanLine) end
-
-    -- Partículas de fondo del login
-    for i = 1, 20 do
-        local size = math.random(2, 6)
-        local px = MakeFrame({
-            Size=UDim2.new(0,size,0,size),
-            Position=UDim2.new(math.random()*0.97,0,math.random()*0.97,0),
-            BackgroundColor3=(i%3==0) and C.PURPLE_NEON or (i%3==1) and C.CYAN_NEON or C.PINK_NEON,
-            BackgroundTransparency=0.4, ZIndex=91,
-        }, Login)
-        Corner(size, px)
-        task.spawn(function()
-            while px and px.Parent do
-                Tween(px, TweenInfo.new(4+math.random()*5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    Position=UDim2.new(math.random()*0.97,0,math.random()*0.97,0),
-                    BackgroundTransparency=0.1+math.random()*0.8
-                })
-                task.wait(4+math.random()*5)
-            end
-        end)
-    end
-
-    -- Hexágonos decorativos (fondo)
-    local hexPositions = {
-        {0.05,0.1},{0.9,0.05},{0.02,0.8},{0.92,0.85},{0.5,0.02},{0.5,0.97},
-        {0.15,0.5},{0.85,0.5},
-    }
-    for _, pos in ipairs(hexPositions) do
-        local hexLabel = MakeLabel({
-            Size=UDim2.new(0,80,0,80),
-            Position=UDim2.new(pos[1]-0.04,0,pos[2]-0.07,0),
-            BackgroundTransparency=1, Text="⬡", Font=Enum.Font.GothamBold,
-            TextSize=70, TextColor3=C.PURPLE_NEON, TextTransparency=0.88, ZIndex=91,
-        }, Login)
-        task.spawn(function()
-            local dir = true
-            while hexLabel and hexLabel.Parent do
-                Tween(hexLabel, TI_SINE, {TextTransparency=dir and 0.92 or 0.82})
-                task.wait(1.5+math.random()*2); dir = not dir
-            end
-        end)
-    end
-
-    -- ─── PANEL PRINCIPAL (centrado, glassmorphic) ─────────────────────────────
-    local Panel = MakeFrame({
-        Name="LoginPanel",
-        Size=UDim2.new(0,420,0,580),
-        Position=UDim2.new(0.5,-210,0.5,-290),
-        BackgroundColor3=Color3.fromRGB(12,10,32),
-        BackgroundTransparency=0.15, ZIndex=92,
-    }, Login)
-    Corner(28, Panel)
-    local panelStroke = Stroke(2, C.BORDER_BRIGHT, Panel)
-    PulseStroke(panelStroke, C.PURPLE_DIM, C.PURPLE_GLOW)
-
-    -- Brillo de fondo del panel
-    local PanelGlow = MakeFrame({
-        Size=UDim2.new(1.4,0,1.3,0), Position=UDim2.new(-0.2,0,-0.15,0),
-        BackgroundColor3=C.PURPLE_NEON, BackgroundTransparency=0.93, ZIndex=91,
-    }, Panel)
-    Corner(50, PanelGlow)
-    task.spawn(function()
-        while PanelGlow and PanelGlow.Parent do
-            Tween(PanelGlow, TI_SINE, {BackgroundTransparency=0.95}); task.wait(1.2)
-            Tween(PanelGlow, TI_SINE, {BackgroundTransparency=0.90}); task.wait(1.2)
-        end
-    end)
-
-    -- Partículas interiores del panel
-    for i = 1, 8 do
-        local size2 = math.random(2, 4)
-        local ppx = MakeFrame({
-            Size=UDim2.new(0,size2,0,size2),
-            Position=UDim2.new(math.random()*0.94,0,math.random()*0.94,0),
-            BackgroundColor3=(i%2==0) and C.PURPLE_NEON or C.CYAN_NEON,
-            BackgroundTransparency=0.2, ZIndex=93,
-        }, Panel)
-        Corner(size2, ppx)
-        task.spawn(function()
-            while ppx and ppx.Parent do
-                Tween(ppx, TweenInfo.new(2+math.random()*3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    Position=UDim2.new(math.random()*0.94,0,math.random()*0.94,0),
-                    BackgroundTransparency=0.4+math.random()*0.5
-                })
-                task.wait(2+math.random()*3)
-            end
-        end)
-    end
-
-    -- Logo Hex con anillos
-    local LogoFrame = MakeFrame({
-        Size=UDim2.new(0,90,0,90), Position=UDim2.new(0.5,-45,0,28),
-        BackgroundColor3=C.PURPLE_DIM, BackgroundTransparency=0.3, ZIndex=93,
-    }, Panel)
-    Corner(45, LogoFrame)
-    Stroke(3, C.PURPLE_NEON, LogoFrame)
-    Gradient(Color3.fromRGB(60,10,110), C.PURPLE_DIM, 135, LogoFrame)
-
-    local LogoIcon = MakeLabel({
-        Size=UDim2.fromScale(1,1), BackgroundTransparency=1,
-        Text="⬡", Font=Enum.Font.GothamBold, TextSize=54, TextColor3=C.PURPLE_NEON, ZIndex=94,
-    }, LogoFrame)
-
-    -- Anillo exterior pulsante
-    local LogoRing = MakeFrame({
-        Size=UDim2.new(0,110,0,110), Position=UDim2.new(0.5,-55,0,18),
-        BackgroundTransparency=1, ZIndex=93,
-    }, Panel)
-    Corner(55, LogoRing)
-    Stroke(1, C.PURPLE_NEON, LogoRing)
-    task.spawn(function()
-        while LogoFrame and LogoFrame.Parent do
-            Tween(LogoIcon, TI_SINE, {TextColor3=C.CYAN_NEON}); task.wait(1.2)
-            Tween(LogoIcon, TI_SINE, {TextColor3=C.PURPLE_NEON}); task.wait(1.2)
-        end
-    end)
-
-    -- Título principal
-    MakeLabel({
-        Size=UDim2.new(1,0,0,34), Position=UDim2.new(0,0,0,128),
-        BackgroundTransparency=1, Text="QUANTUM OS",
-        Font=Enum.Font.GothamBold, TextSize=28, TextColor3=C.TEXT_WHITE, ZIndex=93,
-    }, Panel)
-
-    MakeLabel({
-        Size=UDim2.new(1,0,0,20), Position=UDim2.new(0,0,0,163),
-        BackgroundTransparency=1, Text="Multi-Agent AI · Delta Edition · v3.0",
-        Font=Enum.Font.GothamSemibold, TextSize=13, TextColor3=C.CYAN_NEON, ZIndex=93,
-    }, Panel)
-
-    -- Badges de agentes
-    local BadgeRow = MakeFrame({
-        Size=UDim2.new(1,-40,0,26), Position=UDim2.new(0,20,0,190),
-        BackgroundTransparency=1, ZIndex=93,
-    }, Panel)
-    ListLayout({FillDirection=Enum.FillDirection.Horizontal,
-        HorizontalAlignment=Enum.HorizontalAlignment.Center, Padding=UDim.new(0,5)}, BadgeRow)
-
-    local agentBadges = {{"🎮","Game"}, {"💻","Code"}, {"⚔","Strat"}, {"🎨","Create"}, {"⚡","Fast"}}
-    for _, ab in ipairs(agentBadges) do
-        local B = MakeLabel({
-            Size=UDim2.new(0,0,1,0), AutomaticSize=Enum.AutomaticSize.X,
-            BackgroundColor3=Color3.fromRGB(20,8,50),
-            Text=ab[1].." "..ab[2], Font=Enum.Font.Gotham, TextSize=10,
-            TextColor3=C.TEXT_SOFT, ZIndex=94,
-        }, BadgeRow)
-        Corner(10, B)
-        Stroke(1, C.PURPLE_DIM, B)
-        Padding(0,8,0,8,B)
-    end
-
-    -- Separador
-    local Sep = MakeFrame({
-        Size=UDim2.new(0.8,0,0,1), Position=UDim2.new(0.1,0,0,226),
-        BackgroundColor3=C.BORDER, ZIndex=93,
-    }, Panel)
-    Gradient(C.BG_DEEP, C.BORDER_BRIGHT, 0, Sep)
-
-    -- Label "API KEY"
-    MakeLabel({
-        Size=UDim2.new(1,-40,0,18), Position=UDim2.new(0,20,0,240),
-        BackgroundTransparency=1, Text="OPENROUTER API KEY",
-        Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.PURPLE_GLOW,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=93,
-    }, Panel)
-
-    -- Input de API Key
-    local KeyBox = MakeBox({
-        Size=UDim2.new(1,-40,0,52), Position=UDim2.new(0,20,0,262),
-        BackgroundColor3=Color3.fromRGB(10,8,28), BorderSizePixel=0,
-        Text="", PlaceholderText="sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx",
-        Font=Enum.Font.Code, TextSize=13, TextColor3=C.TEXT_WHITE,
-        PlaceholderColor3=C.TEXT_MUTED, ClearTextOnFocus=false, ZIndex=94,
-    }, Panel)
-    Corner(12, KeyBox)
-    local kbs = Stroke(2, C.BORDER, KeyBox)
-    Padding(0,16,0,16,KeyBox)
-
-    KeyBox.Focused:Connect(function() Tween(kbs, TI_FAST, {Color=C.PURPLE_NEON}) end)
-    KeyBox.FocusLost:Connect(function() Tween(kbs, TI_FAST, {Color=C.BORDER}) end)
-
-    -- Status label
-    local StatusLabel = MakeLabel({
-        Size=UDim2.new(1,-40,0,22), Position=UDim2.new(0,20,0,322),
-        BackgroundTransparency=1, Text="",
-        Font=Enum.Font.Gotham, TextSize=12, TextColor3=C.TEXT_MUTED,
-        TextWrapped=true, ZIndex=93,
-    }, Panel)
-
-    -- Spinner de carga
-    local Spinner = MakeLabel({
-        Size=UDim2.new(0,32,0,32), Position=UDim2.new(0.5,-16,0,332),
-        BackgroundTransparency=1, Text="◌", Font=Enum.Font.GothamBold,
-        TextSize=26, TextColor3=C.CYAN_NEON, Visible=false, ZIndex=95,
-    }, Panel)
-
-    -- Botón VERIFICAR API
-    local LoginBtn = MakeButton({
-        Size=UDim2.new(1,-40,0,52), Position=UDim2.new(0,20,0,350),
-        BackgroundColor3=C.PURPLE_NEON, BorderSizePixel=0,
-        Text="⚡  VERIFICAR API KEY",
-        Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.new(1,1,1), ZIndex=94,
-    }, Panel)
-    Corner(14, LoginBtn)
-    Gradient(Color3.fromRGB(130,20,210), Color3.fromRGB(80,0,180), 135, LoginBtn)
-
-    LoginBtn.MouseEnter:Connect(function()
-        Tween(LoginBtn, TI_FAST, {BackgroundColor3=C.PURPLE_GLOW})
-        Tween(LoginBtn, TI_FAST, {Size=UDim2.new(1,-36,0,52)})
-    end)
-    LoginBtn.MouseLeave:Connect(function()
-        Tween(LoginBtn, TI_FAST, {BackgroundColor3=C.PURPLE_NEON})
-        Tween(LoginBtn, TI_FAST, {Size=UDim2.new(1,-40,0,52)})
-    end)
-
-    -- Separador 2
-    MakeFrame({
-        Size=UDim2.new(0.7,0,0,1), Position=UDim2.new(0.15,0,0,414),
-        BackgroundColor3=C.BORDER, ZIndex=93,
-    }, Panel)
-
-    -- Botón OBTENER API KEY
-    local GetKeyBtn = MakeButton({
-        Size=UDim2.new(1,-40,0,40), Position=UDim2.new(0,20,0,422),
-        BackgroundColor3=Color3.fromRGB(14,12,35), BorderSizePixel=0,
-        Text="🔑  Obtener API Key de OpenRouter →",
-        Font=Enum.Font.GothamSemibold, TextSize=13, TextColor3=C.CYAN_NEON, ZIndex=94,
-    }, Panel)
-    Corner(12, GetKeyBtn)
-    Stroke(1, C.CYAN_DIM, GetKeyBtn)
-
-    GetKeyBtn.MouseEnter:Connect(function()
-        Tween(GetKeyBtn, TI_FAST, {BackgroundColor3=Color3.fromRGB(0,30,50)})
-        Tween(GetKeyBtn, TI_FAST, {TextColor3=C.TEXT_WHITE})
-    end)
-    GetKeyBtn.MouseLeave:Connect(function()
-        Tween(GetKeyBtn, TI_FAST, {BackgroundColor3=Color3.fromRGB(14,12,35)})
-        Tween(GetKeyBtn, TI_FAST, {TextColor3=C.CYAN_NEON})
-    end)
-
-    -- Al hacer clic en "Obtener API Key" intentamos abrir la URL
-    GetKeyBtn.MouseButton1Click:Connect(function()
-        -- En Delta executor intentamos abrir la URL
-        pcall(function()
-            local ok = pcall(function() setclipboard("https://openrouter.ai/keys") end)
-        end)
-        StatusLabel.Text = "💡 Ve a: openrouter.ai/keys — Link copiado al portapapeles"
-        StatusLabel.TextColor3 = C.CYAN_NEON
-    end)
-
-    -- Footer info
-    MakeLabel({
-        Size=UDim2.new(1,-40,0,18), Position=UDim2.new(0,20,0,472),
-        BackgroundTransparency=1,
-        Text="🔒 Tu key se usa solo para llamadas de IA · No se almacena",
-        Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_MUTED,
-        TextXAlignment=Enum.TextXAlignment.Center, ZIndex=93,
-    }, Panel)
-
-    MakeLabel({
-        Size=UDim2.new(1,0,0,16), Position=UDim2.new(0,0,1,-22),
-        BackgroundTransparency=1,
-        Text="LXNDXN Quantum OS  ·  Delta Edition  ·  v3.0  ·  Multi-Agent AI",
-        Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_MUTED, ZIndex=93,
-    }, Panel)
-
-    -- ─── Función de verificación ──────────────────────────────────────────────
-    local function DoVerify()
-        local key = KeyBox.Text:gsub("%s+","")
-        if key == "" then
-            StatusLabel.Text = "⚠ Por favor introduce tu API Key de OpenRouter."
-            StatusLabel.TextColor3 = C.TEXT_YELLOW
-            Tween(KeyBox, TI_FAST, {BackgroundColor3=Color3.fromRGB(30,15,10)})
-            task.wait(0.6); Tween(KeyBox, TI_FAST, {BackgroundColor3=Color3.fromRGB(10,8,28)})
-            return
-        end
-
-        LoginBtn.Visible  = false
-        Spinner.Visible   = true
-        StatusLabel.Text  = "Conectando con OpenRouter AI..."
-        StatusLabel.TextColor3 = C.CYAN_NEON
-
-        -- Animación spinner
-        local spinActive = true
-        task.spawn(function()
-            local icons = {"◌","◍","◎","●","◎","◍"}
-            local i = 1
-            while spinActive do
-                Spinner.Text = icons[i]; i = i % #icons + 1; task.wait(0.1)
-            end
-        end)
-
-        -- Verificar la key real
-        VerifyAPIKey(key, function(success, resp)
-            spinActive  = false
-            Spinner.Visible  = false
-            LoginBtn.Visible = true
-
-            if success then
-                ENV.QuantumOS_OpenRouterKey = key
-                StatusLabel.Text = "✓ API Key verificada · Conexión establecida con OpenRouter"
-                StatusLabel.TextColor3 = C.TEXT_GREEN
-                Tween(LoginBtn, TI_FAST, {BackgroundColor3=C.TOGGLE_ON})
-                LoginBtn.Text = "✓  CONECTADO"
-                task.wait(1.0)
-
-                -- Fade out login → pantalla de selección de dispositivo
-                Tween(Login, TI_MED, {BackgroundTransparency=1})
-                task.wait(0.4)
-                Login:Destroy()
-                onSuccess()
-            else
-                StatusLabel.Text = "✗ API Key inválida o sin conexión. Verifica tu key."
-                StatusLabel.TextColor3 = C.TEXT_RED
-                -- Shake del panel
-                for _ = 1, 5 do
-                    Tween(Panel, TI_FAST, {Position=UDim2.new(0.5,-215,0.5,-290)}); task.wait(0.06)
-                    Tween(Panel, TI_FAST, {Position=UDim2.new(0.5,-205,0.5,-290)}); task.wait(0.06)
+        local oldKey = ENV.QOS_APIKey
+        ENV.QOS_APIKey = key
+        local ok, err = pcall(function()
+            local body = HttpService:JSONEncode({
+                model = AI.MODEL.FAST,
+                max_tokens = 16,
+                messages = {{role="user", content="Di: listo"}},
+            })
+            local r = HttpService:RequestAsync({
+                Url    = "https://openrouter.ai/api/v1/chat/completions",
+                Method = "POST",
+                Headers = {
+                    ["Authorization"] = "Bearer "..key,
+                    ["Content-Type"]  = "application/json",
+                    ["HTTP-Referer"]  = "https://lxndxn-qos.rblx",
+                    ["X-Title"]       = "LXNDXN Quantum OS",
+                },
+                Body = body,
+            })
+            if r.StatusCode == 200 then
+                local d = HttpService:JSONDecode(r.Body)
+                -- Cualquier respuesta válida de choices == API key funciona
+                if d.choices and d.choices[1] then
+                    return true
+                elseif d.error then
+                    error(d.error.message or "invalid_key")
                 end
-                Tween(Panel, TI_FAST, {Position=UDim2.new(0.5,-210,0.5,-290)})
+            elseif r.StatusCode == 401 then
+                error("API Key inválida (401)")
+            elseif r.StatusCode == 402 then
+                error("Sin créditos en cuenta (402)")
+            elseif r.StatusCode == 429 then
+                error("Rate limit alcanzado (429)")
+            else
+                error("HTTP "..r.StatusCode)
             end
         end)
-    end
-
-    LoginBtn.MouseButton1Click:Connect(DoVerify)
-    KeyBox.FocusLost:Connect(function(enter) if enter then DoVerify() end end)
-
-    LoginScreenRef = Login
-    return Login
-end
-
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 9 - DEVICE SELECTION SCREEN (después del login)
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local function CreateDeviceSelectionScreen(onSelect)
-    local DS = MakeFrame({
-        Name="DeviceSelect", Size=UDim2.fromScale(1,1),
-        BackgroundColor3=C.BG_DEEP, ZIndex=90,
-    }, ScreenGui)
-    Gradient(Color3.fromRGB(4,2,14), Color3.fromRGB(10,4,30), 135, DS)
-
-    -- Partículas
-    for i = 1, 12 do
-        local size = math.random(2,5)
-        local px = MakeFrame({
-            Size=UDim2.new(0,size,0,size),
-            Position=UDim2.new(math.random()*0.97,0,math.random()*0.97,0),
-            BackgroundColor3=(i%2==0) and C.PURPLE_NEON or C.CYAN_NEON,
-            BackgroundTransparency=0.5, ZIndex=91,
-        }, DS)
-        Corner(size, px)
-        task.spawn(function()
-            while px and px.Parent do
-                Tween(px, TweenInfo.new(3+math.random()*4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    Position=UDim2.new(math.random()*0.97,0,math.random()*0.97,0),
-                    BackgroundTransparency=0.1+math.random()*0.8
-                })
-                task.wait(3+math.random()*4)
-            end
-        end)
-    end
-
-    -- Panel central
-    local DPanel = MakeFrame({
-        Size=UDim2.new(0,460,0,460), Position=UDim2.new(0.5,-230,0.5,-230),
-        BackgroundColor3=Color3.fromRGB(12,10,32), BackgroundTransparency=0.1, ZIndex=92,
-    }, DS)
-    Corner(28, DPanel)
-    local dps = Stroke(2, C.PURPLE_NEON, DPanel)
-    PulseStroke(dps, C.PURPLE_DIM, C.PURPLE_GLOW)
-
-    -- Animación de entrada
-    DPanel.Position = UDim2.new(0.5,-230,1.2,0)
-    Tween(DPanel, TI_BOUNCE, {Position=UDim2.new(0.5,-230,0.5,-230)})
-
-    -- Icono de éxito
-    local CheckIcon = MakeLabel({
-        Size=UDim2.new(0,64,0,64), Position=UDim2.new(0.5,-32,0,28),
-        BackgroundColor3=Color3.fromRGB(0,40,20), BackgroundTransparency=0.2,
-        Text="✓", Font=Enum.Font.GothamBold, TextSize=36, TextColor3=C.TEXT_GREEN, ZIndex=93,
-    }, DPanel)
-    Corner(32, CheckIcon)
-    Stroke(2, C.TEXT_GREEN, CheckIcon)
-
-    -- Título
-    MakeLabel({
-        Size=UDim2.new(1,0,0,32), Position=UDim2.new(0,0,0,104),
-        BackgroundTransparency=1, Text="✓  Conexión Establecida",
-        Font=Enum.Font.GothamBold, TextSize=22, TextColor3=C.TEXT_GREEN, ZIndex=93,
-    }, DPanel)
-
-    MakeLabel({
-        Size=UDim2.new(1,-40,0,18), Position=UDim2.new(0,20,0,140),
-        BackgroundTransparency=1, Text="OpenRouter Multi-Agent AI conectado · Selecciona tu dispositivo",
-        Font=Enum.Font.Gotham, TextSize=12, TextColor3=C.TEXT_SOFT, ZIndex=93,
-    }, DPanel)
-
-    -- Separador
-    MakeFrame({
-        Size=UDim2.new(0.8,0,0,1), Position=UDim2.new(0.1,0,0,168),
-        BackgroundColor3=C.BORDER, ZIndex=93,
-    }, DPanel)
-
-    MakeLabel({
-        Size=UDim2.new(1,0,0,20), Position=UDim2.new(0,0,0,178),
-        BackgroundTransparency=1, Text="SELECCIONA TU DISPOSITIVO",
-        Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.PURPLE_GLOW, ZIndex=93,
-    }, DPanel)
-
-    -- ─── Botón MÓVIL ─────────────────────────────────────────────────────────
-    local MobileBtn = MakeButton({
-        Size=UDim2.new(1,-40,0,90), Position=UDim2.new(0,20,0,206),
-        BackgroundColor3=Color3.fromRGB(14,10,38), BorderSizePixel=0,
-        Text="", ZIndex=93,
-    }, DPanel)
-    Corner(18, MobileBtn)
-    Stroke(2, C.PURPLE_DIM, MobileBtn)
-
-    MakeLabel({Size=UDim2.new(0,60,0,60), Position=UDim2.new(0,16,0.5,-30),
-        BackgroundColor3=C.PURPLE_DIM, BackgroundTransparency=0.3,
-        Text="📱", TextSize=32, ZIndex=94}, MobileBtn)
-    Corner(14, MobileBtn:FindFirstChildWhichIsA("Frame") or Instance.new("Frame"))
-
-    MakeLabel({
-        Size=UDim2.new(1,-100,0,28), Position=UDim2.new(0,86,0,18),
-        BackgroundTransparency=1, Text="📱  MÓVIL",
-        Font=Enum.Font.GothamBold, TextSize=20, TextColor3=C.TEXT_WHITE,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=94,
-    }, MobileBtn)
-    MakeLabel({
-        Size=UDim2.new(1,-100,0,20), Position=UDim2.new(0,86,0,48),
-        BackgroundTransparency=1, Text="UI adaptada para pantalla táctil · Botones grandes",
-        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_MUTED,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=94,
-    }, MobileBtn)
-
-    MobileBtn.MouseEnter:Connect(function()
-        Tween(MobileBtn, TI_FAST, {BackgroundColor3=Color3.fromRGB(40,15,90)})
-        Stroke(2, C.PURPLE_NEON, MobileBtn)
-    end)
-    MobileBtn.MouseLeave:Connect(function()
-        Tween(MobileBtn, TI_FAST, {BackgroundColor3=Color3.fromRGB(14,10,38)})
-    end)
-
-    -- ─── Botón PC ─────────────────────────────────────────────────────────────
-    local PCBtn = MakeButton({
-        Size=UDim2.new(1,-40,0,90), Position=UDim2.new(0,20,0,308),
-        BackgroundColor3=Color3.fromRGB(14,10,38), BorderSizePixel=0,
-        Text="", ZIndex=93,
-    }, DPanel)
-    Corner(18, PCBtn)
-    Stroke(2, C.CYAN_DIM, PCBtn)
-
-    MakeLabel({Size=UDim2.new(0,60,0,60), Position=UDim2.new(0,16,0.5,-30),
-        BackgroundColor3=C.CYAN_DIM, BackgroundTransparency=0.5,
-        Text="🖥", TextSize=32, ZIndex=94}, PCBtn)
-
-    MakeLabel({
-        Size=UDim2.new(1,-100,0,28), Position=UDim2.new(0,86,0,18),
-        BackgroundTransparency=1, Text="🖥  PC / ESCRITORIO",
-        Font=Enum.Font.GothamBold, TextSize=20, TextColor3=C.TEXT_WHITE,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=94,
-    }, PCBtn)
-    MakeLabel({
-        Size=UDim2.new(1,-100,0,20), Position=UDim2.new(0,86,0,48),
-        BackgroundTransparency=1, Text="UI completa con sidebar · Atajos de teclado F1–F8",
-        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_MUTED,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=94,
-    }, PCBtn)
-
-    PCBtn.MouseEnter:Connect(function()
-        Tween(PCBtn, TI_FAST, {BackgroundColor3=Color3.fromRGB(0,30,50)})
-        Stroke(2, C.CYAN_NEON, PCBtn)
-    end)
-    PCBtn.MouseLeave:Connect(function()
-        Tween(PCBtn, TI_FAST, {BackgroundColor3=Color3.fromRGB(14,10,38)})
-    end)
-
-    -- Footer
-    MakeLabel({
-        Size=UDim2.new(1,0,0,16), Position=UDim2.new(0,0,1,-22),
-        BackgroundTransparency=1,
-        Text="Puedes cambiar esto más tarde en Ajustes",
-        Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_MUTED, ZIndex=92,
-    }, DPanel)
-
-    local function SelectDevice(mode)
-        ENV.QuantumOS_DeviceMode  = mode
-        ENV.QuantumOS_Unlocked    = true
-        Tween(DS, TI_MED, {BackgroundTransparency=1})
-        task.wait(0.4)
-        DS:Destroy()
-        onSelect(mode)
-    end
-
-    MobileBtn.MouseButton1Click:Connect(function() SelectDevice("mobile") end)
-    PCBtn.MouseButton1Click:Connect(function()     SelectDevice("pc")     end)
-
-    return DS
-end
-
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 10 - VENTANA PRINCIPAL DEL OS
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local MainWindow = nil
-local Sidebar    = nil
-local ContentArea= nil
-local CurrentTabFrame = nil
-
-local function ClearContent()
-    if CurrentTabFrame then CurrentTabFrame:Destroy(); CurrentTabFrame = nil end
-end
-
-local SidebarButtons = {}
-
-local function SetActiveTab(name)
-    for tabName, btn in pairs(SidebarButtons) do
-        local isActive = (tabName == name)
-        Tween(btn, TI_FAST, {BackgroundColor3=isActive and C.PURPLE_DIM or Color3.fromRGB(0,0,0)})
-        Tween(btn, TI_FAST, {BackgroundTransparency=isActive and 0 or 1})
-        local indicator = btn:FindFirstChild("Indicator")
-        if indicator then indicator.Visible = isActive end
-    end
-end
-
-local function CreateMainWindow()
-    MainWindow = MakeFrame({
-        Name="MainWindow", Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, ZIndex=10,
-    }, ScreenGui)
-
-    -- ─── HEADER ───────────────────────────────────────────────────────────────
-    local Header = MakeFrame({
-        Name="Header", Size=UDim2.new(1,0,0,56),
-        BackgroundColor3=C.BG_HEADER, ZIndex=12,
-    }, MainWindow)
-    Stroke(1, C.BORDER, Header)
-    Gradient(C.BG_HEADER, Color3.fromRGB(8,6,20), 90, Header)
-
-    local HeaderLogo = MakeLabel({
-        Size=UDim2.new(0,38,0,38), Position=UDim2.new(0,14,0.5,-19),
-        BackgroundTransparency=1, Text="⬡", Font=Enum.Font.GothamBold,
-        TextSize=32, TextColor3=C.PURPLE_NEON, ZIndex=13,
-    }, Header)
-    task.spawn(function()
-        while HeaderLogo and HeaderLogo.Parent do
-            Tween(HeaderLogo, TI_SINE, {TextColor3=C.CYAN_NEON}); task.wait(1.5)
-            Tween(HeaderLogo, TI_SINE, {TextColor3=C.PURPLE_NEON}); task.wait(1.5)
-        end
-    end)
-
-    MakeLabel({
-        Size=UDim2.new(0,200,0,22), Position=UDim2.new(0,56,0,8),
-        BackgroundTransparency=1, Text="QUANTUM OS  v3.0",
-        Font=Enum.Font.GothamBold, TextSize=16, TextColor3=C.TEXT_WHITE,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=13,
-    }, Header)
-
-    MakeLabel({
-        Size=UDim2.new(0,200,0,16), Position=UDim2.new(0,56,0,30),
-        BackgroundTransparency=1, Text="Multi-Agent AI · Delta Executor",
-        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.CYAN_NEON,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=13,
-    }, Header)
-
-    -- Badge del juego (centro)
-    local GameBadge = MakeLabel({
-        Size=UDim2.new(0,220,0,30), Position=UDim2.new(0.5,-110,0.5,-15),
-        BackgroundColor3=C.BG_CARD, Text="🎮  " .. GAME_NAME,
-        Font=Enum.Font.Gotham, TextSize=12, TextColor3=C.TEXT_SOFT, ZIndex=13,
-    }, Header)
-    Corner(15, GameBadge)
-    Stroke(1, C.BORDER, GameBadge)
-
-    -- Botones sistema (derecha)
-    local SysFrame = MakeFrame({
-        Size=UDim2.new(0,148,0,40), Position=UDim2.new(1,-158,0.5,-20),
-        BackgroundTransparency=1, ZIndex=13,
-    }, Header)
-
-    local function SysBtn(icon, color, xOff)
-        local b = MakeButton({
-            Size=UDim2.new(0,34,0,34), Position=UDim2.new(0,xOff,0.5,-17),
-            BackgroundColor3=Color3.fromRGB(18,15,38), Text=icon,
-            Font=Enum.Font.GothamBold, TextSize=14, TextColor3=color, ZIndex=14,
-        }, SysFrame)
-        Corner(10, b)
-        HoverGlow(b, Color3.fromRGB(18,15,38), Color3.fromRGB(38,28,68))
-        return b
-    end
-
-    local WifiBtn  = SysBtn("⚡", C.TEXT_GREEN,  0)
-    local NotifBtn = SysBtn("🔔", C.TEXT_YELLOW, 38)
-    local MinBtn   = SysBtn("—",  C.TEXT_SOFT,   76)
-    local CloseBtn = SysBtn("✕", C.TEXT_RED,    114)
-
-    CloseBtn.MouseButton1Click:Connect(function()
-        Tween(MainWindow, TI_MED, {Size=UDim2.new(0,0,0,0)})
-        task.wait(0.35); ScreenGui:Destroy()
-    end)
-    MinBtn.MouseButton1Click:Connect(function()
-        if MainWindow.Size.Y.Scale > 0 then
-            Tween(MainWindow, TI_MED, {Size=UDim2.new(1,0,0,56)})
+        if ok then
+            cb(true, "Conexión verificada")
         else
-            Tween(MainWindow, TI_MED, {Size=UDim2.fromScale(1,1)})
+            ENV.QOS_APIKey = oldKey
+            cb(false, tostring(err):gsub(".*: ",""))
         end
     end)
-
-    -- ─── SIDEBAR ──────────────────────────────────────────────────────────────
-    Sidebar = MakeFrame({
-        Name="Sidebar", Size=UDim2.new(0,210,1,-56), Position=UDim2.new(0,0,0,56),
-        BackgroundColor3=C.BG_SIDEBAR, ZIndex=11,
-    }, MainWindow)
-    Stroke(1, C.BORDER, Sidebar)
-
-    -- Perfil
-    local SbProfile = MakeFrame({
-        Size=UDim2.new(1,-16,0,72), Position=UDim2.new(0,8,0,10),
-        BackgroundColor3=C.BG_CARD, ZIndex=12,
-    }, Sidebar)
-    Corner(14, SbProfile)
-    Stroke(1, C.PURPLE_DIM, SbProfile)
-    Gradient(C.BG_CARD, Color3.fromRGB(20,10,50), 135, SbProfile)
-
-    local AvatarIcon = MakeLabel({
-        Size=UDim2.new(0,46,0,46), Position=UDim2.new(0,10,0.5,-23),
-        BackgroundColor3=C.PURPLE_DIM, Text=string.upper(string.sub(DISPLAY_NAME,1,2)),
-        Font=Enum.Font.GothamBold, TextSize=18, TextColor3=C.TEXT_WHITE, ZIndex=13,
-    }, SbProfile)
-    Corner(23, AvatarIcon)
-    Stroke(2, C.PURPLE_NEON, AvatarIcon)
-
-    MakeLabel({
-        Size=UDim2.new(1,-66,0,20), Position=UDim2.new(0,64,0,12),
-        BackgroundTransparency=1, Text=DISPLAY_NAME,
-        Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.TEXT_WHITE,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=13,
-    }, SbProfile)
-
-    MakeLabel({
-        Size=UDim2.new(1,-66,0,16), Position=UDim2.new(0,64,0,32),
-        BackgroundTransparency=1, Text="@"..USERNAME,
-        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.CYAN_NEON,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=13,
-    }, SbProfile)
-
-    local OnlineBadge = MakeLabel({
-        Size=UDim2.new(0,72,0,16), Position=UDim2.new(0,64,0,50),
-        BackgroundColor3=Color3.fromRGB(0,50,25), Text="● AI Online",
-        Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_GREEN, ZIndex=13,
-    }, SbProfile)
-    Corner(8, OnlineBadge)
-
-    -- Scroll de tabs
-    local SbScroll = MakeScroll({
-        Size=UDim2.new(1,0,1,-94), Position=UDim2.new(0,0,0,92),
-        BackgroundTransparency=1, ScrollBarThickness=0,
-        ScrollingDirection=Enum.ScrollingDirection.Y, ZIndex=12,
-    }, Sidebar)
-
-    local SbList = MakeFrame({
-        Size=UDim2.new(1,0,0,0), BackgroundTransparency=1, ZIndex=12,
-    }, SbScroll)
-    ListLayout({Padding=UDim.new(0,2), SortOrder=Enum.SortOrder.LayoutOrder}, SbList)
-
-    local TABS = {
-        {name="START",            icon="⌂",  order=1},
-        {name="SCRIPT HUB",       icon="⚡",  order=2},
-        {name="SYSTEM SETTINGS",  icon="⚙",  order=3},
-        {name="TOOLBOX",          icon="🛠",  order=4},
-        {name="FILE MANAGER",     icon="📁",  order=5},
-        {name="PROCESSES & LOGS", icon="📊",  order=6},
-        {name="MEDIA CENTER",     icon="🎵",  order=7},
-        {name="COMMUNITY",        icon="👥",  order=8},
-        {name="QUANTUM ORACLE",   icon="🔮",  order=9},
-        {name="GAME BOOSTER",     icon="🚀",  order=10},
-        {name="SKIN CUSTOMIZER",  icon="🎨",  order=11},
-        {name="POWER",            icon="⏻",   order=12},
-    }
-
-    for _, tab in ipairs(TABS) do
-        local Btn = MakeButton({
-            Name=tab.name, Size=UDim2.new(1,-12,0,42),
-            BackgroundColor3=Color3.fromRGB(0,0,0), BackgroundTransparency=1,
-            Text="", LayoutOrder=tab.order, ZIndex=13,
-        }, SbList)
-        Corner(10, Btn)
-        Padding(0,8,0,8,Btn)
-
-        local Indicator = MakeFrame({
-            Name="Indicator", Size=UDim2.new(0,3,0.6,0), Position=UDim2.new(0,0,0.2,0),
-            BackgroundColor3=C.PURPLE_NEON, Visible=false, ZIndex=14,
-        }, Btn)
-        Corner(2, Indicator)
-
-        MakeLabel({
-            Size=UDim2.new(0,28,1,0), Position=UDim2.new(0,12,0,0),
-            BackgroundTransparency=1, Text=tab.icon,
-            Font=Enum.Font.GothamBold, TextSize=18, TextColor3=C.TEXT_SOFT, ZIndex=14,
-        }, Btn)
-
-        MakeLabel({
-            Size=UDim2.new(1,-46,1,0), Position=UDim2.new(0,44,0,0),
-            BackgroundTransparency=1, Text=tab.name,
-            Font=Enum.Font.GothamSemibold, TextSize=12, TextColor3=C.TEXT_SOFT,
-            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=14,
-        }, Btn)
-
-        SidebarButtons[tab.name] = Btn
-        Btn.MouseButton1Click:Connect(function()
-            ClearContent(); SetActiveTab(tab.name); ENV.QuantumOS_ActiveTab = tab.name
-            local fnKey = "QOS_Tab_"..tab.name:gsub("%s+","_"):gsub("[&]",""):gsub("__","_")
-            pcall(function() _G[fnKey]() end)
-        end)
-        HoverGlow(Btn, Color3.fromRGB(0,0,0), C.BG_GLASS)
-    end
-
-    local SbLayout = SbList:FindFirstChildWhichIsA("UIListLayout")
-    SbLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        SbList.Size = UDim2.new(1,0,0,SbLayout.AbsoluteContentSize.Y+8)
-    end)
-
-    -- ─── CONTENT AREA ─────────────────────────────────────────────────────────
-    ContentArea = MakeFrame({
-        Name="ContentArea", Size=UDim2.new(1,-210,1,-56), Position=UDim2.new(0,210,0,56),
-        BackgroundColor3=C.BG_PANEL, ZIndex=11,
-    }, MainWindow)
-
-    -- Entrada animada
-    MainWindow.Size = UDim2.new(0,0,0,0); MainWindow.Position = UDim2.new(0.5,0,0.5,0)
-    Tween(MainWindow, TI_BOUNCE, {Size=UDim2.fromScale(1,1), Position=UDim2.fromScale(0,0)})
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 11 - COMPONENTES REUTILIZABLES
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local function CreateToggle(parent, label, defaultState, onChange)
-    local Row = MakeFrame({Size=UDim2.new(1,0,0,42), BackgroundColor3=C.BG_CARD, ZIndex=20}, parent)
-    Corner(10, Row)
-    MakeLabel({
-        Size=UDim2.new(1,-70,1,0), Position=UDim2.new(0,14,0,0),
-        BackgroundTransparency=1, Text=label, Font=Enum.Font.Gotham,
-        TextSize=13, TextColor3=C.TEXT_WHITE, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=21,
-    }, Row)
-    local Track = MakeFrame({
-        Size=UDim2.new(0,46,0,24), Position=UDim2.new(1,-58,0.5,-12),
-        BackgroundColor3=defaultState and C.TOGGLE_ON or C.TOGGLE_OFF, ZIndex=21,
-    }, Row)
-    Corner(12, Track)
-    local Thumb = MakeFrame({
-        Size=UDim2.new(0,18,0,18),
-        Position=defaultState and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9),
-        BackgroundColor3=Color3.new(1,1,1), ZIndex=22,
-    }, Track)
-    Corner(9, Thumb)
-    local state = defaultState
-    local ToggleBtn = MakeButton({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text="", ZIndex=23}, Track)
-    ToggleBtn.MouseButton1Click:Connect(function()
-        state = not state
-        Tween(Track, TI_FAST, {BackgroundColor3=state and C.TOGGLE_ON or C.TOGGLE_OFF})
-        Tween(Thumb, TI_FAST, {Position=state and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9)})
-        if onChange then onChange(state) end
-    end)
-    return Row, function() return state end
-end
-
-local function CreateSlider(parent, label, minV, maxV, defaultV, suffix, onChange)
-    local Row = MakeFrame({Size=UDim2.new(1,0,0,60), BackgroundColor3=C.BG_CARD, ZIndex=20}, parent)
-    Corner(10, Row)
-    MakeLabel({
-        Size=UDim2.new(1,-60,0,22), Position=UDim2.new(0,14,0,6),
-        BackgroundTransparency=1, Text=label, Font=Enum.Font.Gotham,
-        TextSize=13, TextColor3=C.TEXT_WHITE, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=21,
-    }, Row)
-    local ValLabel = MakeLabel({
-        Size=UDim2.new(0,55,0,22), Position=UDim2.new(1,-65,0,6),
-        BackgroundTransparency=1, Text=tostring(defaultV)..(suffix or ""),
-        Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.PURPLE_GLOW,
-        TextXAlignment=Enum.TextXAlignment.Right, ZIndex=21,
-    }, Row)
-    local Track = MakeFrame({
-        Size=UDim2.new(1,-28,0,6), Position=UDim2.new(0,14,0,40),
-        BackgroundColor3=C.SLIDER_BG, ZIndex=21,
-    }, Row)
-    Corner(3, Track)
-    local ratio = (defaultV-minV)/(maxV-minV)
-    local Fill = MakeFrame({Size=UDim2.new(ratio,0,1,0), BackgroundColor3=C.SLIDER_FILL, ZIndex=22}, Track)
-    Corner(3, Fill); Gradient(C.PURPLE_NEON, C.CYAN_NEON, 0, Fill)
-    local Knob = MakeFrame({
-        Size=UDim2.new(0,16,0,16), Position=UDim2.new(ratio,-8,0.5,-8),
-        BackgroundColor3=Color3.new(1,1,1), ZIndex=23,
-    }, Track)
-    Corner(8, Knob); Stroke(2, C.PURPLE_NEON, Knob)
-
-    local dragging = false
-    local function UpdateSlider(inputX)
-        local t = math.clamp((inputX-Track.AbsolutePosition.X)/Track.AbsoluteSize.X, 0, 1)
-        local value = math.floor(minV+t*(maxV-minV))
-        Tween(Fill,TI_FAST,{Size=UDim2.new(t,0,1,0)}); Tween(Knob,TI_FAST,{Position=UDim2.new(t,-8,0.5,-8)})
-        ValLabel.Text = tostring(value)..(suffix or ""); if onChange then onChange(value) end
-    end
-
-    Track.InputBegan:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-            dragging=true; UpdateSlider(input.Position.X)
+-- Oracle multi-agente
+local function OracleQuery(msg, onThink, onAgent, onResp, onErr)
+    task.spawn(function()
+        if onThink then onThink("Orquestador analizando...") end
+        local orchRes = OR_Call(AI.ORCH, AI.SYS.ORCH, msg, 80)
+        local agentKey = "FAST"
+        if orchRes then
+            local ok2, dec = pcall(function() return HttpService:JSONDecode(orchRes) end)
+            if ok2 and dec and dec.agent then agentKey = dec.agent end
+        end
+        local meta = AI.META[agentKey] or AI.META.FAST
+        if onAgent then onAgent(agentKey, meta) end
+        if onThink then onThink(meta.icon.." "..meta.name.." procesando...") end
+        local resp, err = OR_Call(AI.MODEL[agentKey] or AI.MODEL.FAST,
+            AI.SYS[agentKey] or AI.SYS.FAST, msg, 320)
+        if resp then
+            if onResp then onResp(resp, meta) end
+        else
+            if onErr then onErr(err or "Error desconocido") end
         end
     end)
-    TrackConn(UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
-            UpdateSlider(input.Position.X)
-        end
-    end))
-    TrackConn(UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=false end
-    end))
-    return Row
 end
 
-local function SectionHeader(parent, title, subtitle)
-    local H = MakeFrame({Size=UDim2.new(1,0,0,62), BackgroundColor3=C.BG_HEADER, ZIndex=19}, parent)
-    Stroke(1, C.BORDER, H)
-    local AccentLine = MakeFrame({
-        Size=UDim2.new(0,3,0,38), Position=UDim2.new(0,8,0,12),
-        BackgroundColor3=C.PURPLE_NEON, ZIndex=20,
-    }, H)
-    Corner(2, AccentLine)
-    MakeLabel({
-        Size=UDim2.new(1,-24,0,28), Position=UDim2.new(0,20,0,8),
-        BackgroundTransparency=1, Text=title, Font=Enum.Font.GothamBold,
-        TextSize=18, TextColor3=C.TEXT_WHITE, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=20,
-    }, H)
-    if subtitle then
-        MakeLabel({
-            Size=UDim2.new(1,-24,0,16), Position=UDim2.new(0,20,0,38),
-            BackgroundTransparency=1, Text=subtitle, Font=Enum.Font.Gotham,
-            TextSize=12, TextColor3=C.TEXT_MUTED, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=20,
-        }, H)
-    end
-    return H
-end
-
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 12 - SISTEMA DE NOTIFICACIONES
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local NotifTypes = {
-    INFO    = {icon="ℹ", color=C.CYAN_NEON,   bg=Color3.fromRGB(0,28,48)},
-    SUCCESS = {icon="✓", color=C.TEXT_GREEN,   bg=Color3.fromRGB(0,38,18)},
-    WARNING = {icon="⚠", color=C.TEXT_YELLOW, bg=Color3.fromRGB(48,32,0)},
-    ERROR   = {icon="✕", color=C.TEXT_RED,     bg=Color3.fromRGB(58,0,0)},
-    ORACLE  = {icon="🔮",color=C.PURPLE_GLOW,  bg=Color3.fromRGB(28,0,58)},
-    SYSTEM  = {icon="⬡", color=C.PURPLE_NEON,  bg=Color3.fromRGB(18,4,42)},
-    AI      = {icon="🤖",color=C.GOLD_NEON,    bg=Color3.fromRGB(40,30,0)},
+-- ═══════════════════════════════════════════════════════════════════════
+-- §9  NOTIFICACIONES
+-- ═══════════════════════════════════════════════════════════════════════
+local NT = {
+    INFO    = {icon="ℹ", c=C.A1,  bg=Color3.fromRGB(0,24,42)},
+    SUCCESS = {icon="✓", c=C.TG,  bg=Color3.fromRGB(0,34,16)},
+    WARNING = {icon="⚠", c=C.TY,  bg=Color3.fromRGB(44,28,0)},
+    ERROR   = {icon="✕", c=C.TR,  bg=Color3.fromRGB(52,0,0)},
+    ORACLE  = {icon="🔮",c=C.P2,  bg=Color3.fromRGB(24,0,52)},
+    SYSTEM  = {icon="⬡", c=C.P1,  bg=Color3.fromRGB(16,4,38)},
+    AI      = {icon="🤖",c=C.A4,  bg=Color3.fromRGB(36,26,0)},
 }
+local nStack, NW, NH, NM = {}, 300, 72, 8
+local toastQ, toastActive = {}, false
 
-local notifStack = {}
-local NOTIF_MAX  = 4
-local NOTIF_W    = 295
-local NOTIF_H    = 70
-local NOTIF_M    = 8
+local PushNotif, ShowToast
 
-PushNotification = function(title, body, typeName, duration)
-    typeName = typeName or "INFO"; duration = duration or 3.5
-    local t  = NotifTypes[typeName] or NotifTypes.INFO
-    if #notifStack >= NOTIF_MAX then return end
-    local slot = #notifStack + 1
-    table.insert(notifStack, slot)
-    local yOff = -(slot*(NOTIF_H+NOTIF_M))
-
-    local NFrame = MakeFrame({
-        Name="Notif_"..slot, Size=UDim2.new(0,NOTIF_W,0,NOTIF_H),
-        Position=UDim2.new(1,10,1,yOff), BackgroundColor3=t.bg, ZIndex=1100+slot,
+PushNotif = function(title, body, typ, dur)
+    typ = typ or "INFO"; dur = dur or 3.5
+    local t = NT[typ] or NT.INFO
+    if #nStack >= 4 then return end
+    local slot = #nStack + 1; table.insert(nStack, slot)
+    local yOff = -(slot * (NH + NM))
+    local NF = MkFrame({
+        Size = UDim2.new(0, NW, 0, NH),
+        Position = UDim2.new(1, 14, 1, yOff),
+        BackgroundColor3 = t.bg, ZIndex = 1100 + slot,
     }, ScreenGui)
-    Corner(14, NFrame); Stroke(1, t.color, NFrame)
-    local Accent = MakeFrame({Size=UDim2.new(0,4,1,-16), Position=UDim2.new(0,0,0,8),
-        BackgroundColor3=t.color, ZIndex=1101+slot}, NFrame)
-    Corner(2, Accent)
-    MakeLabel({Size=UDim2.new(0,38,1,0), BackgroundTransparency=1,
-        Text=t.icon, TextSize=20, TextColor3=t.color, ZIndex=1102+slot}, NFrame)
-    MakeLabel({Size=UDim2.new(1,-60,0,22), Position=UDim2.new(0,52,0,8),
+    Corner(14, NF); Stroke(1, t.c, NF)
+    -- Barra izquierda coloreada
+    local Acc = MkFrame({Size=UDim2.new(0,3,1,-16), Position=UDim2.new(0,0,0,8),
+        BackgroundColor3=t.c, ZIndex=1101+slot}, NF)
+    Corner(2, Acc)
+    MkLabel({Size=UDim2.new(0,38,1,0), BackgroundTransparency=1,
+        Text=t.icon, TextSize=19, TextColor3=t.c, ZIndex=1102+slot}, NF)
+    MkLabel({Size=UDim2.new(1,-62,0,22), Position=UDim2.new(0,50,0,9),
         BackgroundTransparency=1, Text=title, Font=Enum.Font.GothamBold,
-        TextSize=13, TextColor3=C.TEXT_WHITE, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1102+slot}, NFrame)
-    MakeLabel({Size=UDim2.new(1,-60,0,22), Position=UDim2.new(0,52,0,32),
+        TextSize=12, TextColor3=C.TW, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1102+slot}, NF)
+    MkLabel({Size=UDim2.new(1,-62,0,22), Position=UDim2.new(0,50,0,30),
         BackgroundTransparency=1, Text=body, Font=Enum.Font.Gotham,
-        TextSize=11, TextColor3=C.TEXT_SOFT, TextWrapped=true,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1102+slot}, NFrame)
-    local ProgBG = MakeFrame({Size=UDim2.new(1,0,0,2), Position=UDim2.new(0,0,1,-2),
-        BackgroundColor3=C.SLIDER_BG, ZIndex=1103+slot}, NFrame)
-    local ProgFill = MakeFrame({Size=UDim2.new(1,0,1,0), BackgroundColor3=t.color, ZIndex=1104+slot}, ProgBG)
-    local CloseN = MakeButton({Size=UDim2.new(0,22,0,22), Position=UDim2.new(1,-26,0,4),
+        TextSize=10, TextColor3=C.TS, TextWrapped=true,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1102+slot}, NF)
+    local PBG = MkFrame({Size=UDim2.new(1,0,0,2), Position=UDim2.new(0,0,1,-2),
+        BackgroundColor3=C.SBG, ZIndex=1103+slot}, NF)
+    local PF = MkFrame({Size=UDim2.new(1,0,1,0), BackgroundColor3=t.c, ZIndex=1104+slot}, PBG)
+    local CBtn = MkBtn({Size=UDim2.new(0,20,0,20), Position=UDim2.new(1,-24,0,4),
         BackgroundTransparency=1, Text="✕", Font=Enum.Font.GothamBold,
-        TextSize=11, TextColor3=C.TEXT_MUTED, ZIndex=1105+slot}, NFrame)
-
-    Tween(NFrame, TI_BOUNCE, {Position=UDim2.new(1,-(NOTIF_W+10),1,yOff)})
-    Tween(ProgFill, TweenInfo.new(duration,Enum.EasingStyle.Linear), {Size=UDim2.new(0,0,1,0)})
-
-    local function DismissNotif()
-        Tween(NFrame, TI_MED, {Position=UDim2.new(1,10,1,yOff)}); task.wait(0.35)
-        pcall(function() table.remove(notifStack, table.find(notifStack,slot)); NFrame:Destroy() end)
+        TextSize=10, TextColor3=C.TM, ZIndex=1105+slot}, NF)
+    Tw(NF, TI.BOUNCE, {Position=UDim2.new(1, -(NW+12), 1, yOff)})
+    Tw(PF, TweenInfo.new(dur, Enum.EasingStyle.Linear), {Size=UDim2.new(0, 0, 1, 0)})
+    local function Dismiss()
+        Tw(NF, TI.MED, {Position=UDim2.new(1, 14, 1, yOff)}); task.wait(0.38)
+        pcall(function() local idx=table.find(nStack,slot); if idx then table.remove(nStack,idx) end; NF:Destroy() end)
     end
-    CloseN.MouseButton1Click:Connect(DismissNotif)
-    task.delay(duration, function() pcall(DismissNotif) end)
+    CBtn.MouseButton1Click:Connect(Dismiss)
+    task.delay(dur, function() pcall(Dismiss) end)
 end
 
-ShowToast = function(title, body, icon, duration)
-    duration = duration or 3
-    table.insert(toastQueue, {title=title, body=body, icon=icon or "⬡", duration=duration})
+ShowToast = function(title, body, icon, dur)
+    dur = dur or 3
+    table.insert(toastQ, {title=title, body=body, icon=icon or "⬡", dur=dur})
     if toastActive then return end
     toastActive = true
     task.spawn(function()
-        while #toastQueue > 0 do
-            local t = table.remove(toastQueue,1)
-            local Toast = MakeFrame({
-                Size=UDim2.new(0,285,0,68), Position=UDim2.new(1,10,1,-85),
-                BackgroundColor3=C.BG_CARD, ZIndex=1000,
+        while #toastQ > 0 do
+            local t = table.remove(toastQ, 1)
+            local T = MkFrame({
+                Size=UDim2.new(0,290,0,66), Position=UDim2.new(1,14,1,-84),
+                BackgroundColor3=C.BG3, ZIndex=1000,
             }, ScreenGui)
-            Corner(14, Toast); Stroke(2, C.PURPLE_NEON, Toast)
-            MakeLabel({Size=UDim2.new(0,40,1,0), BackgroundTransparency=1, Text=t.icon, TextSize=22, ZIndex=1001}, Toast)
-            MakeLabel({Size=UDim2.new(1,-55,0,20), Position=UDim2.new(0,44,0,10), BackgroundTransparency=1,
-                Text=t.title, Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.TEXT_WHITE,
-                TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1001}, Toast)
-            MakeLabel({Size=UDim2.new(1,-55,0,18), Position=UDim2.new(0,44,0,32), BackgroundTransparency=1,
-                Text=t.body, Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_SOFT,
-                TextWrapped=true, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1001}, Toast)
-            Tween(Toast, TI_MED, {Position=UDim2.new(1,-295,1,-85)})
-            task.wait(t.duration)
-            Tween(Toast, TI_MED, {Position=UDim2.new(1,10,1,-85)}); task.wait(0.4)
-            Toast:Destroy(); task.wait(0.3)
+            Corner(14, T); Stroke(2, C.BR1, T)
+            Grad(C.BG3, Color3.fromRGB(28, 16, 60), 135, T)
+            MkLabel({Size=UDim2.new(0,42,1,0), BackgroundTransparency=1, Text=t.icon, TextSize=22, ZIndex=1001}, T)
+            MkLabel({Size=UDim2.new(1,-52,0,22), Position=UDim2.new(0,46,0,9), BackgroundTransparency=1,
+                Text=t.title, Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.TW,
+                TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1001}, T)
+            MkLabel({Size=UDim2.new(1,-52,0,20), Position=UDim2.new(0,46,0,32), BackgroundTransparency=1,
+                Text=t.body, Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TS,
+                TextWrapped=true, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=1001}, T)
+            Tw(T, TI.MED, {Position=UDim2.new(1,-(302),1,-84)})
+            task.wait(t.dur)
+            Tw(T, TI.MED, {Position=UDim2.new(1,14,1,-84)}); task.wait(0.4)
+            T:Destroy(); task.wait(0.25)
         end
         toastActive = false
     end)
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 13 - TAB: START
--- ═══════════════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════
+-- §10  BOOT SCREEN
+-- ═══════════════════════════════════════════════════════════════════════
+local function CreateBoot()
+    local Boot = MkFrame({
+        Name="Boot", Size=UDim2.fromScale(1,1),
+        BackgroundColor3=C.BG0, ZIndex=100,
+    }, ScreenGui)
+    Grad(C.BG0, Color3.fromRGB(8, 4, 22), 135, Boot)
 
-_G["QOS_Tab_START"] = function()
-    local Tab = MakeFrame({Name="Tab_START", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
-    CurrentTabFrame = Tab
-    local Scroll = MakeScroll({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
-    local List = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Scroll)
-    ListLayout({Padding=UDim.new(0,0)}, List); Padding(0,0,20,0,List)
-    SectionHeader(List, "START  ⌂", "Panel de inicio · Quantum OS v3.0 · Multi-Agent AI")
+    local W = MkFrame({
+        Size=UDim2.new(0,360,0,400), Position=UDim2.new(0.5,-180,0.5,-200),
+        BackgroundColor3=C.BG2, BackgroundTransparency=0.28, ZIndex=101,
+    }, Boot)
+    Corner(28, W)
+    local ws = Stroke(1, C.P1, W); PulseStroke(ws, C.P3, C.P2)
 
-    -- Stats cards
-    local StatsRow = MakeFrame({Size=UDim2.new(1,0,0,90), BackgroundTransparency=1, ZIndex=15}, List)
-    local StatsItems = {
-        {label="Jugador",   val=DISPLAY_NAME,     icon="👤", color=C.PURPLE_GLOW},
-        {label="Juego",     val=GAME_NAME:sub(1,16), icon="🎮", color=C.CYAN_NEON},
-        {label="AI Status", val="Online",         icon="🤖", color=C.TEXT_GREEN},
-        {label="Agentes",   val="5 activos",      icon="⬡",  color=C.GOLD_NEON},
-    }
-    local SGrid = MakeFrame({Size=UDim2.new(1,-32,1,-16), Position=UDim2.new(0,16,0,8), BackgroundTransparency=1, ZIndex=15}, StatsRow)
-    GridLayout({CellSize=UDim2.new(0.25,-4,1,-4), CellPadding=UDim2.new(0,4,0,4)}, SGrid)
-
-    for _, stat in ipairs(StatsItems) do
-        local Card = MakeFrame({BackgroundColor3=C.BG_CARD, ZIndex=16}, SGrid)
-        Corner(12, Card); Stroke(1, C.BORDER, Card); Gradient(C.BG_CARD, Color3.fromRGB(18,10,40), 135, Card)
-        MakeLabel({Size=UDim2.new(1,0,0,26), Position=UDim2.new(0,0,0,10), BackgroundTransparency=1,
-            Text=stat.icon, TextSize=20, ZIndex=17}, Card)
-        MakeLabel({Size=UDim2.new(1,-8,0,20), Position=UDim2.new(0,4,0,36), BackgroundTransparency=1,
-            Text=stat.val, Font=Enum.Font.GothamBold, TextSize=12, TextColor3=stat.color, ZIndex=17}, Card)
-        MakeLabel({Size=UDim2.new(1,-8,0,14), Position=UDim2.new(0,4,0,57), BackgroundTransparency=1,
-            Text=stat.label, Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_MUTED, ZIndex=17}, Card)
-    end
-
-    -- Agentes status
-    local AgentHdr = MakeLabel({Size=UDim2.new(1,-32,0,20), BackgroundTransparency=1,
-        Text="AGENTES MULTI-IA ACTIVOS", Font=Enum.Font.GothamBold, TextSize=12,
-        TextColor3=C.PURPLE_GLOW, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=15}, List)
-
-    local agentsInfo = {
-        {key="ORCHESTRATOR", icon="⬡", name="Orquestador",     model="llama-3.3-70b", desc="Dirige el flujo multi-agente"},
-        {key="GAME_ANALYST",   icon="🎮", name="Game Analyst",    model="nemotron-120b",  desc="Análisis del juego actual"},
-        {key="CODE_EXPERT",    icon="💻", name="Code Expert",     model="qwen3-coder",    desc="Scripts y código Lua"},
-        {key="STRATEGY_AGENT", icon="⚔", name="Strategy Agent",  model="deepseek-v4",    desc="Estrategias y builds"},
-        {key="CREATIVE_AGENT", icon="🎨", name="Creative Agent",  model="gemma-4-31b",    desc="Ideas y personalización"},
-    }
-
-    local AgentList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-        BackgroundTransparency=1, ZIndex=15}, List)
-    ListLayout({Padding=UDim.new(0,4)}, AgentList); Padding(0,16,0,16,AgentList)
-
-    for _, ag in ipairs(agentsInfo) do
-        local ACard = MakeFrame({Size=UDim2.new(1,0,0,52), BackgroundColor3=C.BG_CARD, ZIndex=16}, AgentList)
-        Corner(10, ACard); Stroke(1, C.BORDER, ACard)
-        MakeLabel({Size=UDim2.new(0,38,0,38), Position=UDim2.new(0,10,0.5,-19),
-            BackgroundColor3=C.PURPLE_DIM, BackgroundTransparency=0.5,
-            Text=ag.icon, TextSize=20, ZIndex=17}, ACard)
-        MakeLabel({Size=UDim2.new(1,-180,0,20), Position=UDim2.new(0,56,0,8),
-            BackgroundTransparency=1, Text=ag.name, Font=Enum.Font.GothamBold,
-            TextSize=13, TextColor3=C.TEXT_WHITE, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, ACard)
-        MakeLabel({Size=UDim2.new(1,-180,0,16), Position=UDim2.new(0,56,0,28),
-            BackgroundTransparency=1, Text=ag.desc, Font=Enum.Font.Gotham,
-            TextSize=11, TextColor3=C.TEXT_MUTED, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, ACard)
-        local StatusBadge = MakeLabel({Size=UDim2.new(0,90,0,22), Position=UDim2.new(1,-100,0.5,-11),
-            BackgroundColor3=Color3.fromRGB(0,40,20), Text="● "..ag.model,
-            Font=Enum.Font.Gotham, TextSize=9, TextColor3=C.TEXT_GREEN, ZIndex=17}, ACard)
-        Corner(10, StatusBadge)
-    end
-
-    local LL = List:FindFirstChildWhichIsA("UIListLayout")
-    if LL then LL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        Scroll.CanvasSize = UDim2.new(0,0,0,LL.AbsoluteContentSize.Y+20)
-    end) end
-end
-
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 14 - TAB: QUANTUM ORACLE (Multi-Agent AI Chat)
--- ═══════════════════════════════════════════════════════════════════════════════
-
-_G["QOS_Tab_QUANTUM_ORACLE"] = function()
-    local Tab = MakeFrame({Name="Tab_ORACLE", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
-    CurrentTabFrame = Tab
-    SectionHeader(Tab, "QUANTUM ORACLE  🔮", "Multi-Agent AI · Orquestador: llama-3.3-70b · Juego: "..GAME_NAME)
-
-    -- Orb visual
-    local SphereFrame = MakeFrame({
-        Size=UDim2.new(1,-32,0,110), Position=UDim2.new(0,16,0,68),
-        BackgroundColor3=C.BG_GLASS, ZIndex=16,
-    }, Tab)
-    Corner(16, SphereFrame); Gradient(C.BG_GLASS, Color3.fromRGB(40,0,80), 135, SphereFrame)
-    Stroke(1, C.BORDER_BRIGHT, SphereFrame)
-
-    local Orb = MakeLabel({
-        Size=UDim2.new(0,70,0,70), Position=UDim2.new(0,18,0.5,-35),
-        BackgroundColor3=C.PURPLE_DIM, Text="🔮", TextSize=34, ZIndex=17,
-    }, SphereFrame)
-    Corner(35, Orb); Stroke(3, C.PURPLE_NEON, Orb)
+    -- Glow externo
+    local Glow = MkFrame({
+        Size=UDim2.new(1.5,0,1.4,0), Position=UDim2.new(-0.25,0,-0.2,0),
+        BackgroundColor3=C.P1, BackgroundTransparency=0.92, ZIndex=100,
+    }, W); Corner(60, Glow)
     task.spawn(function()
-        while Orb and Orb.Parent do
-            Tween(Orb, TI_SINE, {BackgroundColor3=C.PURPLE_GLOW}); task.wait(1.2)
-            Tween(Orb, TI_SINE, {BackgroundColor3=C.PURPLE_DIM});  task.wait(1.2)
+        while Glow and Glow.Parent do
+            Tw(Glow,TI.SINE,{BackgroundTransparency=0.94}); task.wait(1.4)
+            Tw(Glow,TI.SINE,{BackgroundTransparency=0.89}); task.wait(1.4)
         end
     end)
 
-    local OracleName = MakeLabel({Size=UDim2.new(1,-120,0,24), Position=UDim2.new(0,100,0,14),
-        BackgroundTransparency=1, Text="QUANTUM ORACLE  ·  Multi-Agent AI",
-        Font=Enum.Font.GothamBold, TextSize=15, TextColor3=C.TEXT_WHITE,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, SphereFrame)
+    SpawnParticles(W, 8, 102)
 
-    local AgentBadge = MakeLabel({Size=UDim2.new(1,-120,0,18), Position=UDim2.new(0,100,0,40),
-        BackgroundTransparency=1, Text="⬡ Orquestador: llama-3.3-70b  ·  5 Agentes listos",
-        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.CYAN_NEON,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, SphereFrame)
+    local Logo = MkLabel({
+        Size=UDim2.new(1,0,0,80), Position=UDim2.new(0,0,0,20),
+        BackgroundTransparency=1, Text="⬡", Font=Enum.Font.GothamBold,
+        TextSize=66, TextColor3=C.P1, ZIndex=103,
+    }, W)
+    task.spawn(function()
+        while Logo and Logo.Parent do
+            Tw(Logo,TI.SINE,{TextColor3=C.P2,TextTransparency=0.08}); task.wait(1.4)
+            Tw(Logo,TI.SINE,{TextColor3=C.P1,TextTransparency=0}); task.wait(1.4)
+        end
+    end)
 
-    local ActiveAgentLabel = MakeLabel({Size=UDim2.new(1,-120,0,16), Position=UDim2.new(0,100,0,62),
-        BackgroundTransparency=1, Text="Detectado: '"..GAME_NAME.."'  ·  En espera de consulta",
-        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_SOFT, TextWrapped=true,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, SphereFrame)
+    MkLabel({Size=UDim2.new(1,0,0,28), Position=UDim2.new(0,0,0,104),
+        BackgroundTransparency=1, Text="QUANTUM OS  v3.1",
+        Font=Enum.Font.GothamBold, TextSize=22, TextColor3=C.TW, ZIndex=103}, W)
 
-    -- Chat scroll
-    local ChatScroll = MakeScroll({
-        Size=UDim2.new(1,-32,1,-260), Position=UDim2.new(0,16,0,188),
-        BackgroundColor3=Color3.fromRGB(5,5,14), ScrollBarThickness=3, ZIndex=15,
-    }, Tab)
-    Corner(12, ChatScroll); Stroke(1, C.BORDER, ChatScroll)
+    local Badge = MkLabel({
+        Size=UDim2.new(0,210,0,24), Position=UDim2.new(0.5,-105,0,135),
+        BackgroundColor3=C.P3, BackgroundTransparency=0.3,
+        Text="✦ DELTA EDITION · MULTI-AGENT AI ✦",
+        Font=Enum.Font.GothamSemibold, TextSize=10, TextColor3=C.A1, ZIndex=103,
+    }, W); Corner(12, Badge)
 
-    local ChatList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-        BackgroundTransparency=1, ZIndex=15}, ChatScroll)
-    ListLayout({Padding=UDim.new(0,8)}, ChatList); Padding(10,10,10,10,ChatList)
+    local WelL = MkLabel({Size=UDim2.new(1,-40,0,40), Position=UDim2.new(0,20,0,172),
+        BackgroundTransparency=1, Text="", Font=Enum.Font.Gotham,
+        TextSize=13, TextColor3=C.TW, TextWrapped=true, ZIndex=103}, W)
 
-    local function AddMsg(text, isUser, agentMeta)
-        local color = isUser and C.PURPLE_DIM or (agentMeta and agentMeta.color or C.BG_CARD)
-        local Bubble = MakeFrame({
-            Size=UDim2.new(0.85,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-            Position=isUser and UDim2.new(0.15,0,0,0) or UDim2.new(0,0,0,0),
-            BackgroundColor3=color, BackgroundTransparency=isUser and 0 or 0.2, ZIndex=16,
-        }, ChatList)
-        Corner(12, Bubble); Padding(10,14,10,14,Bubble)
+    local SubL = MkLabel({Size=UDim2.new(1,-40,0,36), Position=UDim2.new(0,20,0,216),
+        BackgroundTransparency=1, Text="", Font=Enum.Font.Gotham,
+        TextSize=11, TextColor3=C.TS, TextWrapped=true, ZIndex=103}, W)
 
-        -- Badge del agente (si no es usuario)
-        if not isUser and agentMeta then
-            local ABadge = MakeLabel({
-                Size=UDim2.new(1,0,0,16), BackgroundTransparency=1,
-                Text=agentMeta.icon.." "..agentMeta.name,
-                Font=Enum.Font.GothamBold, TextSize=10,
-                TextColor3=agentMeta.color, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17,
-            }, Bubble)
+    local PBG = MkFrame({
+        Size=UDim2.new(1,-40,0,5), Position=UDim2.new(0,20,0,300),
+        BackgroundColor3=C.SBG, ZIndex=103,
+    }, W); Corner(3, PBG)
+    local PF = MkFrame({Size=UDim2.new(0,0,1,0), BackgroundColor3=C.P1, ZIndex=104}, PBG)
+    Corner(3, PF); Grad(C.P1, C.A1, 0, PF)
+    local PL = MkLabel({Size=UDim2.new(1,0,0,16), Position=UDim2.new(0,0,1,4),
+        BackgroundTransparency=1, Text="Inicializando...",
+        Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TM, ZIndex=103}, PBG)
+
+    MkLabel({Size=UDim2.new(1,0,0,16), Position=UDim2.new(0,0,1,-20),
+        BackgroundTransparency=1, Text="LXNDXN · Delta Edition · Multi-Agent AI v3.1",
+        Font=Enum.Font.Gotham, TextSize=9, TextColor3=C.TM, ZIndex=103}, W)
+
+    task.spawn(function()
+        task.wait(0.5)
+        Typewrite(WelL, "Hola, "..DNAME..". Iniciando Quantum OS v3.1...", 0.04)
+        task.wait(1.8)
+        Typewrite(SubL, "Sistema Multi-Agente AI cargando...\nOrquestador · 5 Agentes Especializados.", 0.03)
+        task.wait(1.4)
+        local steps = {
+            {0.14,"Cargando kernel..."},{0.30,"Verificando Delta Executor..."},
+            {0.46,"Inicializando UI responsive..."},{0.62,"Conectando Orquestador AI..."},
+            {0.76,"Activando agentes especializados..."},{0.90,"Estableciendo sesión..."},
+            {1.00,"Listo. Autenticación requerida."},
+        }
+        for _, s in ipairs(steps) do
+            Tw(PF, TI.MED, {Size=UDim2.new(s[1],0,1,0)}); PL.Text = s[2]; task.wait(0.40)
+        end
+        task.wait(0.5)
+        Tw(Boot, TI.SLOW, {BackgroundTransparency=1})
+        Tw(W,    TI.SLOW, {BackgroundTransparency=1})
+        task.wait(0.65); Boot:Destroy()
+    end)
+    return Boot
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- §11  LOGIN SCREEN (Responsive · fix verificación)
+-- ═══════════════════════════════════════════════════════════════════════
+local function CreateLogin(onSuccess)
+    local mobile = IsMobile()
+    local ss = GetScreenSize()
+
+    -- Dimensiones adaptativas
+    local PW  = mobile and math.min(ss.X - 24, 380) or 440
+    local PH  = mobile and 480 or 560
+    local PX  = (ss.X - PW) / 2
+    local PY  = mobile and math.max(8, (ss.Y - PH) / 2) or (ss.Y - PH) / 2
+
+    local titleSz    = mobile and 20 or 26
+    local subSz      = mobile and 11 or 13
+    local inputSz    = mobile and 13 or 14
+    local btnSz      = mobile and 15 or 16
+    local logoSz     = mobile and 46 or 60
+    local logoFrameH = mobile and 60 or 80
+    local logoFrameW = mobile and 60 or 80
+
+    local LS = MkFrame({
+        Name="Login", Size=UDim2.fromScale(1,1),
+        BackgroundColor3=C.BG0, ZIndex=90,
+    }, ScreenGui)
+    Grad(Color3.fromRGB(3,2,12), Color3.fromRGB(12,5,32), 150, LS)
+
+    -- Scan lines animadas
+    task.spawn(function()
+        while LS and LS.Parent do
+            local line = MkFrame({
+                Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,-0.02,0),
+                BackgroundColor3=C.P1, BackgroundTransparency=0.88, ZIndex=91,
+            }, LS)
+            Tw(line, TweenInfo.new(3+math.random()*3, Enum.EasingStyle.Linear), {Position=UDim2.new(0,0,1.02,0)})
+            task.wait(4+math.random()*4); pcall(function() line:Destroy() end)
+        end
+    end)
+
+    -- Hexágonos decorativos
+    local hexPos = {{0.05,0.08},{0.88,0.06},{0.02,0.82},{0.90,0.88},{0.50,0.02},{0.50,0.96}}
+    for _, hp in ipairs(hexPos) do
+        local hl = MkLabel({
+            Size=UDim2.new(0,70,0,70),
+            Position=UDim2.new(hp[1]-0.035,0,hp[2]-0.06,0),
+            BackgroundTransparency=1, Text="⬡", Font=Enum.Font.GothamBold,
+            TextSize=62, TextColor3=C.P1, TextTransparency=0.90, ZIndex=91,
+        }, LS)
+        task.spawn(function()
+            local d=true
+            while hl and hl.Parent do
+                Tw(hl,TI.SINE,{TextTransparency=d and 0.93 or 0.84}); task.wait(1.6+math.random()*2); d=not d
+            end
+        end)
+    end
+
+    SpawnParticles(LS, 14, 91)
+
+    -- ── PANEL PRINCIPAL ──────────────────────────────────────────────
+    local Panel = MkFrame({
+        Name="LoginPanel",
+        Size=UDim2.new(0,PW,0,PH),
+        Position=UDim2.new(0,PX,0,PY),
+        BackgroundColor3=Color3.fromRGB(10,8,26),
+        BackgroundTransparency=0.10, ZIndex=92,
+    }, LS)
+    Corner(24, Panel)
+    local PS = Stroke(1, C.BR1, Panel); PulseStroke(PS, C.P3, C.P2)
+
+    -- Glow interno del panel
+    local PGlow = MkFrame({
+        Size=UDim2.new(1.3,0,1.2,0), Position=UDim2.new(-0.15,0,-0.1,0),
+        BackgroundColor3=C.P1, BackgroundTransparency=0.93, ZIndex=91,
+    }, Panel); Corner(50, PGlow)
+
+    SpawnParticles(Panel, 6, 93)
+
+    -- Línea decorativa superior (gradiente)
+    local TopLine = MkFrame({
+        Size=UDim2.new(1,0,0,2), Position=UDim2.new(0,0,0,0),
+        BackgroundColor3=C.P1, ZIndex=93,
+    }, Panel); Corner(24, TopLine)
+    Grad(C.P3, C.A1, 0, TopLine)
+
+    -- ── LOGO (compacto en móvil) ──────────────────────────────────────
+    local logoY = mobile and 18 or 26
+    local LF = MkFrame({
+        Size=UDim2.new(0,logoFrameW,0,logoFrameH),
+        Position=UDim2.new(0.5,-logoFrameW/2,0,logoY),
+        BackgroundColor3=C.P3, BackgroundTransparency=0.25, ZIndex=93,
+    }, Panel); Corner(logoFrameW/2, LF)
+    Stroke(2, C.P1, LF); Grad(Color3.fromRGB(50,8,100), C.P3, 135, LF)
+
+    local LI = MkLabel({
+        Size=UDim2.fromScale(1,1), BackgroundTransparency=1,
+        Text="⬡", Font=Enum.Font.GothamBold, TextSize=logoSz, TextColor3=C.P1, ZIndex=94,
+    }, LF)
+    task.spawn(function()
+        while LI and LI.Parent do
+            Tw(LI,TI.SINE,{TextColor3=C.A1}); task.wait(1.4)
+            Tw(LI,TI.SINE,{TextColor3=C.P1}); task.wait(1.4)
+        end
+    end)
+
+    -- Anillo exterior
+    local LR = MkFrame({
+        Size=UDim2.new(0,logoFrameW+18,0,logoFrameH+18),
+        Position=UDim2.new(0.5,-(logoFrameW+18)/2,0,logoY-9),
+        BackgroundTransparency=1, ZIndex=93,
+    }, Panel); Corner((logoFrameW+18)/2, LR)
+    Stroke(1, C.P1, LR)
+
+    -- ── TÍTULOS ──────────────────────────────────────────────────────
+    local titleY = logoY + logoFrameH + 14
+    MkLabel({
+        Size=UDim2.new(1,0,0,titleSz+6), Position=UDim2.new(0,0,0,titleY),
+        BackgroundTransparency=1, Text="QUANTUM OS",
+        Font=Enum.Font.GothamBold, TextSize=titleSz, TextColor3=C.TW, ZIndex=93,
+    }, Panel)
+
+    MkLabel({
+        Size=UDim2.new(1,0,0,subSz+6), Position=UDim2.new(0,0,0,titleY+titleSz+8),
+        BackgroundTransparency=1, Text="Multi-Agent AI · Delta Edition · v3.1",
+        Font=Enum.Font.GothamSemibold, TextSize=subSz, TextColor3=C.A1, ZIndex=93,
+    }, Panel)
+
+    -- Badges de agentes (más pequeños en móvil)
+    local badgeY = titleY + titleSz + subSz + 22
+    local BadgeRow = MkFrame({
+        Size=UDim2.new(1,-32,0,mobile and 22 or 24),
+        Position=UDim2.new(0,16,0,badgeY),
+        BackgroundTransparency=1, ZIndex=93,
+    }, Panel)
+    ListL({FillDirection=Enum.FillDirection.Horizontal,
+        HorizontalAlignment=Enum.HorizontalAlignment.Center,
+        Padding=UDim.new(0,4)}, BadgeRow)
+
+    for _, ab in ipairs({{"🎮","Game"},{"💻","Code"},{"⚔","Strat"},{"🎨","Art"},{"⚡","Fast"}}) do
+        local B = MkLabel({
+            Size=UDim2.new(0,0,1,0), AutomaticSize=Enum.AutomaticSize.X,
+            BackgroundColor3=Color3.fromRGB(18,6,44),
+            Text=ab[1].." "..ab[2], Font=Enum.Font.Gotham,
+            TextSize=mobile and 9 or 10, TextColor3=C.TS, ZIndex=94,
+        }, BadgeRow)
+        Corner(10, B); Stroke(1, C.P3, B); Pad(0,7,0,7,B)
+    end
+
+    -- ── SEPARADOR ────────────────────────────────────────────────────
+    local sepY = badgeY + (mobile and 26 or 32)
+    local Sep = MkFrame({Size=UDim2.new(0.75,0,0,1), Position=UDim2.new(0.125,0,0,sepY),
+        BackgroundColor3=C.BR0, ZIndex=93}, Panel)
+    Grad(C.BG0, C.BR1, 0, Sep)
+
+    -- ── LABEL API KEY ────────────────────────────────────────────────
+    local fieldY = sepY + (mobile and 10 or 16)
+    MkLabel({
+        Size=UDim2.new(1,-32,0,16), Position=UDim2.new(0,16,0,fieldY),
+        BackgroundTransparency=1, Text="OPENROUTER API KEY",
+        Font=Enum.Font.GothamBold, TextSize=10, TextColor3=C.P2,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=93,
+    }, Panel)
+
+    -- ── INPUT BOX ────────────────────────────────────────────────────
+    local inputY = fieldY + 20
+    local inputH = mobile and 46 or 50
+    local KB = MkBox({
+        Size=UDim2.new(1,-32,0,inputH), Position=UDim2.new(0,16,0,inputY),
+        BackgroundColor3=Color3.fromRGB(8,6,22), BorderSizePixel=0,
+        Text="", PlaceholderText="sk-or-v1-xxxxxxxxxxxxxxxxxx",
+        Font=Enum.Font.Code, TextSize=inputSz, TextColor3=C.TW,
+        PlaceholderColor3=C.TM, ClearTextOnFocus=false, ZIndex=94,
+    }, Panel); Corner(12, KB)
+    local KBS = Stroke(1, C.BR0, KB)
+    Pad(0,14,0,14,KB)
+    KB.Focused:Connect(function()  Tw(KBS,TI.FAST,{Color=C.P1}) end)
+    KB.FocusLost:Connect(function() Tw(KBS,TI.FAST,{Color=C.BR0}) end)
+
+    -- ── STATUS ───────────────────────────────────────────────────────
+    local statusY = inputY + inputH + 4
+    local SL = MkLabel({
+        Size=UDim2.new(1,-32,0,mobile and 18 or 20),
+        Position=UDim2.new(0,16,0,statusY),
+        BackgroundTransparency=1, Text="",
+        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TM,
+        TextWrapped=true, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=93,
+    }, Panel)
+
+    -- ── SPINNER ──────────────────────────────────────────────────────
+    local spinnerY = statusY
+    local Spinner = MkLabel({
+        Size=UDim2.new(0,30,0,30),
+        Position=UDim2.new(0.5,-15,0,spinnerY),
+        BackgroundTransparency=1, Text="◌",
+        Font=Enum.Font.GothamBold, TextSize=24,
+        TextColor3=C.A1, Visible=false, ZIndex=95,
+    }, Panel)
+
+    -- ── BOTÓN VERIFICAR ──────────────────────────────────────────────
+    local btnY = statusY + (mobile and 24 or 28)
+    local btnH = mobile and 48 or 52
+    local LBtn = MkBtn({
+        Size=UDim2.new(1,-32,0,btnH), Position=UDim2.new(0,16,0,btnY),
+        BackgroundColor3=C.P1, BorderSizePixel=0,
+        Text="⚡  VERIFICAR API KEY",
+        Font=Enum.Font.GothamBold, TextSize=btnSz, TextColor3=Color3.new(1,1,1), ZIndex=94,
+    }, Panel); Corner(14, LBtn)
+    Grad(Color3.fromRGB(120,18,200), Color3.fromRGB(72,0,165), 135, LBtn)
+    Hover(LBtn, C.P1, C.P2)
+
+    -- ── OBTENER KEY ──────────────────────────────────────────────────
+    local getKeyY = btnY + btnH + (mobile and 8 or 12)
+    local GKBtn = MkBtn({
+        Size=UDim2.new(1,-32,0,mobile and 36 or 40),
+        Position=UDim2.new(0,16,0,getKeyY),
+        BackgroundColor3=Color3.fromRGB(12,10,30), BorderSizePixel=0,
+        Text="🔑  Obtener API Key gratuita →",
+        Font=Enum.Font.GothamSemibold, TextSize=mobile and 11 or 12,
+        TextColor3=C.A1, ZIndex=94,
+    }, Panel); Corner(12, GKBtn)
+    Stroke(1, C.A2, GKBtn)
+    GKBtn.MouseEnter:Connect(function() Tw(GKBtn,TI.FAST,{BackgroundColor3=Color3.fromRGB(0,24,44),TextColor3=C.TW}) end)
+    GKBtn.MouseLeave:Connect(function() Tw(GKBtn,TI.FAST,{BackgroundColor3=Color3.fromRGB(12,10,30),TextColor3=C.A1}) end)
+    GKBtn.MouseButton1Click:Connect(function()
+        pcall(function() setclipboard("https://openrouter.ai/keys") end)
+        SL.Text = "✓ openrouter.ai/keys copiado al portapapeles"
+        SL.TextColor3 = C.A1
+    end)
+
+    -- ── FOOTER ───────────────────────────────────────────────────────
+    MkLabel({
+        Size=UDim2.new(1,-32,0,14), Position=UDim2.new(0,16,1,-26),
+        BackgroundTransparency=1,
+        Text="🔒 Key usada localmente · No almacenada · LXNDXN v3.1",
+        Font=Enum.Font.Gotham, TextSize=9, TextColor3=C.TM,
+        TextXAlignment=Enum.TextXAlignment.Center, ZIndex=93,
+    }, Panel)
+
+    -- ── LÓGICA DE VERIFICACIÓN (FIX) ─────────────────────────────────
+    local function DoVerify()
+        local key = KB.Text:gsub("%s+","")
+        if key == "" then
+            SL.Text="⚠ Ingresa tu API Key de OpenRouter."; SL.TextColor3=C.TY
+            Tw(KB,TI.FAST,{BackgroundColor3=Color3.fromRGB(28,12,8)})
+            task.wait(0.6); Tw(KB,TI.FAST,{BackgroundColor3=Color3.fromRGB(8,6,22)})
+            return
         end
 
-        local yOffset = (not isUser and agentMeta) and 20 or 0
-        MakeLabel({
-            Size=UDim2.new(1,0,0,0), Position=UDim2.new(0,0,0,yOffset),
-            AutomaticSize=Enum.AutomaticSize.Y,
-            BackgroundTransparency=1, Text=text, Font=Enum.Font.Gotham,
-            TextSize=12, TextColor3=C.TEXT_WHITE, TextWrapped=true,
-            TextXAlignment=isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, ZIndex=17,
-        }, Bubble)
+        LBtn.Visible=false; Spinner.Visible=true
+        SL.Text="Conectando con OpenRouter..."; SL.TextColor3=C.A1
 
-        task.wait(0.05)
-        ChatScroll.CanvasSize = UDim2.new(0,0,0,ChatList.AbsoluteContentSize.Y+20)
-        ChatScroll.CanvasPosition = Vector2.new(0, ChatList.AbsoluteContentSize.Y)
-    end
-
-    -- Función de "pensando..."
-    local ThinkBubble = nil
-    local function ShowThinking(text)
-        if ThinkBubble then pcall(function() ThinkBubble:Destroy() end) end
-        ThinkBubble = MakeFrame({
-            Size=UDim2.new(0.5,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-            BackgroundColor3=C.BG_CARD, BackgroundTransparency=0.3, ZIndex=16,
-        }, ChatList)
-        Corner(12, ThinkBubble); Padding(8,12,8,12,ThinkBubble)
-        MakeLabel({
-            Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-            BackgroundTransparency=1, Text="◌ "..text, Font=Enum.Font.Gotham,
-            TextSize=11, TextColor3=C.TEXT_MUTED, TextWrapped=true, ZIndex=17,
-        }, ThinkBubble)
-        task.wait(0.05)
-        ChatScroll.CanvasSize = UDim2.new(0,0,0,ChatList.AbsoluteContentSize.Y+20)
-        ChatScroll.CanvasPosition = Vector2.new(0, ChatList.AbsoluteContentSize.Y)
-    end
-
-    local function HideThinking()
-        if ThinkBubble then pcall(function() ThinkBubble:Destroy() end); ThinkBubble = nil end
-    end
-
-    -- Mensaje inicial
-    AddMsg("🔮 Hola, "..DISPLAY_NAME.."! Soy el Quantum Oracle. Mi sistema Multi-Agent AI detectó: '"..GAME_NAME.."'.\n\nEl Orquestador (llama-3.3-70b) dirigirá tu consulta al agente más adecuado:\n🎮 Game Analyst · 💻 Code Expert · ⚔ Strategy · 🎨 Creative · ⚡ Fast\n\n¿En qué te ayudo?", false, {icon="🔮", name="Quantum Oracle", color=C.PURPLE_GLOW})
-
-    -- Input del chat
-    local InputRow = MakeFrame({
-        Size=UDim2.new(1,-32,0,46), Position=UDim2.new(0,16,1,-60),
-        BackgroundColor3=C.BG_CARD, ZIndex=16,
-    }, Tab)
-    Corner(14, InputRow); Stroke(1, C.BORDER, InputRow)
-
-    local ChatInput = MakeBox({
-        Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
-        BackgroundTransparency=1, Text="", PlaceholderText="Pregunta algo al Oracle...",
-        Font=Enum.Font.Gotham, TextSize=13, TextColor3=C.TEXT_WHITE,
-        PlaceholderColor3=C.TEXT_MUTED, ClearTextOnFocus=false, ZIndex=17,
-    }, InputRow)
-
-    local SendBtn = MakeButton({
-        Size=UDim2.new(0,44,0,36), Position=UDim2.new(1,-50,0.5,-18),
-        BackgroundColor3=C.PURPLE_NEON, Text="▶", Font=Enum.Font.GothamBold,
-        TextSize=16, TextColor3=Color3.new(1,1,1), ZIndex=17,
-    }, InputRow)
-    Corner(10, SendBtn)
-
-    local isWaiting = false
-
-    local function SendMessage()
-        if isWaiting then return end
-        local msg = ChatInput.Text:gsub("^%s+",""):gsub("%s+$","")
-        if msg == "" then return end
-        ChatInput.Text = ""
-        isWaiting = true
-        SendBtn.Text = "◌"
-        AddMsg(msg, true)
-
-        OracleQuery(
-            msg,
-            function(thinkText)   -- onThink
-                ShowThinking(thinkText)
-                ActiveAgentLabel.Text = "⬡ "..thinkText
-            end,
-            function(agentKey, meta) -- onAgent
-                ShowThinking(meta.icon.." "..meta.name.." respondiendo...")
-                ActiveAgentLabel.Text = meta.icon.." Agente activo: "..meta.name
-                AgentBadge.Text = meta.icon.." Usando: "..meta.name.."  ·  OpenRouter AI"
-            end,
-            function(response, meta) -- onResponse
-                HideThinking()
-                AddMsg(response, false, meta)
-                isWaiting = false
-                SendBtn.Text = "▶"
-                ActiveAgentLabel.Text = "En espera de consulta"
-                AgentBadge.Text = "⬡ Orquestador: llama-3.3-70b  ·  5 Agentes listos"
-            end,
-            function(errMsg)      -- onError
-                HideThinking()
-                AddMsg("❌ Error de conexión: "..tostring(errMsg).."\nVerifica tu API Key en Ajustes.", false, {icon="❌", name="Sistema", color=C.TEXT_RED})
-                isWaiting = false; SendBtn.Text = "▶"
-                ActiveAgentLabel.Text = "Error · Verifica conexión"
+        local spinActive = true
+        task.spawn(function()
+            local frames={"◌","◍","◎","●","◎","◍"}; local idx=1
+            while spinActive do
+                Spinner.Text=frames[idx]; idx=idx%#frames+1; task.wait(0.09)
             end
-        )
+        end)
+
+        VerifyAPIKey(key, function(success, msg)
+            spinActive=false; Spinner.Visible=false; LBtn.Visible=true
+            if success then
+                ENV.QOS_APIKey = key
+                SL.Text="✓ Verificada · Conexión establecida"; SL.TextColor3=C.TG
+                Tw(LBtn,TI.FAST,{BackgroundColor3=C.TON}); LBtn.Text="✓  CONECTADO"
+                task.wait(0.9)
+                Tw(LS,TI.MED,{BackgroundTransparency=1}); task.wait(0.4); LS:Destroy(); onSuccess()
+            else
+                SL.Text="✗ "..(msg or "Key inválida. Revisa tu cuenta en openrouter.ai")
+                SL.TextColor3=C.TR
+                -- Shake
+                for _ = 1,5 do
+                    Tw(Panel,TI.SNAP,{Position=UDim2.new(0,PX+6,0,PY)}); task.wait(0.05)
+                    Tw(Panel,TI.SNAP,{Position=UDim2.new(0,PX-6,0,PY)}); task.wait(0.05)
+                end
+                Tw(Panel,TI.SNAP,{Position=UDim2.new(0,PX,0,PY)})
+            end
+        end)
     end
 
-    SendBtn.MouseButton1Click:Connect(SendMessage)
-    ChatInput.FocusLost:Connect(function(enter) if enter then SendMessage() end end)
+    LBtn.MouseButton1Click:Connect(DoVerify)
+    KB.FocusLost:Connect(function(enter) if enter then DoVerify() end end)
+    return LS
+end
 
-    -- Sugerencias rápidas
-    local SuggestFrame = MakeFrame({
-        Size=UDim2.new(1,-32,0,32), Position=UDim2.new(0,16,1,-100),
-        BackgroundTransparency=1, ZIndex=16,
-    }, Tab)
-    ListLayout({FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,6)}, SuggestFrame)
+-- ═══════════════════════════════════════════════════════════════════════
+-- §12  DEVICE SELECTION
+-- ═══════════════════════════════════════════════════════════════════════
+local function CreateDeviceSelect(onSelect)
+    local ss = GetScreenSize()
+    local mobile = IsMobile()
+    local PW = mobile and math.min(ss.X-24, 360) or 440
+    local PH = mobile and 400 or 450
+    local PX = (ss.X-PW)/2
+    local PY = math.max(8,(ss.Y-PH)/2)
 
-    local suggestions = {"¿Mejores scripts?", "Script anti-ban", "¿Cómo farmear?", "Fix mi error Lua", "Estrategia rápida"}
-    for _, sug in ipairs(suggestions) do
-        local SB = MakeButton({
-            Size=UDim2.new(0,0,1,0), AutomaticSize=Enum.AutomaticSize.X,
-            BackgroundColor3=C.BG_CARD, Text=sug,
-            Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.CYAN_NEON, ZIndex=17,
-        }, SuggestFrame)
-        Corner(10, SB); Padding(0,10,0,10,SB); Stroke(1, C.CYAN_DIM, SB)
-        SB.MouseButton1Click:Connect(function() ChatInput.Text = sug end)
+    local DS = MkFrame({Name="DevSel", Size=UDim2.fromScale(1,1),
+        BackgroundColor3=C.BG0, ZIndex=90}, ScreenGui)
+    Grad(Color3.fromRGB(3,2,12), Color3.fromRGB(10,4,28), 140, DS)
+    SpawnParticles(DS, 12, 91)
+
+    local DP = MkFrame({
+        Size=UDim2.new(0,PW,0,PH), Position=UDim2.new(0,PX,1.2,0),
+        BackgroundColor3=Color3.fromRGB(10,8,26), BackgroundTransparency=0.08, ZIndex=92,
+    }, DS)
+    Corner(24, DP)
+    local DPS = Stroke(1, C.P1, DP); PulseStroke(DPS, C.P3, C.P2)
+    Tw(DP, TI.BOUNCE, {Position=UDim2.new(0,PX,0,PY)})
+
+    -- Check icon
+    local CI = MkLabel({
+        Size=UDim2.new(0,56,0,56), Position=UDim2.new(0.5,-28,0,22),
+        BackgroundColor3=Color3.fromRGB(0,36,16), BackgroundTransparency=0.25,
+        Text="✓", Font=Enum.Font.GothamBold, TextSize=32, TextColor3=C.TG, ZIndex=93,
+    }, DP); Corner(28, CI); Stroke(2, C.TG, CI)
+
+    MkLabel({Size=UDim2.new(1,0,0,28), Position=UDim2.new(0,0,0,88),
+        BackgroundTransparency=1, Text="✓  Conexión Establecida",
+        Font=Enum.Font.GothamBold, TextSize=mobile and 18 or 22, TextColor3=C.TG, ZIndex=93}, DP)
+
+    MkLabel({Size=UDim2.new(1,-32,0,16), Position=UDim2.new(0,16,0,120),
+        BackgroundTransparency=1, Text="OpenRouter AI conectado · Selecciona tu modo",
+        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TS, ZIndex=93}, DP)
+
+    MkFrame({Size=UDim2.new(0.7,0,0,1), Position=UDim2.new(0.15,0,0,148),
+        BackgroundColor3=C.BR0, ZIndex=93}, DP)
+
+    MkLabel({Size=UDim2.new(1,0,0,18), Position=UDim2.new(0,0,0,158),
+        BackgroundTransparency=1, Text="SELECCIONA TU DISPOSITIVO",
+        Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.P2, ZIndex=93}, DP)
+
+    local function DevBtn(icon, label, desc, yPos, strokeC)
+        local B = MkBtn({
+            Size=UDim2.new(1,-32,0,mobile and 78 or 86),
+            Position=UDim2.new(0,16,0,yPos),
+            BackgroundColor3=Color3.fromRGB(12,9,32), BorderSizePixel=0, Text="", ZIndex=93,
+        }, DP); Corner(16, B)
+        local BS = Stroke(1, strokeC, B)
+        MkLabel({Size=UDim2.new(0,50,0,50), Position=UDim2.new(0,14,0.5,-25),
+            BackgroundTransparency=1, Text=icon, TextSize=30, ZIndex=94}, B)
+        MkLabel({Size=UDim2.new(1,-80,0,24), Position=UDim2.new(0,72,0,14),
+            BackgroundTransparency=1, Text=label, Font=Enum.Font.GothamBold,
+            TextSize=mobile and 16 or 18, TextColor3=C.TW,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=94}, B)
+        MkLabel({Size=UDim2.new(1,-80,0,18), Position=UDim2.new(0,72,0,38),
+            BackgroundTransparency=1, Text=desc, Font=Enum.Font.Gotham,
+            TextSize=10, TextColor3=C.TM, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=94}, B)
+        B.MouseEnter:Connect(function()
+            Tw(B,TI.FAST,{BackgroundColor3=Color3.fromRGB(30,12,72)})
+            BS.Color = strokeC == C.P1 and C.P2 or C.A1
+        end)
+        B.MouseLeave:Connect(function()
+            Tw(B,TI.FAST,{BackgroundColor3=Color3.fromRGB(12,9,32)}); BS.Color=strokeC
+        end)
+        return B
+    end
+
+    local MB = DevBtn("📱","📱  MÓVIL","UI táctil optimizada · Botones grandes", mobile and 178 or 186, C.P1)
+    local PB = DevBtn("🖥","🖥  PC / ESCRITORIO","Sidebar completo · Atajos F1–F8", mobile and 266 or 282, C.A1)
+
+    MkLabel({Size=UDim2.new(1,0,0,14), Position=UDim2.new(0,0,1,-20),
+        BackgroundTransparency=1, Text="Configurable en Ajustes posteriormente",
+        Font=Enum.Font.Gotham, TextSize=9, TextColor3=C.TM, ZIndex=92}, DP)
+
+    local function SelDev(mode)
+        ENV.QOS_DeviceMode = mode; ENV.QOS_Unlocked = true
+        Tw(DS,TI.MED,{BackgroundTransparency=1}); task.wait(0.4); DS:Destroy(); onSelect(mode)
+    end
+    MB.MouseButton1Click:Connect(function() SelDev("mobile") end)
+    PB.MouseButton1Click:Connect(function() SelDev("pc")     end)
+    return DS
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- §13  VENTANA PRINCIPAL
+-- ═══════════════════════════════════════════════════════════════════════
+local MainWin, Sidebar, ContentArea, CurrTabFrame = nil,nil,nil,nil
+local SbBtns = {}
+
+local function ClearContent()
+    if CurrTabFrame then CurrTabFrame:Destroy(); CurrTabFrame=nil end
+end
+
+local function SetActiveTab(name)
+    for tname, btn in pairs(SbBtns) do
+        local act = (tname == name)
+        Tw(btn, TI.FAST, {BackgroundColor3=act and C.P3 or Color3.fromRGB(0,0,0)})
+        Tw(btn, TI.FAST, {BackgroundTransparency=act and 0 or 1})
+        local ind = btn:FindFirstChild("Ind")
+        if ind then ind.Visible=act end
     end
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 15 - TAB: SCRIPT HUB
--- ═══════════════════════════════════════════════════════════════════════════════
+local function CreateMainWindow()
+    local mobile = IsMobile()
+    local SBW = mobile and 185 or 210  -- sidebar width
+    local HH  = mobile and 50 or 56    -- header height
 
-_G["QOS_Tab_SCRIPT_HUB"] = function()
-    local Tab = MakeFrame({Name="Tab_HUB", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
-    CurrentTabFrame = Tab
-    SectionHeader(Tab, "SCRIPT HUB  ⚡", "Scripts verificados para "..GAME_NAME)
+    MainWin = MkFrame({
+        Name="MainWin", Size=UDim2.fromScale(1,1),
+        BackgroundTransparency=1, ZIndex=10,
+    }, ScreenGui)
 
-    local SearchRow = MakeFrame({
-        Size=UDim2.new(1,-32,0,40), Position=UDim2.new(0,16,0,70),
-        BackgroundColor3=C.BG_CARD, ZIndex=15,
-    }, Tab)
-    Corner(12, SearchRow); Stroke(1, C.BORDER, SearchRow)
-    local SBox = MakeBox({
-        Size=UDim2.new(1,-20,1,0), Position=UDim2.new(0,10,0,0),
-        BackgroundTransparency=1, Text="", PlaceholderText="🔍 Buscar scripts...",
-        Font=Enum.Font.Gotham, TextSize=13, TextColor3=C.TEXT_WHITE,
-        PlaceholderColor3=C.TEXT_MUTED, ZIndex=16,
-    }, SearchRow)
+    -- ── HEADER ────────────────────────────────────────────────────────
+    local Header = MkFrame({
+        Name="Header", Size=UDim2.new(1,0,0,HH),
+        BackgroundColor3=C.BGH, ZIndex=12,
+    }, MainWin)
+    Stroke(1, C.BR0, Header)
+    Grad(C.BGH, Color3.fromRGB(7,5,18), 90, Header)
 
-    local ScriptScroll = MakeScroll({
-        Size=UDim2.new(1,-32,1,-122), Position=UDim2.new(0,16,0,118),
-        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15,
-    }, Tab)
-    local ScriptList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-        BackgroundTransparency=1, ZIndex=15}, ScriptScroll)
-    ListLayout({Padding=UDim.new(0,8)}, ScriptList)
+    -- Logo
+    local HL = MkLabel({
+        Size=UDim2.new(0,32,0,32), Position=UDim2.new(0,12,0.5,-16),
+        BackgroundTransparency=1, Text="⬡", Font=Enum.Font.GothamBold,
+        TextSize=28, TextColor3=C.P1, ZIndex=13,
+    }, Header)
+    task.spawn(function()
+        while HL and HL.Parent do
+            Tw(HL,TI.SINE,{TextColor3=C.A1}); task.wait(1.5)
+            Tw(HL,TI.SINE,{TextColor3=C.P1}); task.wait(1.5)
+        end
+    end)
 
-    local scripts = {
-        {title="Auto Farm v5.2",        author="LXNDXN",     verified=true,  script="print('Auto Farm activado')"},
-        {title="ESP Pro · All Players", author="QuantumDev", verified=true,  script="print('ESP activo')"},
-        {title="Infinite Jump",         author="DeltaFarm",  verified=false, script="print('InfJump activo')"},
-        {title="Speed Hack x10",        author="LXNDXN",     verified=true,  script="print('Speed x10')"},
-        {title="God Mode Bypass",       author="NullSec",    verified=false, script="print('God Mode')"},
-        {title="Auto Collect Items",    author="QuantumDev", verified=true,  script="print('AutoCollect')"},
+    MkLabel({Size=UDim2.new(0,180,0,mobile and 18 or 20), Position=UDim2.new(0,48,0,mobile and 7 or 8),
+        BackgroundTransparency=1, Text="QUANTUM OS  v3.1",
+        Font=Enum.Font.GothamBold, TextSize=mobile and 13 or 15, TextColor3=C.TW,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=13}, Header)
+
+    MkLabel({Size=UDim2.new(0,180,0,14), Position=UDim2.new(0,48,0,mobile and 27 or 30),
+        BackgroundTransparency=1, Text="Multi-Agent AI · Delta",
+        Font=Enum.Font.Gotham, TextSize=mobile and 9 or 11, TextColor3=C.A1,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=13}, Header)
+
+    -- Game badge (centro)
+    local GB = MkLabel({
+        Size=UDim2.new(0,mobile and 160 or 200,0,mobile and 24 or 28),
+        Position=UDim2.new(0.5,(mobile and -80 or -100),0.5,mobile and -12 or -14),
+        BackgroundColor3=C.BG3, Text="🎮  "..GNAME:sub(1,16),
+        Font=Enum.Font.Gotham, TextSize=mobile and 10 or 12, TextColor3=C.TS, ZIndex=13,
+    }, Header); Corner(12, GB); Stroke(1, C.BR0, GB)
+
+    -- Botones sistema
+    local SF = MkFrame({
+        Size=UDim2.new(0,mobile and 112 or 148,0,36),
+        Position=UDim2.new(1,mobile and -118 or -158,0.5,-18),
+        BackgroundTransparency=1, ZIndex=13,
+    }, Header)
+
+    local function SysBtn(icon, color, x)
+        local b = MkBtn({
+            Size=UDim2.new(0,30,0,30), Position=UDim2.new(0,x,0.5,-15),
+            BackgroundColor3=Color3.fromRGB(16,13,34), Text=icon,
+            Font=Enum.Font.GothamBold, TextSize=12, TextColor3=color, ZIndex=14,
+        }, SF); Corner(9, b)
+        Hover(b, Color3.fromRGB(16,13,34), Color3.fromRGB(32,24,60)); return b
+    end
+    local WB  = SysBtn("⚡",C.TG, 0)
+    local NB  = SysBtn("🔔",C.TY, 34)
+    local MinB= SysBtn("—", C.TS, 68)
+    local ClB = SysBtn("✕",C.TR, 102)
+
+    ClB.MouseButton1Click:Connect(function()
+        Tw(MainWin,TI.MED,{Size=UDim2.new(0,0,0,0)}); task.wait(0.35); ScreenGui:Destroy()
+    end)
+    local visible2 = true
+    MinB.MouseButton1Click:Connect(function()
+        visible2 = not visible2
+        if visible2 then MainWin.Visible=true; Tw(MainWin,TI.MED,{Size=UDim2.fromScale(1,1)})
+        else Tw(MainWin,TI.MED,{Size=UDim2.new(1,0,0,HH)}); task.delay(0.35,function() pcall(function() end) end) end
+    end)
+
+    -- ── SIDEBAR ───────────────────────────────────────────────────────
+    Sidebar = MkFrame({
+        Name="Sidebar", Size=UDim2.new(0,SBW,1,-HH), Position=UDim2.new(0,0,0,HH),
+        BackgroundColor3=C.BGS, ZIndex=11,
+    }, MainWin)
+    Stroke(1, C.BR0, Sidebar)
+    -- Línea lateral decorativa
+    local SBAccent = MkFrame({
+        Size=UDim2.new(0,1,1,0), Position=UDim2.new(1,-1,0,0),
+        BackgroundColor3=C.P1, BackgroundTransparency=0.7, ZIndex=12,
+    }, Sidebar)
+
+    -- Perfil
+    local Prof = MkFrame({
+        Size=UDim2.new(1,-14,0,mobile and 64 or 72),
+        Position=UDim2.new(0,7,0,8),
+        BackgroundColor3=C.BG3, ZIndex=12,
+    }, Sidebar); Corner(14, Prof); Stroke(1, C.P3, Prof)
+    Grad(C.BG3, Color3.fromRGB(18,8,44), 135, Prof)
+
+    local AV = MkLabel({
+        Size=UDim2.new(0,mobile and 40 or 44,0,mobile and 40 or 44),
+        Position=UDim2.new(0,9,0.5,mobile and -20 or -22),
+        BackgroundColor3=C.P3,
+        Text=DNAME:sub(1,2):upper(),
+        Font=Enum.Font.GothamBold, TextSize=mobile and 15 or 17, TextColor3=C.TW, ZIndex=13,
+    }, Prof); Corner(22, AV); Stroke(2, C.P1, AV)
+
+    MkLabel({Size=UDim2.new(1,-60,0,18), Position=UDim2.new(0,57,0,10),
+        BackgroundTransparency=1, Text=DNAME,
+        Font=Enum.Font.GothamBold, TextSize=mobile and 11 or 12, TextColor3=C.TW,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=13}, Prof)
+    MkLabel({Size=UDim2.new(1,-60,0,14), Position=UDim2.new(0,57,0,28),
+        BackgroundTransparency=1, Text="@"..UNAME,
+        Font=Enum.Font.Gotham, TextSize=mobile and 9 or 10, TextColor3=C.A1,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=13}, Prof)
+
+    local OB = MkLabel({
+        Size=UDim2.new(0,68,0,14), Position=UDim2.new(0,57,0,44),
+        BackgroundColor3=Color3.fromRGB(0,44,20), Text="● AI Online",
+        Font=Enum.Font.Gotham, TextSize=9, TextColor3=C.TG, ZIndex=13,
+    }, Prof); Corner(7, OB)
+
+    -- Tabs scroll
+    local SS = MkScroll({
+        Size=UDim2.new(1,0,1,(mobile and -80 or -90)),
+        Position=UDim2.new(0,0,0,(mobile and 80 or 88)),
+        BackgroundTransparency=1, ScrollBarThickness=0, ZIndex=12,
+    }, Sidebar)
+    local SL2 = MkFrame({Size=UDim2.new(1,0,0,0), BackgroundTransparency=1, ZIndex=12}, SS)
+    ListL({Padding=UDim.new(0,1), SortOrder=Enum.SortOrder.LayoutOrder}, SL2)
+
+    local TABS = {
+        {name="START",            icon="⌂", order=1},
+        {name="SCRIPT HUB",       icon="⚡", order=2},
+        {name="SYSTEM SETTINGS",  icon="⚙", order=3},
+        {name="TOOLBOX",          icon="🛠", order=4},
+        {name="FILE MANAGER",     icon="📁", order=5},
+        {name="PROCESSES & LOGS", icon="📊", order=6},
+        {name="MEDIA CENTER",     icon="🎵", order=7},
+        {name="COMMUNITY",        icon="👥", order=8},
+        {name="QUANTUM ORACLE",   icon="🔮", order=9},
+        {name="GAME BOOSTER",     icon="🚀", order=10},
+        {name="SKIN CUSTOMIZER",  icon="🎨", order=11},
+        {name="POWER",            icon="⏻",  order=12},
     }
 
-    for _, s in ipairs(scripts) do
-        local Card = MakeFrame({Size=UDim2.new(1,0,0,80), BackgroundColor3=C.BG_CARD, ZIndex=16}, ScriptList)
-        Corner(14, Card); Stroke(1, C.BORDER, Card)
+    for _, tab in ipairs(TABS) do
+        local Btn = MkBtn({
+            Name=tab.name,
+            Size=UDim2.new(1,-10,0,mobile and 38 or 42),
+            BackgroundColor3=Color3.fromRGB(0,0,0),
+            BackgroundTransparency=1, Text="", LayoutOrder=tab.order, ZIndex=13,
+        }, SL2); Corner(9, Btn); Pad(0,6,0,6,Btn)
 
-        local Thumb = MakeFrame({Size=UDim2.new(0,54,0,54), Position=UDim2.new(0,12,0.5,-27),
-            BackgroundColor3=C.PURPLE_DIM, ZIndex=17}, Card)
-        Corner(12, Thumb)
-        MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text="⚡",
-            Font=Enum.Font.GothamBold, TextSize=24, TextColor3=C.TEXT_WHITE, ZIndex=18}, Thumb)
+        local Ind = MkFrame({
+            Name="Ind", Size=UDim2.new(0,3,0.55,0),
+            Position=UDim2.new(0,0,0.225,0),
+            BackgroundColor3=C.P1, Visible=false, ZIndex=14,
+        }, Btn); Corner(2, Ind)
 
-        MakeLabel({Size=UDim2.new(1,-200,0,22), Position=UDim2.new(0,76,0,12),
-            BackgroundTransparency=1, Text=s.title, Font=Enum.Font.GothamBold,
-            TextSize=14, TextColor3=C.TEXT_WHITE, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Card)
-        MakeLabel({Size=UDim2.new(1,-200,0,16), Position=UDim2.new(0,76,0,36),
-            BackgroundTransparency=1, Text="by "..s.author, Font=Enum.Font.Gotham,
-            TextSize=11, TextColor3=C.TEXT_SOFT, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Card)
+        MkLabel({Size=UDim2.new(0,26,1,0), Position=UDim2.new(0,10,0,0),
+            BackgroundTransparency=1, Text=tab.icon,
+            Font=Enum.Font.GothamBold, TextSize=mobile and 16 or 17,
+            TextColor3=C.TS, ZIndex=14}, Btn)
+        MkLabel({Size=UDim2.new(1,-42,1,0), Position=UDim2.new(0,40,0,0),
+            BackgroundTransparency=1, Text=tab.name,
+            Font=Enum.Font.GothamSemibold, TextSize=mobile and 10 or 11,
+            TextColor3=C.TS, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=14}, Btn)
 
-        if s.verified then
-            local VBadge = MakeLabel({Size=UDim2.new(0,110,0,16), Position=UDim2.new(0,76,0,56),
-                BackgroundColor3=Color3.fromRGB(0,44,22), Text="✓ Verificado Delta",
-                Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_GREEN, ZIndex=18}, Card)
-            Corner(8, VBadge)
+        SbBtns[tab.name] = Btn
+        Btn.MouseButton1Click:Connect(function()
+            ClearContent(); SetActiveTab(tab.name); ENV.QOS_ActiveTab=tab.name
+            local fnKey="QOS_Tab_"..tab.name:gsub("%s+","_"):gsub("[&]",""):gsub("__","_")
+            pcall(function() _G[fnKey]() end)
+        end)
+        Hover(Btn, Color3.fromRGB(0,0,0), C.BG4)
+    end
+
+    local SLL = SL2:FindFirstChildWhichIsA("UIListLayout")
+    SLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        SL2.Size = UDim2.new(1,0,0,SLL.AbsoluteContentSize.Y+8)
+    end)
+
+    -- ── CONTENT AREA ─────────────────────────────────────────────────
+    ContentArea = MkFrame({
+        Name="ContentArea",
+        Size=UDim2.new(1,-SBW,1,-HH),
+        Position=UDim2.new(0,SBW,0,HH),
+        BackgroundColor3=C.BG1, ZIndex=11,
+    }, MainWin)
+
+    MainWin.Size = UDim2.new(0,0,0,0); MainWin.Position=UDim2.new(0.5,0,0.5,0)
+    Tw(MainWin, TI.BOUNCE, {Size=UDim2.fromScale(1,1), Position=UDim2.fromScale(0,0)})
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- §14  COMPONENTES REUTILIZABLES
+-- ═══════════════════════════════════════════════════════════════════════
+local function MkToggle(parent, label, def, onChange)
+    local Row = MkFrame({Size=UDim2.new(1,0,0,44), BackgroundColor3=C.BG3, ZIndex=20}, parent)
+    Corner(10, Row)
+    MkLabel({Size=UDim2.new(1,-72,1,0), Position=UDim2.new(0,14,0,0),
+        BackgroundTransparency=1, Text=label, Font=Enum.Font.Gotham,
+        TextSize=13, TextColor3=C.TW, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=21}, Row)
+    local Tr = MkFrame({Size=UDim2.new(0,46,0,24), Position=UDim2.new(1,-58,0.5,-12),
+        BackgroundColor3=def and C.TON or C.TOFF, ZIndex=21}, Row); Corner(12, Tr)
+    local Th = MkFrame({Size=UDim2.new(0,18,0,18),
+        Position=def and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9),
+        BackgroundColor3=Color3.new(1,1,1), ZIndex=22}, Tr); Corner(9, Th)
+    local state = def
+    local TB = MkBtn({Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Text="",ZIndex=23},Tr)
+    TB.MouseButton1Click:Connect(function()
+        state = not state
+        Tw(Tr,TI.FAST,{BackgroundColor3=state and C.TON or C.TOFF})
+        Tw(Th,TI.FAST,{Position=state and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9)})
+        if onChange then onChange(state) end
+    end)
+    return Row
+end
+
+local function MkSlider(parent, label, minV, maxV, defV, suf, onChange)
+    local Row = MkFrame({Size=UDim2.new(1,0,0,62), BackgroundColor3=C.BG3, ZIndex=20}, parent)
+    Corner(10, Row)
+    MkLabel({Size=UDim2.new(1,-64,0,22), Position=UDim2.new(0,14,0,7),
+        BackgroundTransparency=1, Text=label, Font=Enum.Font.Gotham,
+        TextSize=13, TextColor3=C.TW, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=21}, Row)
+    local VL = MkLabel({Size=UDim2.new(0,54,0,22), Position=UDim2.new(1,-64,0,7),
+        BackgroundTransparency=1, Text=defV..(suf or ""),
+        Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.P2,
+        TextXAlignment=Enum.TextXAlignment.Right, ZIndex=21}, Row)
+    local Tr = MkFrame({Size=UDim2.new(1,-28,0,5), Position=UDim2.new(0,14,0,42),
+        BackgroundColor3=C.SBG, ZIndex=21}, Row); Corner(3,Tr)
+    local ratio = (defV-minV)/(maxV-minV)
+    local Fi = MkFrame({Size=UDim2.new(ratio,0,1,0), BackgroundColor3=C.SFG, ZIndex=22}, Tr)
+    Corner(3,Fi); Grad(C.P1,C.A1,0,Fi)
+    local Kn = MkFrame({Size=UDim2.new(0,14,0,14), Position=UDim2.new(ratio,-7,0.5,-7),
+        BackgroundColor3=Color3.new(1,1,1), ZIndex=23}, Tr); Corner(7,Kn); Stroke(2,C.P1,Kn)
+    local drag=false
+    local function Upd(x)
+        local t=math.clamp((x-Tr.AbsolutePosition.X)/Tr.AbsoluteSize.X,0,1)
+        local v=math.floor(minV+t*(maxV-minV))
+        Tw(Fi,TI.SNAP,{Size=UDim2.new(t,0,1,0)}); Tw(Kn,TI.SNAP,{Position=UDim2.new(t,-7,0.5,-7)})
+        VL.Text=v..(suf or ""); if onChange then onChange(v) end
+    end
+    Tr.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            drag=true; Upd(i.Position.X)
+        end
+    end)
+    Track(UserInputService.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then Upd(i.Position.X) end
+    end))
+    Track(UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end
+    end))
+    return Row
+end
+
+local function SecHeader(parent, title, sub)
+    local H = MkFrame({Size=UDim2.new(1,0,0,IsMobile() and 54 or 62), BackgroundColor3=C.BGH, ZIndex=19}, parent)
+    Stroke(1, C.BR0, H)
+    Grad(C.BGH, Color3.fromRGB(7,5,18), 90, H)
+    local AL = MkFrame({
+        Size=UDim2.new(0,3,0,IsMobile() and 32 or 38),
+        Position=UDim2.new(0,8,0,IsMobile() and 11 or 12),
+        BackgroundColor3=C.P1, ZIndex=20,
+    }, H); Corner(2,AL)
+    Grad(C.P1, C.A1, 90, AL)
+    MkLabel({Size=UDim2.new(1,-24,0,26), Position=UDim2.new(0,20,0,IsMobile() and 6 or 8),
+        BackgroundTransparency=1, Text=title, Font=Enum.Font.GothamBold,
+        TextSize=IsMobile() and 15 or 18, TextColor3=C.TW,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=20}, H)
+    if sub then
+        MkLabel({Size=UDim2.new(1,-24,0,14), Position=UDim2.new(0,20,0,IsMobile() and 34 or 38),
+            BackgroundTransparency=1, Text=sub, Font=Enum.Font.Gotham,
+            TextSize=10, TextColor3=C.TM, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=20}, H)
+    end
+    return H
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- §15  TAB: START
+-- ═══════════════════════════════════════════════════════════════════════
+_G["QOS_Tab_START"] = function()
+    local Tab = MkFrame({Name="T_START", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrTabFrame = Tab
+    local Sc = MkScroll({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local Li = MkFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Sc)
+    ListL({Padding=UDim.new(0,0)}, Li); Pad(0,0,24,0,Li)
+    SecHeader(Li, "START  ⌂", "Panel de inicio · Quantum OS v3.1")
+
+    -- Stats cards
+    local SR = MkFrame({Size=UDim2.new(1,0,0,88), BackgroundTransparency=1, ZIndex=15}, Li)
+    local SG = MkFrame({Size=UDim2.new(1,-28,1,-12), Position=UDim2.new(0,14,0,6), BackgroundTransparency=1, ZIndex=15}, SR)
+    GridL({CellSize=UDim2.new(0.25,-4,1,-4), CellPadding=UDim2.new(0,4,0,4)}, SG)
+
+    for _, s in ipairs({
+        {label="Jugador",   val=DNAME:sub(1,10), icon="👤", c=C.P2},
+        {label="Juego",     val=GNAME:sub(1,12), icon="🎮", c=C.A1},
+        {label="AI Status", val="Online",         icon="🤖", c=C.TG},
+        {label="Agentes",   val="5 activos",      icon="⬡",  c=C.A4},
+    }) do
+        local Card=MkFrame({BackgroundColor3=C.BG3,ZIndex=16},SG); Corner(12,Card)
+        Stroke(1,C.BR0,Card); Grad(C.BG3,Color3.fromRGB(16,8,36),135,Card)
+        MkLabel({Size=UDim2.new(1,0,0,24),Position=UDim2.new(0,0,0,8),BackgroundTransparency=1,Text=s.icon,TextSize=18,ZIndex=17},Card)
+        MkLabel({Size=UDim2.new(1,-6,0,18),Position=UDim2.new(0,3,0,32),BackgroundTransparency=1,
+            Text=s.val,Font=Enum.Font.GothamBold,TextSize=11,TextColor3=s.c,ZIndex=17},Card)
+        MkLabel({Size=UDim2.new(1,-6,0,13),Position=UDim2.new(0,3,0,51),BackgroundTransparency=1,
+            Text=s.label,Font=Enum.Font.Gotham,TextSize=9,TextColor3=C.TM,ZIndex=17},Card)
+    end
+
+    -- Agentes
+    MkLabel({Size=UDim2.new(1,-32,0,20), BackgroundTransparency=1, Text="AGENTES ACTIVOS",
+        Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.P2,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=15}, Li)
+
+    local AL2 = MkFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1, ZIndex=15}, Li)
+    ListL({Padding=UDim.new(0,3)}, AL2); Pad(0,14,0,14,AL2)
+
+    for _, ag in ipairs({
+        {icon="⬡",name="Orquestador",   model="llama-3.3-70b", desc="Dirige el flujo multi-agente"},
+        {icon="🎮",name="Game Analyst",  model="nemotron-120b", desc="Análisis del juego actual"},
+        {icon="💻",name="Code Expert",   model="qwen3-coder",   desc="Scripts y código Lua"},
+        {icon="⚔", name="Strategy Agent",model="deepseek-v4",  desc="Estrategias y builds"},
+        {icon="🎨",name="Creative Agent",model="gemma-4-31b",   desc="Ideas y personalización"},
+    }) do
+        local AC=MkFrame({Size=UDim2.new(1,0,0,IsMobile() and 46 or 52),BackgroundColor3=C.BG2,ZIndex=16},AL2)
+        Corner(10,AC); Stroke(1,C.BR0,AC)
+        Grad(C.BG2,Color3.fromRGB(14,8,34),135,AC)
+        MkLabel({Size=UDim2.new(0,34,0,34),Position=UDim2.new(0,8,0.5,-17),
+            BackgroundColor3=C.P3,BackgroundTransparency=0.4,Text=ag.icon,TextSize=18,ZIndex=17},AC)
+        MkLabel({Size=UDim2.new(1,-160,0,18),Position=UDim2.new(0,50,0,8),
+            BackgroundTransparency=1,Text=ag.name,Font=Enum.Font.GothamBold,
+            TextSize=12,TextColor3=C.TW,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},AC)
+        MkLabel({Size=UDim2.new(1,-160,0,14),Position=UDim2.new(0,50,0,26),
+            BackgroundTransparency=1,Text=ag.desc,Font=Enum.Font.Gotham,
+            TextSize=10,TextColor3=C.TM,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},AC)
+        local Sb=MkLabel({Size=UDim2.new(0,86,0,20),Position=UDim2.new(1,-96,0.5,-10),
+            BackgroundColor3=Color3.fromRGB(0,36,18),Text="● "..ag.model,
+            Font=Enum.Font.Gotham,TextSize=9,TextColor3=C.TG,ZIndex=17},AC); Corner(9,Sb)
+    end
+
+    local LL=Li:FindFirstChildWhichIsA("UIListLayout")
+    if LL then LL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Sc.CanvasSize=UDim2.new(0,0,0,LL.AbsoluteContentSize.Y+24)
+    end) end
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- §16  TAB: QUANTUM ORACLE (Chat Multi-Agente)
+-- ═══════════════════════════════════════════════════════════════════════
+_G["QOS_Tab_QUANTUM_ORACLE"] = function()
+    local Tab = MkFrame({Name="T_ORACLE",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=15},ContentArea)
+    CurrTabFrame=Tab
+    local mobile=IsMobile()
+    SecHeader(Tab,"QUANTUM ORACLE  🔮","Multi-Agent AI · "..GNAME)
+
+    local HH2 = mobile and 54 or 62
+
+    -- Orb info bar
+    local OBar = MkFrame({
+        Size=UDim2.new(1,-24,0,mobile and 90 or 104),
+        Position=UDim2.new(0,12,0,HH2+6),
+        BackgroundColor3=C.BG4, ZIndex=16,
+    }, Tab); Corner(14,OBar)
+    Stroke(1,C.BR1,OBar); Grad(C.BG4,Color3.fromRGB(36,0,72),135,OBar)
+
+    local Orb=MkLabel({
+        Size=UDim2.new(0,mobile and 60 or 70,0,mobile and 60 or 70),
+        Position=UDim2.new(0,mobile and 12 or 16,0.5,mobile and -30 or -35),
+        BackgroundColor3=C.P3,Text="🔮",TextSize=mobile and 28 or 34,ZIndex=17,
+    },OBar); Corner(35,Orb); Stroke(2,C.P1,Orb)
+    task.spawn(function()
+        while Orb and Orb.Parent do
+            Tw(Orb,TI.SINE,{BackgroundColor3=C.P2}); task.wait(1.2)
+            Tw(Orb,TI.SINE,{BackgroundColor3=C.P3}); task.wait(1.2)
+        end
+    end)
+
+    local orbX = (mobile and 60 or 70) + (mobile and 22 or 28)
+    MkLabel({Size=UDim2.new(1,-orbX-12,0,22),Position=UDim2.new(0,orbX,0,mobile and 12 or 14),
+        BackgroundTransparency=1,Text="QUANTUM ORACLE · Multi-Agent AI",
+        Font=Enum.Font.GothamBold,TextSize=mobile and 13 or 15,TextColor3=C.TW,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},OBar)
+    local AgBadge=MkLabel({Size=UDim2.new(1,-orbX-12,0,16),Position=UDim2.new(0,orbX,0,mobile and 36 or 40),
+        BackgroundTransparency=1,Text="⬡ Orch: llama-3.3-70b · 5 Agentes",
+        Font=Enum.Font.Gotham,TextSize=mobile and 10 or 11,TextColor3=C.A1,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},OBar)
+    local AgStatus=MkLabel({Size=UDim2.new(1,-orbX-12,0,14),Position=UDim2.new(0,orbX,0,mobile and 56 or 62),
+        BackgroundTransparency=1,Text="En espera · '"..GNAME.."' detectado",
+        Font=Enum.Font.Gotham,TextSize=mobile and 9 or 10,TextColor3=C.TS,TextWrapped=true,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},OBar)
+
+    -- Sugerencias
+    local SugY = HH2 + (mobile and 102 or 118)
+    local SugF=MkFrame({Size=UDim2.new(1,-24,0,mobile and 26 or 30),Position=UDim2.new(0,12,0,SugY),
+        BackgroundTransparency=1,ZIndex=16},Tab)
+    ListL({FillDirection=Enum.FillDirection.Horizontal,Padding=UDim.new(0,5)},SugF)
+
+    -- Chat scroll
+    local chatY = SugY + (mobile and 32 or 38)
+    local chatH2 = mobile and 50 or 58
+    local ChatSc=MkScroll({
+        Size=UDim2.new(1,-24,1,-(chatY+chatH2+12)),
+        Position=UDim2.new(0,12,0,chatY),
+        BackgroundColor3=Color3.fromRGB(4,4,12),ScrollBarThickness=3,ZIndex=15,
+    },Tab); Corner(12,ChatSc); Stroke(1,C.BR0,ChatSc)
+
+    local ChatLi=MkFrame({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1,ZIndex=15},ChatSc)
+    ListL({Padding=UDim.new(0,7)},ChatLi); Pad(8,8,8,8,ChatLi)
+
+    local function AddMsg(txt, isUser, meta)
+        local bubble=MkFrame({
+            Size=UDim2.new(0.87,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+            Position=isUser and UDim2.new(0.13,0,0,0) or UDim2.new(0,0,0,0),
+            BackgroundColor3=isUser and C.P3 or (meta and meta.color and Color3.fromRGB(
+                math.floor(meta.color.R*255*0.15), math.floor(meta.color.G*255*0.15), math.floor(meta.color.B*255*0.15)
+            ) or C.BG3),
+            BackgroundTransparency=isUser and 0.1 or 0.15, ZIndex=16,
+        },ChatLi); Corner(12,bubble); Pad(9,12,9,12,bubble)
+        if not isUser and meta then
+            local ab=MkLabel({Size=UDim2.new(1,0,0,15),BackgroundTransparency=1,
+                Text=meta.icon.." "..meta.name,Font=Enum.Font.GothamBold,
+                TextSize=9,TextColor3=meta.color,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},bubble)
+        end
+        local yy=(not isUser and meta) and 18 or 0
+        MkLabel({Size=UDim2.new(1,0,0,0),Position=UDim2.new(0,0,0,yy),
+            AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,
+            Text=txt,Font=Enum.Font.Gotham,TextSize=mobile and 11 or 12,TextColor3=C.TW,
+            TextWrapped=true,TextXAlignment=isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left,
+            ZIndex=17},bubble)
+        task.wait(0.04)
+        ChatSc.CanvasSize=UDim2.new(0,0,0,ChatLi.AbsoluteContentSize.Y+16)
+        ChatSc.CanvasPosition=Vector2.new(0,ChatLi.AbsoluteContentSize.Y)
+    end
+
+    local ThinkB=nil
+    local function ShowThink(txt)
+        if ThinkB then pcall(function() ThinkB:Destroy() end) end
+        ThinkB=MkFrame({Size=UDim2.new(0.45,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+            BackgroundColor3=C.BG3,BackgroundTransparency=0.3,ZIndex=16},ChatLi)
+        Corner(12,ThinkB); Pad(7,10,7,10,ThinkB)
+        MkLabel({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+            BackgroundTransparency=1,Text="◌ "..txt,Font=Enum.Font.Gotham,
+            TextSize=10,TextColor3=C.TM,TextWrapped=true,ZIndex=17},ThinkB)
+        task.wait(0.04)
+        ChatSc.CanvasSize=UDim2.new(0,0,0,ChatLi.AbsoluteContentSize.Y+16)
+        ChatSc.CanvasPosition=Vector2.new(0,ChatLi.AbsoluteContentSize.Y)
+    end
+    local function HideThink() if ThinkB then pcall(function() ThinkB:Destroy() end); ThinkB=nil end end
+
+    -- Mensaje inicial
+    AddMsg("🔮 Hola, "..DNAME.."! Soy el Quantum Oracle con sistema Multi-Agent AI.\n\nJuego detectado: '"..GNAME.."'\nEl Orquestador dirigirá tu consulta al agente ideal:\n🎮 Game · 💻 Code · ⚔ Strategy · 🎨 Creative · ⚡ Fast\n\n¿En qué te ayudo?", false, {icon="🔮",name="Quantum Oracle",color=C.P2})
+
+    -- Input
+    local InputF=MkFrame({
+        Size=UDim2.new(1,-24,0,mobile and 46 or 50),
+        Position=UDim2.new(0,12,1,-(mobile and 56 or 62)),
+        BackgroundColor3=C.BG3,ZIndex=16,
+    },Tab); Corner(14,InputF); Stroke(1,C.BR0,InputF)
+
+    local CI2=MkBox({
+        Size=UDim2.new(1,-56,1,0),Position=UDim2.new(0,10,0,0),
+        BackgroundTransparency=1,Text="",PlaceholderText="Pregunta al Oracle...",
+        Font=Enum.Font.Gotham,TextSize=mobile and 12 or 13,TextColor3=C.TW,
+        PlaceholderColor3=C.TM,ClearTextOnFocus=false,ZIndex=17,
+    },InputF)
+    local SndBtn=MkBtn({
+        Size=UDim2.new(0,40,0,34),Position=UDim2.new(1,-46,0.5,-17),
+        BackgroundColor3=C.P1,Text="▶",Font=Enum.Font.GothamBold,
+        TextSize=15,TextColor3=Color3.new(1,1,1),ZIndex=17,
+    },InputF); Corner(10,SndBtn)
+
+    -- Sugerencias (rellena después de crear el chat)
+    local suggs={"¿Mejores scripts?","Script anti-ban","¿Cómo farmear?","Fix error Lua","Estrategia rápida"}
+    for _, sg in ipairs(suggs) do
+        local SB2=MkBtn({
+            Size=UDim2.new(0,0,1,0),AutomaticSize=Enum.AutomaticSize.X,
+            BackgroundColor3=C.BG3,Text=sg,Font=Enum.Font.Gotham,
+            TextSize=mobile and 9 or 10,TextColor3=C.A1,ZIndex=17,
+        },SugF); Corner(10,SB2); Pad(0,8,0,8,SB2); Stroke(1,C.A2,SB2)
+        SB2.MouseButton1Click:Connect(function() CI2.Text=sg end)
+    end
+
+    local waiting=false
+    local function DoSend()
+        if waiting then return end
+        local msg=CI2.Text:match("^%s*(.-)%s*$")
+        if msg=="" then return end
+        CI2.Text=""; waiting=true; SndBtn.Text="◌"
+        AddMsg(msg,true)
+        OracleQuery(msg,
+            function(t) ShowThink(t); AgStatus.Text="⬡ "..t end,
+            function(k,m) ShowThink(m.icon.." "..m.name.." respondiendo..."); AgStatus.Text=m.icon.." Activo: "..m.name; AgBadge.Text=m.icon.." Usando: "..m.name.." · OpenRouter" end,
+            function(r,m) HideThink(); AddMsg(r,false,m); waiting=false; SndBtn.Text="▶"; AgStatus.Text="En espera"; AgBadge.Text="⬡ Orch: llama-3.3-70b · 5 Agentes" end,
+            function(e) HideThink(); AddMsg("❌ Error: "..tostring(e).."\nVerifica tu API Key en Ajustes.",false,{icon="❌",name="Sistema",color=C.TR}); waiting=false; SndBtn.Text="▶" end
+        )
+    end
+
+    SndBtn.MouseButton1Click:Connect(DoSend)
+    CI2.FocusLost:Connect(function(e) if e then DoSend() end end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- §17  TAB: SCRIPT HUB
+-- ═══════════════════════════════════════════════════════════════════════
+_G["QOS_Tab_SCRIPT_HUB"] = function()
+    local Tab=MkFrame({Name="T_HUB",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=15},ContentArea)
+    CurrTabFrame=Tab
+    local mobile=IsMobile()
+    SecHeader(Tab,"SCRIPT HUB  ⚡","Scripts verificados · "..GNAME)
+    local HH3=mobile and 54 or 62
+
+    local SRow=MkFrame({Size=UDim2.new(1,-24,0,38),Position=UDim2.new(0,12,0,HH3+8),
+        BackgroundColor3=C.BG3,ZIndex=15},Tab); Corner(12,SRow); Stroke(1,C.BR0,SRow)
+    MkBox({Size=UDim2.new(1,-16,1,0),Position=UDim2.new(0,8,0,0),
+        BackgroundTransparency=1,Text="",PlaceholderText="🔍 Buscar scripts...",
+        Font=Enum.Font.Gotham,TextSize=13,TextColor3=C.TW,PlaceholderColor3=C.TM,ZIndex=16},SRow)
+
+    local SSc=MkScroll({Size=UDim2.new(1,-24,1,-(HH3+58)),Position=UDim2.new(0,12,0,HH3+54),
+        BackgroundTransparency=1,ScrollBarThickness=3,ZIndex=15},Tab)
+    local SLi=MkFrame({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1,ZIndex=15},SSc)
+    ListL({Padding=UDim.new(0,7)},SLi)
+
+    for _, s in ipairs({
+        {t="Auto Farm v5.2",       a="LXNDXN",     v=true,  sc="print('Auto Farm activado')"},
+        {t="ESP Pro · All Players",a="QuantumDev",  v=true,  sc="print('ESP activo')"},
+        {t="Infinite Jump",        a="DeltaFarm",   v=false, sc="print('InfJump activo')"},
+        {t="Speed Hack x10",       a="LXNDXN",      v=true,  sc="print('Speed x10')"},
+        {t="God Mode Bypass",      a="NullSec",      v=false, sc="print('God Mode')"},
+        {t="Auto Collect Items",   a="QuantumDev",   v=true,  sc="print('AutoCollect')"},
+    }) do
+        local Card=MkFrame({Size=UDim2.new(1,0,0,mobile and 72 or 80),BackgroundColor3=C.BG2,ZIndex=16},SLi)
+        Corner(14,Card); Stroke(1,C.BR0,Card)
+        Grad(C.BG2,Color3.fromRGB(12,8,28),135,Card)
+
+        local Th=MkFrame({Size=UDim2.new(0,mobile and 46 or 52,0,mobile and 46 or 52),
+            Position=UDim2.new(0,10,0.5,mobile and -23 or -26),BackgroundColor3=C.P3,ZIndex=17},Card)
+        Corner(12,Th)
+        MkLabel({Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Text="⚡",
+            Font=Enum.Font.GothamBold,TextSize=22,TextColor3=C.TW,ZIndex=18},Th)
+
+        local lx=mobile and 66 or 72
+        MkLabel({Size=UDim2.new(1,-(lx+180),0,20),Position=UDim2.new(0,lx,0,mobile and 10 or 12),
+            BackgroundTransparency=1,Text=s.t,Font=Enum.Font.GothamBold,
+            TextSize=mobile and 12 or 13,TextColor3=C.TW,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},Card)
+        MkLabel({Size=UDim2.new(1,-(lx+180),0,14),Position=UDim2.new(0,lx,0,mobile and 30 or 34),
+            BackgroundTransparency=1,Text="by "..s.a,Font=Enum.Font.Gotham,
+            TextSize=10,TextColor3=C.TS,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},Card)
+        if s.v then
+            local VB=MkLabel({Size=UDim2.new(0,100,0,14),Position=UDim2.new(0,lx,0,mobile and 48 or 54),
+                BackgroundColor3=Color3.fromRGB(0,40,18),Text="✓ Verificado Delta",
+                Font=Enum.Font.Gotham,TextSize=9,TextColor3=C.TG,ZIndex=18},Card); Corner(7,VB)
         end
 
-        local ExBtn = MakeButton({
-            Size=UDim2.new(0,90,0,28), Position=UDim2.new(1,-172,0.5,-14),
-            BackgroundColor3=C.PURPLE_NEON, Text="▶ EXECUTE",
-            Font=Enum.Font.GothamBold, TextSize=11, TextColor3=Color3.new(1,1,1), ZIndex=17,
-        }, Card)
-        Corner(8, ExBtn)
-        HoverGlow(ExBtn, C.PURPLE_NEON, C.PURPLE_GLOW)
-        ExBtn.MouseButton1Click:Connect(function()
-            pcall(function() loadstring(s.script)() end)
-            PushNotification("Script Ejecutado", s.title.." activado correctamente.", "SUCCESS", 3)
+        local ExB=MkBtn({Size=UDim2.new(0,80,0,mobile and 26 or 28),Position=UDim2.new(1,-164,0.5,mobile and -13 or -14),
+            BackgroundColor3=C.P1,Text="▶ RUN",Font=Enum.Font.GothamBold,
+            TextSize=10,TextColor3=Color3.new(1,1,1),ZIndex=17},Card); Corner(8,ExB)
+        Hover(ExB,C.P1,C.P2)
+        ExB.MouseButton1Click:Connect(function()
+            pcall(function() loadstring(s.sc)() end)
+            PushNotif("Script Ejecutado",s.t.." activado.","SUCCESS",3)
         end)
 
-        local SaveBtn = MakeButton({
-            Size=UDim2.new(0,62,0,28), Position=UDim2.new(1,-70,0.5,-14),
-            BackgroundColor3=C.BG_GLASS, Text="💾 SAVE",
-            Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_SOFT, ZIndex=17,
-        }, Card)
-        Corner(8, SaveBtn)
+        local SvB=MkBtn({Size=UDim2.new(0,62,0,mobile and 26 or 28),Position=UDim2.new(1,-76,0.5,mobile and -13 or -14),
+            BackgroundColor3=C.BG4,Text="💾 SAVE",Font=Enum.Font.Gotham,
+            TextSize=10,TextColor3=C.TS,ZIndex=17},Card); Corner(8,SvB)
 
-        local SL = ScriptList:FindFirstChildWhichIsA("UIListLayout")
-        if SL then SL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            ScriptScroll.CanvasSize = UDim2.new(0,0,0,SL.AbsoluteContentSize.Y+20)
+        local SLL2=SLi:FindFirstChildWhichIsA("UIListLayout")
+        if SLL2 then SLL2:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            SSc.CanvasSize=UDim2.new(0,0,0,SLL2.AbsoluteContentSize.Y+16)
         end) end
     end
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 16 - TABS RESTANTES (Stubs funcionales)
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local function StubTab(name, icon, subtitle)
-    return function()
-        local Tab = MakeFrame({Name="Tab_"..name, Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
-        CurrentTabFrame = Tab
-        SectionHeader(Tab, name.."  "..icon, subtitle)
-        -- Placeholder
-        local PlaceCard = MakeFrame({
-            Size=UDim2.new(1,-32,0,120), Position=UDim2.new(0,16,0,80),
-            BackgroundColor3=C.BG_CARD, ZIndex=15,
-        }, Tab)
-        Corner(14, PlaceCard); Stroke(1, C.BORDER, PlaceCard)
-        MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text=icon.."\n"..name,
-            Font=Enum.Font.GothamBold, TextSize=20, TextColor3=C.TEXT_WHITE, ZIndex=16}, PlaceCard)
-    end
-end
-
+-- ═══════════════════════════════════════════════════════════════════════
+-- §18  TAB: SYSTEM SETTINGS
+-- ═══════════════════════════════════════════════════════════════════════
 _G["QOS_Tab_SYSTEM_SETTINGS"] = function()
-    local Tab = MakeFrame({Name="Tab_SETTINGS", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
-    CurrentTabFrame = Tab
-    SectionHeader(Tab, "SYSTEM SETTINGS  ⚙", "Configuración del sistema · AI · Executor")
+    local Tab=MkFrame({Name="T_SET",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=15},ContentArea)
+    CurrTabFrame=Tab
+    local mobile=IsMobile(); local HH3=mobile and 54 or 62
+    SecHeader(Tab,"SYSTEM SETTINGS  ⚙","Configuración · AI · Executor")
+    local Sc=MkScroll({Size=UDim2.new(1,0,1,-HH3),Position=UDim2.new(0,0,0,HH3),
+        BackgroundTransparency=1,ScrollBarThickness=3,ZIndex=15},Tab)
+    local SLi=MkFrame({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1,ZIndex=15},Sc)
+    ListL({Padding=UDim.new(0,3)},SLi); Pad(10,14,24,14,SLi)
 
-    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-65), Position=UDim2.new(0,0,0,65),
-        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
-    local SList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-        BackgroundTransparency=1, ZIndex=15}, Scroll)
-    ListLayout({Padding=UDim.new(0,0)}, SList); Padding(12,16,20,16,SList)
+    -- API Key card
+    local KC=MkFrame({Size=UDim2.new(1,0,0,64),BackgroundColor3=C.BG3,ZIndex=16},SLi)
+    Corner(14,KC); Stroke(1,C.BR0,KC)
+    Grad(C.BG3,Color3.fromRGB(16,4,40),135,KC)
+    MkLabel({Size=UDim2.new(1,-120,0,20),Position=UDim2.new(0,14,0,10),
+        BackgroundTransparency=1,Text="OpenRouter API Key",
+        Font=Enum.Font.GothamBold,TextSize=13,TextColor3=C.TW,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},KC)
+    local km=ENV.QOS_APIKey and ("sk-or-..."..ENV.QOS_APIKey:sub(-6)) or "No configurada"
+    MkLabel({Size=UDim2.new(1,-120,0,16),Position=UDim2.new(0,14,0,32),
+        BackgroundTransparency=1,Text=km,Font=Enum.Font.Code,
+        TextSize=10,TextColor3=C.A1,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},KC)
+    local KS=MkLabel({Size=UDim2.new(0,80,0,20),Position=UDim2.new(1,-92,0.5,-10),
+        BackgroundColor3=Color3.fromRGB(0,40,18),Text="● Conectada",
+        Font=Enum.Font.GothamBold,TextSize=10,TextColor3=C.TG,ZIndex=17},KC); Corner(9,KS)
 
-    -- API Key info
-    local KeyCard = MakeFrame({Size=UDim2.new(1,0,0,72), BackgroundColor3=C.BG_CARD, ZIndex=16}, SList)
-    Corner(14, KeyCard); Stroke(1, C.BORDER, KeyCard)
-    MakeLabel({Size=UDim2.new(1,-160,0,22), Position=UDim2.new(0,16,0,12),
-        BackgroundTransparency=1, Text="OpenRouter API Key",
-        Font=Enum.Font.GothamBold, TextSize=14, TextColor3=C.TEXT_WHITE,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, KeyCard)
-    local keyMasked = ENV.QuantumOS_OpenRouterKey and ("sk-or-..."..string.sub(ENV.QuantumOS_OpenRouterKey,-8)) or "No configurada"
-    MakeLabel({Size=UDim2.new(1,-160,0,16), Position=UDim2.new(0,16,0,36),
-        BackgroundTransparency=1, Text=keyMasked,
-        Font=Enum.Font.Code, TextSize=11, TextColor3=C.CYAN_NEON,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, KeyCard)
-    local KeyStatus = MakeLabel({Size=UDim2.new(0,90,0,22), Position=UDim2.new(1,-106,0.5,-11),
-        BackgroundColor3=Color3.fromRGB(0,44,22), Text="● Conectada",
-        Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.TEXT_GREEN, ZIndex=17}, KeyCard)
-    Corner(10, KeyStatus)
+    for _, s in ipairs({
+        {"Notificaciones Toast",true,nil},{"Watermark OS",true,nil},
+        {"Panel lateral rápido",true,nil},{"Stats HUD en overlay",false,nil},
+        {"Animaciones partículas",true,nil},{"Anti-detección",true,nil},
+    }) do MkToggle(SLi,s[1],s[2],s[3]) end
 
-    -- Toggles de sistema
-    local settingsToggles = {
-        {"Notificaciones Toast",     true,  nil},
-        {"Watermark del OS",         true,  nil},
-        {"Panel lateral rápido",     true,  nil},
-        {"Stats HUD en overlay",     false, nil},
-        {"Animaciones de partículas",true,  nil},
-        {"Anti-detección",           true,  nil},
-    }
-    for _, s in ipairs(settingsToggles) do CreateToggle(SList, s[1], s[2], s[3]) end
+    MkLabel({Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,
+        Text="MODO: "..(ENV.QOS_DeviceMode or "?"):upper(),
+        Font=Enum.Font.GothamBold,TextSize=11,TextColor3=C.P2,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=16},SLi)
 
-    -- Selector de dispositivo
-    local DevLabel = MakeLabel({Size=UDim2.new(1,0,0,24), BackgroundTransparency=1,
-        Text="MODO DE DISPOSITIVO: "..(ENV.QuantumOS_DeviceMode or "?"):upper(),
-        Font=Enum.Font.GothamBold, TextSize=12, TextColor3=C.PURPLE_GLOW,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=16}, SList)
-
-    local LL2 = SList:FindFirstChildWhichIsA("UIListLayout")
+    local LL2=SLi:FindFirstChildWhichIsA("UIListLayout")
     if LL2 then LL2:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        Scroll.CanvasSize = UDim2.new(0,0,0,LL2.AbsoluteContentSize.Y+20)
+        Sc.CanvasSize=UDim2.new(0,0,0,LL2.AbsoluteContentSize.Y+24)
     end) end
 end
 
-_G["QOS_Tab_TOOLBOX"]           = StubTab("TOOLBOX",           "🛠", "Herramientas del executor")
-_G["QOS_Tab_FILE_MANAGER"]      = StubTab("FILE MANAGER",      "📁", "Gestor de scripts locales y en la nube")
-_G["QOS_Tab_PROCESSES___LOGS"]  = StubTab("PROCESSES & LOGS",  "📊", "Monitor de procesos en tiempo real")
-_G["QOS_Tab_MEDIA_CENTER"]      = StubTab("MEDIA CENTER",      "🎵", "Reproductor y multimedia")
-_G["QOS_Tab_COMMUNITY"]         = StubTab("COMMUNITY",         "👥", "Discord · Foro · Top Contributors")
+-- ═══════════════════════════════════════════════════════════════════════
+-- §19  TABS STUB + GAME BOOSTER + SKIN CUSTOMIZER + POWER
+-- ═══════════════════════════════════════════════════════════════════════
+local function StubTab(name, icon, sub)
+    return function()
+        local Tab=MkFrame({Name="T_"..name,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=15},ContentArea)
+        CurrTabFrame=Tab; SecHeader(Tab,name.."  "..icon,sub)
+        local PC=MkFrame({Size=UDim2.new(1,-24,0,100),Position=UDim2.new(0,12,0,(IsMobile() and 54 or 62)+10),
+            BackgroundColor3=C.BG3,ZIndex=15},Tab); Corner(14,PC); Stroke(1,C.BR0,PC)
+        MkLabel({Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Text=icon.."\n"..name,
+            Font=Enum.Font.GothamBold,TextSize=18,TextColor3=C.TW,ZIndex=16},PC)
+    end
+end
+
+_G["QOS_Tab_TOOLBOX"]           = StubTab("TOOLBOX","🛠","Herramientas del executor")
+_G["QOS_Tab_FILE_MANAGER"]      = StubTab("FILE MANAGER","📁","Gestor de scripts")
+_G["QOS_Tab_PROCESSES___LOGS"]  = StubTab("PROCESSES & LOGS","📊","Monitor en tiempo real")
+_G["QOS_Tab_MEDIA_CENTER"]      = StubTab("MEDIA CENTER","🎵","Reproductor y multimedia")
+_G["QOS_Tab_COMMUNITY"]         = StubTab("COMMUNITY","👥","Discord · Foro · Top Contributors")
 
 _G["QOS_Tab_GAME_BOOSTER"] = function()
-    local Tab = MakeFrame({Name="Tab_BOOSTER", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
-    CurrentTabFrame = Tab
-    SectionHeader(Tab, "GAME BOOSTER  🚀", "Optimización FPS y rendimiento para "..GAME_NAME)
+    local Tab=MkFrame({Name="T_BOOST",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=15},ContentArea)
+    CurrTabFrame=Tab; local mobile=IsMobile(); local HH3=mobile and 54 or 62
+    SecHeader(Tab,"GAME BOOSTER  🚀","Optimización FPS · "..GNAME)
+    local Sc=MkScroll({Size=UDim2.new(1,0,1,-HH3),Position=UDim2.new(0,0,0,HH3),
+        BackgroundTransparency=1,ScrollBarThickness=3,ZIndex=15},Tab)
+    local Li=MkFrame({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1,ZIndex=15},Sc)
+    ListL({Padding=UDim.new(0,4)},Li); Pad(10,14,24,14,Li)
 
-    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-65), Position=UDim2.new(0,0,0,65),
-        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
-    local C2 = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-        BackgroundTransparency=1, ZIndex=15}, Scroll)
-    ListLayout({Padding=UDim.new(0,0)}, C2); Padding(12,16,20,16,C2)
-
-    local BoostCard = MakeFrame({Size=UDim2.new(1,0,0,94), BackgroundColor3=C.BG_GLASS, ZIndex=16}, C2)
-    Corner(16, BoostCard); Gradient(Color3.fromRGB(10,5,30), Color3.fromRGB(60,0,100), 135, BoostCard)
-    Stroke(2, C.PURPLE_NEON, BoostCard); Padding(16,16,16,16,BoostCard)
-    MakeLabel({Size=UDim2.new(1,-120,0,24), BackgroundTransparency=1, Text="🚀 QUANTUM BOOST MODE",
-        Font=Enum.Font.GothamBold, TextSize=16, TextColor3=C.TEXT_WHITE,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, BoostCard)
-    MakeLabel({Size=UDim2.new(1,-120,0,30), Position=UDim2.new(0,0,0,28), BackgroundTransparency=1,
-        Text="Elimina partículas, texturas innecesarias y reduce render distance para máximo FPS.",
-        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_SOFT, TextWrapped=true,
-        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, BoostCard)
-    local BoostBtn = MakeButton({
-        Size=UDim2.new(0,90,0,38), Position=UDim2.new(1,-106,0.5,-19),
-        BackgroundColor3=C.TOGGLE_ON, Text="ACTIVAR",
-        Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Color3.new(1,1,1), ZIndex=17,
-    }, BoostCard)
-    Corner(10, BoostBtn)
-    local boosted = false
-    BoostBtn.MouseButton1Click:Connect(function()
-        boosted = not boosted; BoostBtn.Text = boosted and "ACTIVO ✓" or "ACTIVAR"
-        BoostBtn.BackgroundColor3 = boosted and C.PURPLE_NEON or C.TOGGLE_ON
+    local BC=MkFrame({Size=UDim2.new(1,0,0,mobile and 82 or 94),BackgroundColor3=C.BG4,ZIndex=16},Li)
+    Corner(16,BC); Grad(Color3.fromRGB(8,4,26),Color3.fromRGB(52,0,88),135,BC); Stroke(2,C.P1,BC)
+    Pad(14,14,14,14,BC)
+    MkLabel({Size=UDim2.new(1,-106,0,22),BackgroundTransparency=1,Text="🚀 QUANTUM BOOST MODE",
+        Font=Enum.Font.GothamBold,TextSize=mobile and 14 or 16,TextColor3=C.TW,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},BC)
+    MkLabel({Size=UDim2.new(1,-106,0,28),Position=UDim2.new(0,0,0,26),BackgroundTransparency=1,
+        Text="Elimina partículas, texturas y reduce render para máximo FPS.",
+        Font=Enum.Font.Gotham,TextSize=10,TextColor3=C.TS,TextWrapped=true,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},BC)
+    local BB=MkBtn({Size=UDim2.new(0,82,0,36),Position=UDim2.new(1,-94,0.5,-18),
+        BackgroundColor3=C.TON,Text="ACTIVAR",Font=Enum.Font.GothamBold,
+        TextSize=12,TextColor3=Color3.new(1,1,1),ZIndex=17},BC); Corner(10,BB)
+    local boosted=false
+    BB.MouseButton1Click:Connect(function()
+        boosted=not boosted; BB.Text=boosted and "ACTIVO ✓" or "ACTIVAR"
+        Tw(BB,TI.FAST,{BackgroundColor3=boosted and C.P1 or C.TON})
         if boosted then
             pcall(function()
-                for _, v in pairs(workspace:GetDescendants()) do
-                    if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") then v.Enabled = false end
-                    if v:IsA("SpecialMesh") then v.TextureId = "" end
+                for _,v in pairs(workspace:GetDescendants()) do
+                    if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") then v.Enabled=false end
+                    if v:IsA("SpecialMesh") then v.TextureId="" end
                 end
             end)
-            PushNotification("Game Booster","Modo boost activado · FPS optimizado.","SUCCESS",3)
+            PushNotif("Boost","Modo boost activado · FPS optimizado.","SUCCESS",3)
         end
     end)
 
-    CreateToggle(C2, "Desactivar ParticleEmitters", false, function(s)
-        for _, v in pairs(workspace:GetDescendants()) do if v:IsA("ParticleEmitter") then v.Enabled=not s end end
+    MkToggle(Li,"Desactivar ParticleEmitters",false,function(s)
+        for _,v in pairs(workspace:GetDescendants()) do if v:IsA("ParticleEmitter") then v.Enabled=not s end end
     end)
-    CreateToggle(C2, "Desactivar Sombras Dinámicas", false, function(s)
-        pcall(function() game:GetService("Lighting").GlobalShadows = not s end)
+    MkToggle(Li,"Desactivar Sombras",false,function(s)
+        pcall(function() game:GetService("Lighting").GlobalShadows=not s end)
     end)
-    CreateToggle(C2, "Anti-Lag Mode", false, nil)
-    CreateSlider(C2, "Simulation Throttle", 1, 100, 100, "%", nil)
+    MkToggle(Li,"Anti-Lag Mode",false,nil)
+    MkSlider(Li,"Simulation Throttle",1,100,100,"%",nil)
 
-    local LL3 = C2:FindFirstChildWhichIsA("UIListLayout")
+    local LL3=Li:FindFirstChildWhichIsA("UIListLayout")
     if LL3 then LL3:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        Scroll.CanvasSize = UDim2.new(0,0,0,LL3.AbsoluteContentSize.Y+20)
+        Sc.CanvasSize=UDim2.new(0,0,0,LL3.AbsoluteContentSize.Y+24)
     end) end
 end
 
 _G["QOS_Tab_SKIN_CUSTOMIZER"] = function()
-    local Tab = MakeFrame({Name="Tab_SKIN", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
-    CurrentTabFrame = Tab
-    SectionHeader(Tab, "SKIN CUSTOMIZER  🎨", "Personaliza el aspecto visual del OS")
-    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-65), Position=UDim2.new(0,0,0,65),
-        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
-    local CL = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-        BackgroundTransparency=1, ZIndex=15}, Scroll)
-    ListLayout({Padding=UDim.new(0,10)}, CL); Padding(12,0,20,0,CL)
-    CreateSlider(CL,"Rojo primario",0,255,160,"",nil)
-    CreateSlider(CL,"Verde primario",0,255,32,"",nil)
-    CreateSlider(CL,"Azul primario",0,255,240,"",nil)
-    CreateSlider(CL,"Transparencia del panel",0,80,30,"%",nil)
-    CreateToggle(CL,"Efecto Glassmorphic",true,nil)
-    CreateToggle(CL,"Animaciones partículas",true,nil)
-    local LLs = CL:FindFirstChildWhichIsA("UIListLayout")
-    if LLs then LLs:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        Scroll.CanvasSize = UDim2.new(0,0,0,LLs.AbsoluteContentSize.Y+20)
+    local Tab=MkFrame({Name="T_SKIN",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=15},ContentArea)
+    CurrTabFrame=Tab; local mobile=IsMobile(); local HH3=mobile and 54 or 62
+    SecHeader(Tab,"SKIN CUSTOMIZER  🎨","Personaliza el OS")
+    local Sc=MkScroll({Size=UDim2.new(1,0,1,-HH3),Position=UDim2.new(0,0,0,HH3),
+        BackgroundTransparency=1,ScrollBarThickness=3,ZIndex=15},Tab)
+    local Li=MkFrame({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1,ZIndex=15},Sc)
+    ListL({Padding=UDim.new(0,4)},Li); Pad(10,14,24,14,Li)
+    MkSlider(Li,"Rojo primario",0,255,148,"",nil)
+    MkSlider(Li,"Verde primario",0,255,28,"",nil)
+    MkSlider(Li,"Azul primario",0,255,230,"",nil)
+    MkSlider(Li,"Transparencia panel",0,80,28,"%",nil)
+    MkToggle(Li,"Efecto Glassmorphic",true,nil)
+    MkToggle(Li,"Animaciones partículas",true,nil)
+    local LL=Li:FindFirstChildWhichIsA("UIListLayout")
+    if LL then LL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Sc.CanvasSize=UDim2.new(0,0,0,LL.AbsoluteContentSize.Y+24)
     end) end
 end
 
 _G["QOS_Tab_POWER"] = function()
-    local Tab = MakeFrame({Name="Tab_POWER", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
-    CurrentTabFrame = Tab
-    SectionHeader(Tab, "POWER  ⏻", "Opciones de sesión y sistema")
-    local buttons = {
-        {label="Reiniciar Quantum OS",  icon="🔄", color=C.TEXT_YELLOW},
-        {label="Cerrar Quantum OS",     icon="✕",  color=C.TEXT_RED},
-        {label="Desconectar del Juego", icon="🚪", color=C.TEXT_RED},
-        {label="Limpiar Conexiones",    icon="♻",  color=C.CYAN_NEON},
-    }
-    local PScroll = MakeScroll({Size=UDim2.new(1,-32,1,-80), Position=UDim2.new(0,16,0,72),
-        BackgroundTransparency=1, ScrollBarThickness=2, ZIndex=15}, Tab)
-    local PList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-        BackgroundTransparency=1, ZIndex=15}, PScroll)
-    ListLayout({Padding=UDim.new(0,10)}, PList); Padding(12,0,20,0,PList)
-    for _, btn in ipairs(buttons) do
-        local PCard = MakeFrame({Size=UDim2.new(1,0,0,72), BackgroundColor3=C.BG_CARD, ZIndex=16}, PList)
-        Corner(14, PCard); Stroke(1, C.BORDER, PCard)
-        MakeLabel({Size=UDim2.new(0,42,0,42), Position=UDim2.new(0,14,0.5,-21),
-            BackgroundColor3=Color3.fromRGB(40,10,10), Text=btn.icon, TextSize=20, ZIndex=17}, PCard)
-        MakeLabel({Size=UDim2.new(1,-160,0,22), Position=UDim2.new(0,66,0,14),
-            BackgroundTransparency=1, Text=btn.label, Font=Enum.Font.GothamBold,
-            TextSize=14, TextColor3=btn.color, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, PCard)
-        local ActionBtn = MakeButton({
-            Size=UDim2.new(0,80,0,30), Position=UDim2.new(1,-92,0.5,-15),
-            BackgroundColor3=Color3.fromRGB(50,10,10), Text="EJECUTAR",
-            Font=Enum.Font.GothamBold, TextSize=11, TextColor3=btn.color, ZIndex=17,
-        }, PCard)
-        Corner(8, ActionBtn); Stroke(1, btn.color, ActionBtn)
-        ActionBtn.MouseButton1Click:Connect(function()
-            if btn.label:find("Reiniciar") then ScreenGui:Destroy(); task.wait(0.5)
-            elseif btn.label:find("Cerrar") then Tween(MainWindow,TI_MED,{Size=UDim2.new(0,0,0,0)}); task.wait(0.4); ScreenGui:Destroy()
-            elseif btn.label:find("Desconectar") then pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId) end)
-            elseif btn.label:find("Conexiones") then
-                for _, c in pairs(ENV.QuantumOS_Connections) do pcall(function() c:Disconnect() end) end
-                ENV.QuantumOS_Connections = {}
-                PushNotification("Sistema","Conexiones limpiadas.","SUCCESS",2)
+    local Tab=MkFrame({Name="T_PWR",Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=15},ContentArea)
+    CurrTabFrame=Tab; local mobile=IsMobile(); local HH3=mobile and 54 or 62
+    SecHeader(Tab,"POWER  ⏻","Opciones de sesión")
+    local Sc=MkScroll({Size=UDim2.new(1,-24,1,-(HH3+10)),Position=UDim2.new(0,12,0,HH3+6),
+        BackgroundTransparency=1,ScrollBarThickness=2,ZIndex=15},Tab)
+    local Li=MkFrame({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1,ZIndex=15},Sc)
+    ListL({Padding=UDim.new(0,8)},Li); Pad(10,0,24,0,Li)
+    for _,b in ipairs({
+        {l="Reiniciar Quantum OS",  i="🔄",c=C.TY},
+        {l="Cerrar Quantum OS",     i="✕",c=C.TR},
+        {l="Desconectar del Juego", i="🚪",c=C.TR},
+        {l="Limpiar Conexiones",    i="♻",c=C.A1},
+    }) do
+        local PC2=MkFrame({Size=UDim2.new(1,0,0,mobile and 64 or 72),BackgroundColor3=C.BG3,ZIndex=16},Li)
+        Corner(14,PC2); Stroke(1,C.BR0,PC2)
+        MkLabel({Size=UDim2.new(0,40,0,40),Position=UDim2.new(0,12,0.5,-20),
+            BackgroundColor3=Color3.fromRGB(36,8,8),Text=b.i,TextSize=18,ZIndex=17},PC2)
+        MkLabel({Size=UDim2.new(1,-150,0,20),Position=UDim2.new(0,60,0,12),
+            BackgroundTransparency=1,Text=b.l,Font=Enum.Font.GothamBold,
+            TextSize=mobile and 12 or 13,TextColor3=b.c,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=17},PC2)
+        local AB=MkBtn({Size=UDim2.new(0,72,0,mobile and 26 or 28),Position=UDim2.new(1,-84,0.5,-13),
+            BackgroundColor3=Color3.fromRGB(46,8,8),Text="EJECUTAR",
+            Font=Enum.Font.GothamBold,TextSize=10,TextColor3=b.c,ZIndex=17},PC2)
+        Corner(8,AB); Stroke(1,b.c,AB)
+        AB.MouseButton1Click:Connect(function()
+            if b.l:find("Reiniciar") then ScreenGui:Destroy(); task.wait(0.5)
+            elseif b.l:find("Cerrar") then Tw(MainWin,TI.MED,{Size=UDim2.new(0,0,0,0)}); task.wait(0.4); ScreenGui:Destroy()
+            elseif b.l:find("Desconectar") then pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId) end)
+            elseif b.l:find("Conexiones") then
+                for _,c in pairs(ENV.QOS_Connections) do pcall(function() c:Disconnect() end) end
+                ENV.QOS_Connections={}; PushNotif("Sistema","Conexiones limpiadas.","SUCCESS",2)
             end
         end)
-        HoverGlow(ActionBtn, Color3.fromRGB(50,10,10), Color3.fromRGB(80,15,15))
     end
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 17 - MÓDULOS DE GAMEPLAY (Fly, ESP, AntiAFK, God, Radar, Movement)
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local FlyModule = {Active=false}
-FlyModule.Enable = function()
-    FlyModule.Active = true
+-- ═══════════════════════════════════════════════════════════════════════
+-- §20  MÓDULOS DE GAMEPLAY
+-- ═══════════════════════════════════════════════════════════════════════
+local FlyMod={Active=false}
+FlyMod.On=function()
+    FlyMod.Active=true
     pcall(function()
-        local hrp = Character:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        local bg = Instance.new("BodyGyro"); bg.P=9e4; bg.D=1e4; bg.MaxTorque=Vector3.new(9e9,9e9,9e9); bg.Parent=hrp
-        local bv = Instance.new("BodyVelocity"); bv.Velocity=Vector3.new(0,0,0); bv.MaxForce=Vector3.new(9e9,9e9,9e9); bv.Parent=hrp
-        FlyModule._bg=bg; FlyModule._bv=bv
+        local hrp=Character:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+        local bg=Instance.new("BodyGyro"); bg.P=9e4; bg.D=1e4; bg.MaxTorque=Vector3.new(9e9,9e9,9e9); bg.Parent=hrp
+        local bv=Instance.new("BodyVelocity"); bv.MaxForce=Vector3.new(9e9,9e9,9e9); bv.Parent=hrp
+        FlyMod._bg=bg; FlyMod._bv=bv
         if Humanoid then Humanoid.PlatformStand=true end
-        local speed=70
-        TrackConn(RunService.RenderStepped:Connect(function()
-            if not FlyModule.Active then return end
-            local cam=workspace.CurrentCamera
-            local dir=Vector3.new(0,0,0)
+        local spd=70
+        Track(RunService.RenderStepped:Connect(function()
+            if not FlyMod.Active then return end
+            local cam=workspace.CurrentCamera; local dir=Vector3.new()
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir=dir+cam.CFrame.LookVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir=dir-cam.CFrame.LookVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir=dir-cam.CFrame.RightVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir=dir+cam.CFrame.RightVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.E) then dir=dir+Vector3.new(0,1,0) end
             if UserInputService:IsKeyDown(Enum.KeyCode.Q) then dir=dir+Vector3.new(0,-1,0) end
-            bv.Velocity = dir.Magnitude>0 and dir.Unit*speed or Vector3.new(0,0,0)
-            bg.CFrame = cam.CFrame
+            bv.Velocity=dir.Magnitude>0 and dir.Unit*spd or Vector3.new()
+            bg.CFrame=cam.CFrame
         end))
     end)
 end
-FlyModule.Disable = function()
-    FlyModule.Active = false
+FlyMod.Off=function()
+    FlyMod.Active=false
     pcall(function()
-        if FlyModule._bg then FlyModule._bg:Destroy() end
-        if FlyModule._bv then FlyModule._bv:Destroy() end
+        if FlyMod._bg then FlyMod._bg:Destroy() end
+        if FlyMod._bv then FlyMod._bv:Destroy() end
         if Humanoid then Humanoid.PlatformStand=false end
     end)
 end
 
-local ESPModule = {Active=false, Highlights={}}
-ESPModule.Enable = function()
-    ESPModule.Active = true
+local ESPMod={Active=false,HL={}}
+ESPMod.On=function()
+    ESPMod.Active=true
     task.spawn(function()
-        while ESPModule.Active do
-            for _, p in pairs(Players:GetPlayers()) do
-                if p~=LocalPlayer and p.Character and not ESPModule.Highlights[p.Name] then
-                    local hl = Instance.new("Highlight"); hl.Name="QOS_ESP_"..p.Name
-                    hl.Adornee=p.Character; hl.OutlineColor=C.CYAN_NEON; hl.FillTransparency=0.6
-                    hl.Parent=p.Character; ESPModule.Highlights[p.Name]=hl
+        while ESPMod.Active do
+            for _,p in pairs(Players:GetPlayers()) do
+                if p~=LP and p.Character and not ESPMod.HL[p.Name] then
+                    local h=Instance.new("Highlight"); h.Name="QOS_ESP_"..p.Name
+                    h.Adornee=p.Character; h.OutlineColor=C.A1; h.FillTransparency=0.65; h.Parent=p.Character
+                    ESPMod.HL[p.Name]=h
                 end
             end
             task.wait(2)
         end
     end)
 end
-ESPModule.Disable = function()
-    ESPModule.Active=false
-    for _, hl in pairs(ESPModule.Highlights) do pcall(function() hl:Destroy() end) end
-    ESPModule.Highlights={}
+ESPMod.Off=function()
+    ESPMod.Active=false
+    for _,h in pairs(ESPMod.HL) do pcall(function() h:Destroy() end) end; ESPMod.HL={}
 end
 
-local AntiAFK = {Active=false}
-AntiAFK.Enable = function()
-    AntiAFK.Active=true
-    task.spawn(function()
-        while AntiAFK.Active do
-            pcall(function() LocalPlayer:Move(Vector3.new(0,0,1),true) end)
-            task.wait(58)
-            pcall(function() LocalPlayer:Move(Vector3.new(0,0,-1),true) end)
-            task.wait(2)
-        end
-    end)
-end
-AntiAFK.Disable = function() AntiAFK.Active=false end
+local AFKMod={Active=false}
+AFKMod.On=function() AFKMod.Active=true; task.spawn(function()
+    while AFKMod.Active do pcall(function() LP:Move(Vector3.new(0,0,1),true) end); task.wait(58)
+    pcall(function() LP:Move(Vector3.new(0,0,-1),true) end); task.wait(2) end
+end) end
+AFKMod.Off=function() AFKMod.Active=false end
 
-local GodModule = {Active=false}
-GodModule.Enable = function()
-    GodModule.Active=true
-    task.spawn(function()
-        while GodModule.Active and Humanoid and Humanoid.Parent do
-            pcall(function() Humanoid.Health=Humanoid.MaxHealth end); task.wait(0.1)
-        end
-    end)
-end
-GodModule.Disable = function() GodModule.Active=false end
+local GodMod={Active=false}
+GodMod.On=function() GodMod.Active=true; task.spawn(function()
+    while GodMod.Active and Humanoid and Humanoid.Parent do
+        pcall(function() Humanoid.Health=Humanoid.MaxHealth end); task.wait(0.1)
+    end
+end) end
+GodMod.Off=function() GodMod.Active=false end
 
-local RadarModule = {Active=false}
-RadarModule.Enable = function()
-    RadarModule.Active=true
-    PushNotification("Radar","Radar de jugadores activado.","SUCCESS",3)
-end
-RadarModule.Disable = function()
-    RadarModule.Active=false
-    PushNotification("Radar","Radar desactivado.","INFO",2)
-end
+local RadarMod={Active=false}
+RadarMod.On=function() RadarMod.Active=true; PushNotif("Radar","Radar activado.","SUCCESS",3) end
+RadarMod.Off=function() RadarMod.Active=false; PushNotif("Radar","Radar desactivado.","INFO",2) end
 
-local MovementModule = {}
-MovementModule.SetWalkSpeed = function(v) pcall(function() Humanoid.WalkSpeed=v end) end
-MovementModule.SetJumpPower  = function(v) pcall(function() Humanoid.JumpPower=v end) end
+local MovMod={}
+MovMod.Speed=function(v) pcall(function() Humanoid.WalkSpeed=v end) end
+MovMod.Jump=function(v)  pcall(function() Humanoid.JumpPower=v end) end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 18 - WATERMARK, STATS HUD, ORACLE FLOTANTE, TASKBAR
--- ═══════════════════════════════════════════════════════════════════════════════
-
+-- ═══════════════════════════════════════════════════════════════════════
+-- §21  WATERMARK, FLOATING ORACLE, TASKBAR, QUICK PANEL
+-- ═══════════════════════════════════════════════════════════════════════
 local function CreateWatermark()
-    local WM = MakeFrame({
-        Name="QuantumWatermark", Size=UDim2.new(0,230,0,26),
-        Position=UDim2.new(0,6,0,6), BackgroundColor3=C.BG_GLASS,
-        BackgroundTransparency=0.3, ZIndex=600,
-    }, ScreenGui)
-    Corner(13, WM); Stroke(1, C.PURPLE_DIM, WM)
-    MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1,
-        Text="⬡ LXNDXN Quantum OS v3.0 · AI", Font=Enum.Font.GothamBold,
-        TextSize=11, TextColor3=C.PURPLE_GLOW, ZIndex=601}, WM)
+    local WM=MkFrame({Name="Watermark",Size=UDim2.new(0,222,0,24),
+        Position=UDim2.new(0,6,0,6),BackgroundColor3=C.BG4,
+        BackgroundTransparency=0.28,ZIndex=600},ScreenGui)
+    Corner(12,WM); Stroke(1,C.P3,WM)
+    MkLabel({Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
+        Text="⬡ LXNDXN Quantum OS v3.1 · AI",
+        Font=Enum.Font.GothamBold,TextSize=10,TextColor3=C.P2,ZIndex=601},WM)
     task.spawn(function()
         while WM and WM.Parent do
-            Tween(WM,TI_SINE,{BackgroundTransparency=0.5}); task.wait(1.5)
-            Tween(WM,TI_SINE,{BackgroundTransparency=0.2}); task.wait(1.5)
+            Tw(WM,TI.SINE,{BackgroundTransparency=0.50}); task.wait(1.5)
+            Tw(WM,TI.SINE,{BackgroundTransparency=0.22}); task.wait(1.5)
         end
     end)
-    return WM
 end
 
-local function CreateFloatingOracle()
-    local OrbFrame = MakeFrame({
-        Name="FloatingOracle", Size=UDim2.new(0,58,0,58),
-        Position=UDim2.new(0,12,0.5,-29), BackgroundColor3=C.PURPLE_DIM, ZIndex=500,
-    }, ScreenGui)
-    Corner(29, OrbFrame); Stroke(2, C.PURPLE_NEON, OrbFrame)
-    Gradient(C.PURPLE_DIM, C.CYAN_DIM, 135, OrbFrame)
-    ENV.QuantumOS_OracleFloat = OrbFrame
-
-    MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1,
-        Text="🔮", TextSize=26, ZIndex=501}, OrbFrame)
-
+local function CreateFloatOracle()
+    local OF=MkFrame({Name="FloatOrb",Size=UDim2.new(0,54,0,54),
+        Position=UDim2.new(0,10,0.5,-27),BackgroundColor3=C.P3,ZIndex=500},ScreenGui)
+    Corner(27,OF); Stroke(2,C.P1,OF); Grad(C.P3,C.A2,135,OF)
+    ENV.QOS_OracleFloat=OF
+    MkLabel({Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Text="🔮",TextSize=24,ZIndex=501},OF)
     task.spawn(function()
-        while OrbFrame and OrbFrame.Parent do
-            Tween(OrbFrame,TI_SINE,{BackgroundColor3=C.PURPLE_GLOW}); task.wait(1.2)
-            Tween(OrbFrame,TI_SINE,{BackgroundColor3=C.PURPLE_DIM});  task.wait(1.2)
+        while OF and OF.Parent do
+            Tw(OF,TI.SINE,{BackgroundColor3=C.P2}); task.wait(1.2)
+            Tw(OF,TI.SINE,{BackgroundColor3=C.P3}); task.wait(1.2)
         end
     end)
-
-    local dragging2, dragStart, startPos = false, nil, nil
-    OrbFrame.InputBegan:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-            dragging2=true; dragStart=input.Position; startPos=OrbFrame.Position
+    local dr2,ds2,dp2=false,nil,nil
+    OF.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            dr2=true; ds2=i.Position; dp2=OF.Position
         end
     end)
-    TrackConn(UserInputService.InputChanged:Connect(function(input)
-        if dragging2 and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
-            local delta=input.Position-dragStart
-            OrbFrame.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+delta.X,startPos.Y.Scale,startPos.Y.Offset+delta.Y)
+    Track(UserInputService.InputChanged:Connect(function(i)
+        if dr2 and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+            local d=i.Position-ds2; OF.Position=UDim2.new(dp2.X.Scale,dp2.X.Offset+d.X,dp2.Y.Scale,dp2.Y.Offset+d.Y)
         end
     end))
-    TrackConn(UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-            if dragging2 and (input.Position-dragStart).Magnitude < 8 then
+    Track(UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            if dr2 and (i.Position-ds2).Magnitude<8 then
                 ClearContent(); SetActiveTab("QUANTUM ORACLE"); _G["QOS_Tab_QUANTUM_ORACLE"]()
             end
-            dragging2=false
+            dr2=false
         end
     end))
 end
 
 local function CreateTaskbar()
-    local Taskbar = MakeFrame({
-        Name="QuantumTaskbar", Size=UDim2.new(0,340,0,46),
-        Position=UDim2.new(0.5,-170,1,-54), BackgroundColor3=C.BG_GLASS,
-        BackgroundTransparency=0.2, ZIndex=700,
-    }, ScreenGui)
-    Corner(23, Taskbar); Stroke(1, C.BORDER_BRIGHT, Taskbar)
+    local TB=MkFrame({Name="Taskbar",Size=UDim2.new(0,320,0,44),
+        Position=UDim2.new(0.5,-160,1,-52),BackgroundColor3=C.BG4,
+        BackgroundTransparency=0.18,ZIndex=700},ScreenGui)
+    Corner(22,TB); Stroke(1,C.BR1,TB)
+    Grad(C.BG4,Color3.fromRGB(20,14,52),135,TB)
 
-    local TL = MakeFrame({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=701}, Taskbar)
-    ListLayout({FillDirection=Enum.FillDirection.Horizontal,
+    local TL2=MkFrame({Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ZIndex=701},TB)
+    ListL({FillDirection=Enum.FillDirection.Horizontal,
         HorizontalAlignment=Enum.HorizontalAlignment.Center,
-        VerticalAlignment=Enum.VerticalAlignment.Center, Padding=UDim.new(0,5)}, TL)
-    Padding(0,8,0,8,TL)
+        VerticalAlignment=Enum.VerticalAlignment.Center,Padding=UDim.new(0,4)},TL2)
+    Pad(0,6,0,6,TL2)
 
-    local quickActions = {
-        {icon="⌂","START"},{icon="⚡","SCRIPT HUB"},{icon="🛠","TOOLBOX"},
-        {icon="🎵","MEDIA CENTER"},{icon="🔮","QUANTUM ORACLE"},
-        {icon="🚀","GAME BOOSTER"},{icon="🎨","SKIN CUSTOMIZER"},{icon="⏻","POWER"},
-    }
-    for i, qa in ipairs(quickActions) do
-        local icon = qa.icon or qa[1]
-        local tab  = qa[2] or qa.icon
-        if type(qa[1])=="string" and not qa.icon then icon=qa[1]; tab=qa[2] end
-        -- simplified
-        local info = qa
-        local QB = MakeButton({
-            Size=UDim2.new(0,34,0,34), BackgroundColor3=C.BG_CARD,
-            BackgroundTransparency=0.3, Text=info[1],
-            Font=Enum.Font.GothamBold, TextSize=16, TextColor3=C.TEXT_SOFT, ZIndex=702,
-        }, TL)
-        Corner(10, QB)
-        QB.MouseEnter:Connect(function() Tween(QB,TI_FAST,{BackgroundColor3=C.PURPLE_DIM,TextColor3=C.TEXT_WHITE}) end)
-        QB.MouseLeave:Connect(function() Tween(QB,TI_FAST,{BackgroundColor3=C.BG_CARD,TextColor3=C.TEXT_SOFT}) end)
+    local qas={{"⌂","START"},{"⚡","SCRIPT HUB"},{"🛠","TOOLBOX"},{"🎵","MEDIA CENTER"},
+               {"🔮","QUANTUM ORACLE"},{"🚀","GAME BOOSTER"},{"🎨","SKIN CUSTOMIZER"},{"⏻","POWER"}}
+    for _,qa in ipairs(qas) do
+        local QB=MkBtn({Size=UDim2.new(0,32,0,32),BackgroundColor3=C.BG3,
+            BackgroundTransparency=0.25,Text=qa[1],Font=Enum.Font.GothamBold,
+            TextSize=15,TextColor3=C.TS,ZIndex=702},TL2); Corner(9,QB)
+        QB.MouseEnter:Connect(function() Tw(QB,TI.FAST,{BackgroundColor3=C.P3,TextColor3=C.TW}) end)
+        QB.MouseLeave:Connect(function() Tw(QB,TI.FAST,{BackgroundColor3=C.BG3,TextColor3=C.TS}) end)
         QB.MouseButton1Click:Connect(function()
-            if not ENV.QuantumOS_Unlocked then return end
-            ClearContent(); SetActiveTab(info[2])
-            local fnKey="QOS_Tab_"..info[2]:gsub("%s+","_"):gsub("[&]",""):gsub("__","_")
-            if _G[fnKey] then pcall(_G[fnKey]) end
-            Tween(QB,TI_FAST,{Size=UDim2.new(0,30,0,30)}); task.wait(0.12); Tween(QB,TI_BOUNCE,{Size=UDim2.new(0,34,0,34)})
+            if not ENV.QOS_Unlocked then return end
+            ClearContent(); SetActiveTab(qa[2])
+            local fk="QOS_Tab_"..qa[2]:gsub("%s+","_"):gsub("[&]",""):gsub("__","_")
+            if _G[fk] then pcall(_G[fk]) end
+            Tw(QB,TI.FAST,{Size=UDim2.new(0,28,0,28)}); task.wait(0.1); Tw(QB,TI.BOUNCE,{Size=UDim2.new(0,32,0,32)})
         end)
     end
 
-    local tbD,tbS,tbP = false,nil,nil
-    Taskbar.InputBegan:Connect(function(i)
+    local td,ts,tp=false,nil,nil
+    TB.InputBegan:Connect(function(i)
         if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-            tbD=true; tbS=i.Position; tbP=Taskbar.Position
+            td=true; ts=i.Position; tp=TB.Position
         end
     end)
-    TrackConn(UserInputService.InputChanged:Connect(function(i)
-        if tbD and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-            local delta=i.Position-tbS
-            Taskbar.Position=UDim2.new(tbP.X.Scale,tbP.X.Offset+delta.X,tbP.Y.Scale,tbP.Y.Offset+delta.Y)
+    Track(UserInputService.InputChanged:Connect(function(i)
+        if td and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+            local d=i.Position-ts; TB.Position=UDim2.new(tp.X.Scale,tp.X.Offset+d.X,tp.Y.Scale,tp.Y.Offset+d.Y)
         end
     end))
-    TrackConn(UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then tbD=false end
+    Track(UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then td=false end
     end))
-    return Taskbar
 end
 
-local function CreateQuickModulePanel()
-    local QMP = MakeFrame({
-        Name="QuickModulePanel", Size=UDim2.new(0,52,0,0),
-        Position=UDim2.new(0,10,0.5,-120), BackgroundTransparency=1,
-        AutomaticSize=Enum.AutomaticSize.Y, ZIndex=850,
-    }, ScreenGui)
-    local QML = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
-        BackgroundTransparency=1, ZIndex=851}, QMP)
-    ListLayout({Padding=UDim.new(0,5)}, QML)
-    local mods = {
-        {icon="✈",label="Fly",   toggle=function(s) if s then FlyModule.Enable() else FlyModule.Disable() end end},
-        {icon="👁",label="ESP",   toggle=function(s) if s then ESPModule.Enable() else ESPModule.Disable() end end},
-        {icon="⏱",label="AFK",   toggle=function(s) if s then AntiAFK.Enable() else AntiAFK.Disable() end end},
-        {icon="🛡",label="God",   toggle=function(s) if s then GodModule.Enable() else GodModule.Disable() end end},
-        {icon="📡",label="Radar", toggle=function(s) if s then RadarModule.Enable() else RadarModule.Disable() end end},
-    }
-    for _, mod in ipairs(mods) do
-        local MB = MakeFrame({Size=UDim2.new(0,46,0,46), BackgroundColor3=C.BG_GLASS, ZIndex=852}, QML)
-        Corner(12, MB); Stroke(1, C.BORDER, MB)
-        MakeLabel({Size=UDim2.new(1,0,0.6,0), BackgroundTransparency=1, Text=mod.icon, TextSize=18, ZIndex=853}, MB)
-        local ML = MakeLabel({Size=UDim2.new(1,0,0.4,0), Position=UDim2.new(0,0,0.6,0),
-            BackgroundTransparency=1, Text=mod.label, Font=Enum.Font.Gotham, TextSize=9,
-            TextColor3=C.TEXT_MUTED, ZIndex=853}, MB)
-        local state = false
-        local CB = MakeButton({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text="", ZIndex=854}, MB)
+local function CreateQuickPanel()
+    local QP=MkFrame({Name="QuickPanel",Size=UDim2.new(0,48,0,0),
+        Position=UDim2.new(0,8,0.5,-115),BackgroundTransparency=1,
+        AutomaticSize=Enum.AutomaticSize.Y,ZIndex=850},ScreenGui)
+    local QL=MkFrame({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1,ZIndex=851},QP)
+    ListL({Padding=UDim.new(0,4)},QL)
+    for _,m in ipairs({
+        {i="✈",l="Fly",  fn=function(s) if s then FlyMod.On() else FlyMod.Off() end end},
+        {i="👁",l="ESP",  fn=function(s) if s then ESPMod.On() else ESPMod.Off() end end},
+        {i="⏱",l="AFK",  fn=function(s) if s then AFKMod.On() else AFKMod.Off() end end},
+        {i="🛡",l="God",  fn=function(s) if s then GodMod.On() else GodMod.Off() end end},
+        {i="📡",l="Radar",fn=function(s) if s then RadarMod.On() else RadarMod.Off() end end},
+    }) do
+        local MB2=MkFrame({Size=UDim2.new(0,44,0,44),BackgroundColor3=C.BG4,ZIndex=852},QL)
+        Corner(11,MB2); Stroke(1,C.BR0,MB2)
+        MkLabel({Size=UDim2.new(1,0,0.58,0),BackgroundTransparency=1,Text=m.i,TextSize=17,ZIndex=853},MB2)
+        local ML2=MkLabel({Size=UDim2.new(1,0,0.42,0),Position=UDim2.new(0,0,0.58,0),
+            BackgroundTransparency=1,Text=m.l,Font=Enum.Font.Gotham,TextSize=8,
+            TextColor3=C.TM,ZIndex=853},MB2)
+        local st=false
+        local CB=MkBtn({Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Text="",ZIndex=854},MB2)
         CB.MouseButton1Click:Connect(function()
-            state=not state
-            Tween(MB,TI_FAST,{BackgroundColor3=state and C.PURPLE_DIM or C.BG_GLASS})
-            ML.TextColor3 = state and C.CYAN_NEON or C.TEXT_MUTED
-            pcall(function() mod.toggle(state) end)
+            st=not st; Tw(MB2,TI.FAST,{BackgroundColor3=st and C.P3 or C.BG4})
+            ML2.TextColor3=st and C.A1 or C.TM; pcall(function() m.fn(st) end)
         end)
     end
-    return QMP
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 19 - ATAJOS DE TECLADO
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local KeybindMap = {
-    [Enum.KeyCode.F1]={tab="START",           icon="⌂"},
-    [Enum.KeyCode.F2]={tab="SCRIPT HUB",      icon="⚡"},
-    [Enum.KeyCode.F3]={tab="TOOLBOX",         icon="🛠"},
-    [Enum.KeyCode.F4]={tab="SYSTEM SETTINGS", icon="⚙"},
-    [Enum.KeyCode.F5]={tab="MEDIA CENTER",    icon="🎵"},
-    [Enum.KeyCode.F6]={tab="QUANTUM ORACLE",  icon="🔮"},
-    [Enum.KeyCode.F7]={tab="PROCESSES & LOGS",icon="📊"},
-    [Enum.KeyCode.F8]={tab="FILE MANAGER",    icon="📁"},
+-- ═══════════════════════════════════════════════════════════════════════
+-- §22  ATAJOS DE TECLADO
+-- ═══════════════════════════════════════════════════════════════════════
+local KM={
+    [Enum.KeyCode.F1]={t="START",           i="⌂"},
+    [Enum.KeyCode.F2]={t="SCRIPT HUB",      i="⚡"},
+    [Enum.KeyCode.F3]={t="TOOLBOX",         i="🛠"},
+    [Enum.KeyCode.F4]={t="SYSTEM SETTINGS", i="⚙"},
+    [Enum.KeyCode.F5]={t="MEDIA CENTER",    i="🎵"},
+    [Enum.KeyCode.F6]={t="QUANTUM ORACLE",  i="🔮"},
+    [Enum.KeyCode.F7]={t="PROCESSES & LOGS",i="📊"},
+    [Enum.KeyCode.F8]={t="FILE MANAGER",    i="📁"},
 }
 
-local osVisible = true
-TrackConn(UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
-        osVisible = not osVisible
-        if MainWindow then
-            if osVisible then MainWindow.Visible=true; Tween(MainWindow,TI_MED,{Size=UDim2.fromScale(1,1)})
-            else Tween(MainWindow,TI_MED,{Size=UDim2.new(0,0,0,0)}); task.delay(0.35, function() pcall(function() MainWindow.Visible=false end) end) end
+local osVis=true
+Track(UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode==Enum.KeyCode.RightShift then
+        osVis=not osVis
+        if MainWin then
+            if osVis then MainWin.Visible=true; Tw(MainWin,TI.MED,{Size=UDim2.fromScale(1,1)})
+            else Tw(MainWin,TI.MED,{Size=UDim2.new(0,0,0,0)}); task.delay(0.35,function() pcall(function() end) end) end
         end
-        PushNotification("Quantum OS", osVisible and "Interfaz mostrada" or "Interfaz minimizada", "SYSTEM", 2)
+        PushNotif("Quantum OS",osVis and "Interfaz mostrada" or "Minimizado","SYSTEM",2)
         return
     end
-    local binding = KeybindMap[input.KeyCode]
-    if binding and ENV.QuantumOS_Unlocked then
-        ClearContent(); SetActiveTab(binding.tab)
-        local fnKey="QOS_Tab_"..binding.tab:gsub("%s+","_"):gsub("[&]",""):gsub("__","_")
-        if _G[fnKey] then pcall(_G[fnKey]) end
-        PushNotification("Quantum OS", binding.icon.."  Tab: "..binding.tab, "INFO", 1.5)
+    local b=KM[inp.KeyCode]
+    if b and ENV.QOS_Unlocked then
+        ClearContent(); SetActiveTab(b.t)
+        local fk="QOS_Tab_"..b.t:gsub("%s+","_"):gsub("[&]",""):gsub("__","_")
+        if _G[fk] then pcall(_G[fk]) end
+        PushNotif("QOS",b.i.."  "..b.t,"INFO",1.5)
     end
 end))
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 20 - STATS HUD
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local StatsHUD = nil
-local statsVisible = false
+-- ═══════════════════════════════════════════════════════════════════════
+-- §23  STATS HUD
+-- ═══════════════════════════════════════════════════════════════════════
+local StHUD, stVis = nil, false
 
 local function CreateStatsHUD()
-    if StatsHUD then StatsHUD:Destroy() end
-    StatsHUD = MakeFrame({
-        Name="QuantumStatsHUD", Size=UDim2.new(0,180,0,114),
-        Position=UDim2.new(0,10,0,64), BackgroundColor3=C.BG_GLASS,
-        BackgroundTransparency=0.25, ZIndex=800,
-    }, ScreenGui)
-    Corner(12, StatsHUD); Stroke(1, C.PURPLE_DIM, StatsHUD); Padding(8,10,8,10, StatsHUD)
-    MakeLabel({Size=UDim2.new(1,0,0,18), BackgroundTransparency=1,
-        Text="⬡ QUANTUM STATS", Font=Enum.Font.GothamBold,
-        TextSize=11, TextColor3=C.PURPLE_GLOW, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=801}, StatsHUD)
-    local rows = {{label="WalkSpeed",key="ws"},{label="JumpPower",key="jp"},{label="Health",key="hp"},{label="FPS",key="fps"},{label="Ping",key="ping"}}
-    local statLabels = {}
-    for i, row in ipairs(rows) do
-        local R = MakeFrame({Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,0,0,20+(i-1)*17),BackgroundTransparency=1,ZIndex=801},StatsHUD)
-        MakeLabel({Size=UDim2.new(0.55,0,1,0),BackgroundTransparency=1,Text=row.label..":",Font=Enum.Font.Gotham,TextSize=11,TextColor3=C.TEXT_MUTED,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=802},R)
-        statLabels[row.key]=MakeLabel({Size=UDim2.new(0.45,0,1,0),Position=UDim2.new(0.55,0,0,0),BackgroundTransparency=1,Text="—",Font=Enum.Font.GothamBold,TextSize=11,TextColor3=C.CYAN_NEON,TextXAlignment=Enum.TextXAlignment.Right,ZIndex=802},R)
+    if StHUD then StHUD:Destroy() end
+    StHUD=MkFrame({Name="StHUD",Size=UDim2.new(0,172,0,108),
+        Position=UDim2.new(0,8,0,60),BackgroundColor3=C.BG4,
+        BackgroundTransparency=0.22,ZIndex=800},ScreenGui)
+    Corner(12,StHUD); Stroke(1,C.P3,StHUD); Pad(7,9,7,9,StHUD)
+    MkLabel({Size=UDim2.new(1,0,0,16),BackgroundTransparency=1,Text="⬡ QUANTUM STATS",
+        Font=Enum.Font.GothamBold,TextSize=10,TextColor3=C.P2,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=801},StHUD)
+    local rows={{k="ws",l="WalkSpeed"},{k="jp",l="JumpPower"},{k="hp",l="Health"},{k="fps",l="FPS"},{k="ping",l="Ping"}}
+    local SL2={}
+    for i,r in ipairs(rows) do
+        local R=MkFrame({Size=UDim2.new(1,0,0,15),Position=UDim2.new(0,0,0,18+(i-1)*16),BackgroundTransparency=1,ZIndex=801},StHUD)
+        MkLabel({Size=UDim2.new(0.55,0,1,0),BackgroundTransparency=1,Text=r.l..":",Font=Enum.Font.Gotham,TextSize=10,TextColor3=C.TM,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=802},R)
+        SL2[r.k]=MkLabel({Size=UDim2.new(0.45,0,1,0),Position=UDim2.new(0.55,0,0,0),BackgroundTransparency=1,Text="—",Font=Enum.Font.GothamBold,TextSize=10,TextColor3=C.A1,TextXAlignment=Enum.TextXAlignment.Right,ZIndex=802},R)
     end
-    local fpsBuffer,fpsLast={},tick()
-    TrackConn(RunService.RenderStepped:Connect(function()
-        if not StatsHUD or not StatsHUD.Parent then return end
+    local fb,fl={},tick()
+    Track(RunService.RenderStepped:Connect(function()
+        if not StHUD or not StHUD.Parent then return end
         pcall(function()
-            local hum=LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-            if hum then
-                statLabels.ws.Text=math.floor(hum.WalkSpeed); statLabels.jp.Text=math.floor(hum.JumpPower)
-                statLabels.hp.Text=math.floor(hum.Health).."/"..math.floor(hum.MaxHealth)
-                statLabels.hp.TextColor3=hum.Health<hum.MaxHealth*0.3 and C.TEXT_RED or C.CYAN_NEON
+            local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            if h then
+                SL2.ws.Text=math.floor(h.WalkSpeed); SL2.jp.Text=math.floor(h.JumpPower)
+                SL2.hp.Text=math.floor(h.Health).."/"..math.floor(h.MaxHealth)
+                SL2.hp.TextColor3=h.Health<h.MaxHealth*0.3 and C.TR or C.A1
             end
-            local now=tick(); table.insert(fpsBuffer,1/(now-fpsLast+0.00001)); fpsLast=now
-            if #fpsBuffer>30 then table.remove(fpsBuffer,1) end
-            local s=0; for _,v in pairs(fpsBuffer) do s=s+v end
-            local fps=math.floor(s/#fpsBuffer); statLabels.fps.Text=fps.." fps"
-            statLabels.fps.TextColor3=fps<20 and C.TEXT_RED or fps<40 and C.TEXT_YELLOW or C.TEXT_GREEN
-            statLabels.ping.Text=math.random(18,85).." ms"
+            local n=tick(); table.insert(fb,1/(n-fl+1e-5)); fl=n
+            if #fb>30 then table.remove(fb,1) end
+            local s=0; for _,v in pairs(fb) do s=s+v end
+            local fps=math.floor(s/#fb)
+            SL2.fps.Text=fps.." fps"; SL2.fps.TextColor3=fps<20 and C.TR or fps<40 and C.TY or C.TG
+            SL2.ping.Text=math.random(18,85).." ms"
         end)
     end))
-    return StatsHUD
 end
 
-TrackConn(UserInputService.InputBegan:Connect(function(input, gp)
+Track(UserInputService.InputBegan:Connect(function(inp,gp)
     if gp then return end
-    if input.KeyCode==Enum.KeyCode.RightControl then
-        statsVisible=not statsVisible
-        if statsVisible then CreateStatsHUD(); PushNotification("Stats HUD","Panel activado.","SUCCESS",2)
-        else if StatsHUD then StatsHUD:Destroy(); StatsHUD=nil end; PushNotification("Stats HUD","Panel oculto.","INFO",2) end
+    if inp.KeyCode==Enum.KeyCode.RightControl then
+        stVis=not stVis
+        if stVis then CreateStatsHUD(); PushNotif("Stats HUD","Panel activado.","SUCCESS",2)
+        else if StHUD then StHUD:Destroy(); StHUD=nil end; PushNotif("Stats HUD","Oculto.","INFO",2) end
     end
 end))
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 21 - CHAT COMMANDS
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local ChatCommands = {
-    ["/qfly"]   = function() if FlyModule.Active then FlyModule.Disable() else FlyModule.Enable() end end,
-    ["/qesp"]   = function() if ESPModule.Active then ESPModule.Disable() else ESPModule.Enable() end end,
-    ["/qafk"]   = function() if AntiAFK.Active then AntiAFK.Disable() else AntiAFK.Enable() end end,
-    ["/qgod"]   = function() if GodModule.Active then GodModule.Disable() else GodModule.Enable() end end,
-    ["/qradar"] = function() if RadarModule.Active then RadarModule.Disable() else RadarModule.Enable() end end,
-    ["/qreset"] = function() MovementModule.SetWalkSpeed(16); MovementModule.SetJumpPower(50) end,
-    ["/qspeed"] = function(args) MovementModule.SetWalkSpeed(tonumber(args[1]) or 100) end,
-    ["/qjump"]  = function(args) MovementModule.SetJumpPower(tonumber(args[1]) or 100) end,
-    ["/qoracle"]= function()
-        ClearContent(); SetActiveTab("QUANTUM ORACLE"); pcall(_G["QOS_Tab_QUANTUM_ORACLE"])
-    end,
-    ["/qhelp"]  = function()
-        PushNotification("Quantum Commands","/qfly /qesp /qafk /qgod /qradar /qreset\n/qspeed [v] /qjump [v] /qoracle","ORACLE",6)
-    end,
+-- ═══════════════════════════════════════════════════════════════════════
+-- §24  CHAT COMMANDS
+-- ═══════════════════════════════════════════════════════════════════════
+local CC={
+    ["/qfly"]   =function() if FlyMod.Active then FlyMod.Off() else FlyMod.On() end end,
+    ["/qesp"]   =function() if ESPMod.Active then ESPMod.Off() else ESPMod.On() end end,
+    ["/qafk"]   =function() if AFKMod.Active then AFKMod.Off() else AFKMod.On() end end,
+    ["/qgod"]   =function() if GodMod.Active then GodMod.Off() else GodMod.On() end end,
+    ["/qradar"] =function() if RadarMod.Active then RadarMod.Off() else RadarMod.On() end end,
+    ["/qreset"] =function() MovMod.Speed(16); MovMod.Jump(50) end,
+    ["/qspeed"] =function(a) MovMod.Speed(tonumber(a[1]) or 100) end,
+    ["/qjump"]  =function(a) MovMod.Jump(tonumber(a[1]) or 100) end,
+    ["/qoracle"]=function() ClearContent(); SetActiveTab("QUANTUM ORACLE"); pcall(_G["QOS_Tab_QUANTUM_ORACLE"]) end,
+    ["/qhelp"]  =function() PushNotif("Commands","/qfly /qesp /qafk /qgod /qradar /qspeed /qjump /qoracle","ORACLE",6) end,
 }
-
 pcall(function()
-    TrackConn(LocalPlayer.Chatted:Connect(function(msg)
-        local parts=msg:split(" "); local cmd=parts[1]:lower()
-        local args={}; for i=2,#parts do table.insert(args,parts[i]) end
-        if ChatCommands[cmd] then pcall(function() ChatCommands[cmd](args) end) end
+    Track(LP.Chatted:Connect(function(msg)
+        local p=msg:split(" "); local cmd=p[1]:lower(); local a={}
+        for i=2,#p do a[#a+1]=p[i] end
+        if CC[cmd] then pcall(function() CC[cmd](a) end) end
     end))
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 22 - HEARTBEAT Y PROTECCIÓN DE PERSONAJE
--- ═══════════════════════════════════════════════════════════════════════════════
-
-TrackConn(RunService.Heartbeat:Connect(function()
+-- ═══════════════════════════════════════════════════════════════════════
+-- §25  HEARTBEAT Y CHARACTER
+-- ═══════════════════════════════════════════════════════════════════════
+Track(RunService.Heartbeat:Connect(function()
     pcall(function()
-        if LocalPlayer.Character then
-            local hum=LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-            if hum then Humanoid=hum end
+        if LP.Character then
+            local h=LP.Character:FindFirstChildOfClass("Humanoid"); if h then Humanoid=h end
         end
     end)
 end))
-
-TrackConn(LocalPlayer.CharacterAdded:Connect(function(char)
-    Character=char; task.wait(0.5)
-    Humanoid=char:FindFirstChildOfClass("Humanoid")
+Track(LP.CharacterAdded:Connect(function(c)
+    Character=c; task.wait(0.5); Humanoid=c:FindFirstChildOfClass("Humanoid")
 end))
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 23 - API GLOBAL
--- ═══════════════════════════════════════════════════════════════════════════════
-
-ENV.QuantumOS = {
-    version="3.0", edition="Delta", aiOrchestrator=AI.ORCHESTRATOR,
-    modules={Fly=FlyModule,ESP=ESPModule,AntiAFK=AntiAFK,God=GodModule,Radar=RadarModule,Movement=MovementModule},
-    ui={showToast=ShowToast,pushNotif=PushNotification},
-    ai={query=OracleQuery, verify=VerifyAPIKey, agents=AI.AGENTS},
-    commands=ChatCommands,
+-- ═══════════════════════════════════════════════════════════════════════
+-- §26  API GLOBAL
+-- ═══════════════════════════════════════════════════════════════════════
+ENV.QuantumOS={
+    version="3.1", edition="Delta", orchestrator=AI.ORCH,
+    modules={Fly=FlyMod,ESP=ESPMod,AFK=AFKMod,God=GodMod,Radar=RadarMod,Mov=MovMod},
+    ui={toast=ShowToast,notif=PushNotif},
+    ai={query=OracleQuery,verify=VerifyAPIKey,models=AI.MODEL},
+    commands=CC,
 }
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 24 - INICIALIZACIÓN POST-LAUNCH
--- ═══════════════════════════════════════════════════════════════════════════════
-
-local function InitPostLaunch()
+-- ═══════════════════════════════════════════════════════════════════════
+-- §27  POST-LAUNCH
+-- ═══════════════════════════════════════════════════════════════════════
+local function PostLaunch()
     pcall(CreateTaskbar)
-    pcall(CreateQuickModulePanel)
+    pcall(CreateQuickPanel)
     pcall(CreateWatermark)
-    task.delay(1.5, function() PushNotification("Atajos","F1–F8: Tabs  |  RShift: Toggle OS  |  RCtrl: Stats","INFO",5) end)
-    task.delay(4.0, function() PushNotification("Oracle AI","/qoracle en chat · 5 agentes especializados activos.","ORACLE",4) end)
-    task.delay(7.0, function() PushNotification("Panel lateral","Fly · ESP · AFK · God · Radar disponibles.","SYSTEM",4) end)
-    task.delay(10.0,function() PushNotification("Quantum OS v3.0","Sistema Multi-Agent AI operativo ✓","AI",3) end)
+    task.delay(1.5,function() PushNotif("Atajos","F1–F8: Tabs  |  RShift: Toggle  |  RCtrl: Stats","INFO",5) end)
+    task.delay(4.0,function() PushNotif("Oracle AI","/qoracle · 5 agentes especializados listos.","ORACLE",4) end)
+    task.delay(7.0,function() PushNotif("Quick Panel","Fly·ESP·AFK·God·Radar disponibles.","SYSTEM",4) end)
+    task.delay(10,function()  PushNotif("Quantum OS v3.1","Sistema Multi-Agent AI operativo ✓","AI",3) end)
 end
 
-local function LaunchQuantumOS(deviceMode)
-    task.delay(2.5, function() pcall(CreateFloatingOracle) end)
+local function Launch(mode)
+    task.delay(2.5,function() pcall(CreateFloatOracle) end)
     CreateMainWindow()
     task.wait(0.1)
     SetActiveTab("START"); _G["QOS_Tab_START"]()
-    task.delay(0.8, function()
-        ShowToast("Quantum OS v3.0","Bienvenido, "..DISPLAY_NAME.." · AI Online","⬡")
-        task.delay(2, function() ShowToast("Oracle AI","5 Agentes activos · Juego: "..GAME_NAME,"🔮") end)
-        task.delay(4, function() ShowToast("Dispositivo", "Modo: "..(deviceMode or "?"):upper(),"📱") end)
+    task.delay(0.8,function()
+        ShowToast("Quantum OS v3.1","Bienvenido, "..DNAME.." · AI Online","⬡")
+        task.delay(2,function() ShowToast("Oracle AI","5 Agentes · Juego: "..GNAME,"🔮") end)
+        task.delay(4,function() ShowToast("Dispositivo","Modo: "..(mode or "?"):upper(),"📱") end)
     end)
-    task.delay(0.6, function() pcall(InitPostLaunch) end)
+    task.delay(0.6,function() pcall(PostLaunch) end)
 end
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 25 - SECUENCIA DE ARRANQUE: Boot → Login → Device Select → OS
--- ═══════════════════════════════════════════════════════════════════════════════
-
+-- ═══════════════════════════════════════════════════════════════════════
+-- §28  SECUENCIA DE ARRANQUE
+-- ═══════════════════════════════════════════════════════════════════════
 pcall(function()
-    -- 1. Boot screen
-    local boot = CreateBootScreen()
-
-    -- 2. Tras el boot → Login con API Key
-    task.delay(5.0, function()
+    CreateBoot()
+    task.delay(5.0,function()
         pcall(function()
-            CreateLoginScreen(function()
-                -- 3. Tras verificar la key → Selección de dispositivo
+            CreateLogin(function()
                 pcall(function()
-                    CreateDeviceSelectionScreen(function(deviceMode)
-                        -- 4. Lanzar el OS
-                        pcall(function() LaunchQuantumOS(deviceMode) end)
+                    CreateDeviceSelect(function(mode)
+                        pcall(function() Launch(mode) end)
                     end)
                 end)
             end)
@@ -2470,22 +2079,13 @@ pcall(function()
     end)
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════════
--- SECCIÓN 26 - DEBUG LOG Y FIRMA
--- ═══════════════════════════════════════════════════════════════════════════════
-
 print("╔═══════════════════════════════════════════════════════════════╗")
-print("║  LXNDXN QUANTUM OS v3.0 — DELTA EDITION — MULTI-AGENT AI   ║")
-print("║                                                               ║")
-print("║  Jugador   : " .. string.format("%-47s", DISPLAY_NAME)        .. "║")
-print("║  Juego     : " .. string.format("%-47s", GAME_NAME:sub(1,47)) .. "║")
-print("║  Orquestador: llama-3.3-70b-instruct (OpenRouter)            ║")
-print("║  Agentes   : Game·Code·Strategy·Creative·Fast                ║")
-print("║                                                               ║")
+print("║  LXNDXN QUANTUM OS v3.1 · DELTA EDITION · MULTI-AGENT AI    ║")
+print("║  Jugador    : "..string.format("%-48s",DNAME)..                                 "║")
+print("║  Juego      : "..string.format("%-48s",GNAME:sub(1,48))..                      "║")
+print("║  Fix        : Verificación robusta · Responsive UI           ║")
 print("║  Toggle OS  → RightShift                                     ║")
 print("║  Stats HUD  → RightControl                                   ║")
 print("║  Tabs F1–F8 → START/HUB/TOOLBOX/SETTINGS/MEDIA...           ║")
 print("║  Chat cmds  → /qhelp                                         ║")
-print("║                                                               ║")
-print("║  Creditos: LXNDXN · Delta Executor Edition · 2025            ║")
 print("╚═══════════════════════════════════════════════════════════════╝")
