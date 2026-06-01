@@ -290,13 +290,11 @@ end
 -- No buscamos "OK" literal; cualquier respuesta no-vacía y sin error = válida
 local function VerifyAPIKey(key, cb)
     task.spawn(function()
-        local oldKey = ENV.QOS_APIKey
-        ENV.QOS_APIKey = key
         local ok, err = pcall(function()
             local body = HttpService:JSONEncode({
                 model = AI.MODEL.FAST,
                 max_tokens = 16,
-                messages = {{role="user", content="Di: listo"}},
+                messages = {{role="user", content="hola"}},
             })
             local r = HttpService:RequestAsync({
                 Url    = "https://openrouter.ai/api/v1/chat/completions",
@@ -309,28 +307,27 @@ local function VerifyAPIKey(key, cb)
                 },
                 Body = body,
             })
-            if r.StatusCode == 200 then
-                local d = HttpService:JSONDecode(r.Body)
-                -- Cualquier respuesta válida de choices == API key funciona
-                if d.choices and d.choices[1] then
-                    return true
-                elseif d.error then
-                    error(d.error.message or "invalid_key")
-                end
+            if r.StatusCode == 200 or r.StatusCode == 429 then
+                return true
             elseif r.StatusCode == 401 then
-                error("API Key inválida (401)")
+                error("API Key inválida · Revisa que sea correcta")
             elseif r.StatusCode == 402 then
-                error("Sin créditos en cuenta (402)")
-            elseif r.StatusCode == 429 then
-                error("Rate limit alcanzado (429)")
+                error("Sin créditos · Verifica tu cuenta OpenRouter")
+            elseif r.StatusCode == 403 then
+                error("Acceso denegado · Cuenta suspendida")
             else
-                error("HTTP "..r.StatusCode)
+                local ok2, d = pcall(function() return HttpService:JSONDecode(r.Body) end)
+                if ok2 and d and d.error then
+                    error(d.error.message or "Error desconocido")
+                else
+                    error("HTTP "..r.StatusCode.." · Intenta de nuevo")
+                end
             end
         end)
         if ok then
+            ENV.QOS_APIKey = key
             cb(true, "Conexión verificada")
         else
-            ENV.QOS_APIKey = oldKey
             cb(false, tostring(err):gsub(".*: ",""))
         end
     end)
