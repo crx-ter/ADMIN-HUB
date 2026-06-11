@@ -250,7 +250,8 @@ local function OR_Call(model, sysPrompt, userMsg, maxTok)
             model=model, max_tokens=maxTok,
             messages={{role="system",content=sysPrompt},{role="user",content=userMsg}},
         })
-        local resp = (http_request or request or HttpService.RequestAsync and function(self,...) return HttpService:RequestAsync(...) end)(HttpService, {
+        local httpFn = http_request or request or (syn and syn.request)
+        local resp = httpFn({
             Url="https://openrouter.ai/api/v1/chat/completions",
             Method="POST",
             Headers={
