@@ -262,8 +262,9 @@ local function OR_Call(model, sysPrompt, userMsg, maxTok)
             },
             Body=body,
         })
-        if resp.StatusCode~=200 then return nil,"HTTP "..resp.StatusCode end
-        local data=HttpService:JSONDecode(resp.Body)
+        if resp.StatusCode~=200 and resp.status_code~=200 then return nil,"HTTP "..(resp.StatusCode or resp.status_code or "?") end
+        local body_text = resp.Body or resp.body or ""
+        local data=HttpService:JSONDecode(body_text)
         return data.choices and data.choices[1] and data.choices[1].message and data.choices[1].message.content
     end)
     if ok then return result,nil else return nil,tostring(result) end
