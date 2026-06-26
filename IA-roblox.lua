@@ -1,140 +1,314 @@
--- ╔══════════════════════════════════════════════════════════╗
--- ║     CONECTA PALABRAS v4.0 — Word Finder Pro + IA        ║
--- ║  Compact · Transparent · Resizable · Minimize · AI Fix  ║
--- ╚══════════════════════════════════════════════════════════╝
-
--- ============================================================
---  SERVICIOS
--- ============================================================
 local Players    = game:GetService("Players")
 local TweenSvc   = game:GetService("TweenService")
 local UIS        = game:GetService("UserInputService")
 local LP         = Players.LocalPlayer
 
 -- ============================================================
---  CONFIG
--- ============================================================
-local CFG = {
-    W            = 300,    -- ancho inicial (más chico)
-    H            = 420,    -- alto inicial
-    MIN_W        = 240,
-    MIN_H        = 320,
-    MAX_W        = 380,
-    MAX_H        = 580,
-    ITEM_H       = 30,
-    LIST_ROWS    = 7,
-    MAX_RES      = 120,
-    ANIM         = 0.15,
-    BG_TRANS     = 0.12,   -- transparencia del fondo (glassmorphism)
-    PANEL_TRANS  = 0.18,
-}
-
--- ============================================================
---  PALETA — GLASSMORPHISM
+--  PALETA
 -- ============================================================
 local C = {
-    BG          = Color3.fromRGB(10,  12,  22),
-    GLASS       = Color3.fromRGB(18,  22,  40),
-    GLASS2      = Color3.fromRGB(24,  30,  52),
-    CARD        = Color3.fromRGB(22,  28,  48),
-    CARD2       = Color3.fromRGB(28,  35,  58),
-    ACCENT      = Color3.fromRGB(90,  140, 255),
-    ACCENT2     = Color3.fromRGB(130, 80,  255),
-    ACCENT3     = Color3.fromRGB(60,  210, 255),
-    GREEN       = Color3.fromRGB(60,  220, 140),
-    RED         = Color3.fromRGB(255, 70,  85),
-    ORANGE      = Color3.fromRGB(255, 165, 55),
-    TEXT        = Color3.fromRGB(230, 232, 255),
-    TEXTD       = Color3.fromRGB(140, 145, 180),
-    TEXTM       = Color3.fromRGB(70,  75,  115),
-    SCROLL      = Color3.fromRGB(90,  140, 255),
-    WHITE       = Color3.fromRGB(255, 255, 255),
-    BLACK       = Color3.fromRGB(0,   0,   0),
+    BG      = Color3.fromRGB(8, 10, 20),
+    PANEL   = Color3.fromRGB(14, 17, 30),
+    CARD    = Color3.fromRGB(20, 24, 42),
+    CARD2   = Color3.fromRGB(26, 30, 52),
+    ACCENT  = Color3.fromRGB(85, 135, 255),
+    ACCENT2 = Color3.fromRGB(125, 75, 255),
+    GREEN   = Color3.fromRGB(60, 220, 140),
+    RED     = Color3.fromRGB(255, 70, 85),
+    ORANGE  = Color3.fromRGB(255, 165, 55),
+    YELLOW  = Color3.fromRGB(255, 220, 60),
+    TEXT    = Color3.fromRGB(230, 232, 255),
+    TEXTD   = Color3.fromRGB(140, 145, 180),
+    TEXTM   = Color3.fromRGB(65, 70, 108),
+    SCROLL  = Color3.fromRGB(85, 135, 255),
 }
 
 -- ============================================================
---  HTTP HELPER — multi-exploit (Delta/KRNL/Synapse/Fluxus)
+--  HELPERS UI
 -- ============================================================
-local function httpRequest(opts)
-    -- Delta / KRNL / Fluxus usan request()
-    if type(request) == "function" then
-        local ok, r = pcall(request, opts)
-        if ok and r then return r end
-    end
-    -- Synapse
-    if syn and type(syn.request) == "function" then
-        local ok, r = pcall(syn.request, opts)
-        if ok and r then return r end
-    end
-    -- http (algunos exploits)
-    if http and type(http.request) == "function" then
-        local ok, r = pcall(http.request, opts)
-        if ok and r then return r end
-    end
-    -- HttpService fallback (Studio)
-    local hs = game:GetService("HttpService")
-    if opts.Method == "GET" then
-        local ok, b = pcall(function() return hs:GetAsync(opts.Url, true) end)
-        if ok and b then return { Body = b, StatusCode = 200 } end
-    end
-    return nil
+local function R(p,r) local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 8); c.Parent=p end
+local function S(p,col,th) local s=Instance.new("UIStroke"); s.Color=col; s.Thickness=th or 1; s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; s.Parent=p; return s end
+local function TW(o,pr,t) TweenSvc:Create(o,TweenInfo.new(t or 0.15,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),pr):Play() end
+local function LBL(p,txt,sz,col,fnt,ax)
+    local l=Instance.new("TextLabel"); l.BackgroundTransparency=1; l.Text=txt; l.TextSize=sz or 12
+    l.TextColor3=col or C.TEXT; l.Font=fnt or Enum.Font.Gotham
+    l.TextXAlignment=ax or Enum.TextXAlignment.Left; l.TextYAlignment=Enum.TextYAlignment.Center
+    l.TextTruncate=Enum.TextTruncate.AtEnd; l.Parent=p; return l
 end
-
-local function httpGet(url)
-    local r = httpRequest({ Url = url, Method = "GET" })
-    if r and r.Body and #r.Body > 5 then return true, r.Body end
-    return false, nil
-end
-
-local function httpPost(url, headers, body)
-    local r = httpRequest({ Url = url, Method = "POST", Headers = headers, Body = body })
-    if r and r.Body then return true, r.Body, r.StatusCode end
-    return false, nil, nil
+local function BTN(p,txt,sz,bg,tc)
+    local b=Instance.new("TextButton"); b.Size=sz; b.BackgroundColor3=bg or C.CARD
+    b.BorderSizePixel=0; b.Text=txt; b.TextColor3=tc or C.TEXT; b.TextSize=12
+    b.Font=Enum.Font.GothamBold; b.AutoButtonColor=false; b.Parent=p; R(b,7); return b
 end
 
 -- ============================================================
---  JSON MINIMAL (sin HttpService:JSONEncode para compatibilidad)
+--  LIMPIAR INSTANCIAS PREVIAS
 -- ============================================================
-local function jsonEnc(v)
-    local t = type(v)
-    if t == "string" then
-        v = v:gsub('\\','\\\\'):gsub('"','\\"'):gsub('\n','\\n'):gsub('\r','\\r'):gsub('\t','\\t')
-        return '"'..v..'"'
-    elseif t == "number"  then return tostring(v)
-    elseif t == "boolean" then return v and "true" or "false"
-    elseif t == "table" then
-        if #v > 0 then
-            local p={}; for _,x in ipairs(v) do p[#p+1]=jsonEnc(x) end
-            return "["..table.concat(p,",").."]"
-        else
-            local p={}; for k,x in pairs(v) do p[#p+1]='"'..k..'":'..jsonEnc(x) end
-            return "{"..table.concat(p,",").."}"
-        end
-    end
-    return "null"
-end
+pcall(function() game:GetService("CoreGui"):FindFirstChild("CW_GUI"):Destroy() end)
+pcall(function() LP:WaitForChild("PlayerGui",3):FindFirstChild("CW_GUI"):Destroy() end)
 
--- Extrae "content" de la respuesta OpenRouter
-local function parseAIResponse(s)
-    if not s then return nil end
-    -- Busca el campo content dentro de choices[0].message
-    local c = s:match('"content"%s*:%s*"(.-[^\\])"')
-    if c then
-        c = c:gsub('\\"','"'):gsub('\\n','\n'):gsub('\\\\','\\')
-        return c
-    end
-    -- fallback más simple
-    c = s:match('"content":"([^"]*)"')
-    if c then return c end
-    -- busca error
-    local e = s:match('"message"%s*:%s*"([^"]*)"')
-    if e then return "❌ "..e end
-    return nil
+local SG = Instance.new("ScreenGui")
+SG.Name="CW_GUI"; SG.ResetOnSpawn=false; SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SG.IgnoreGuiInset=true
+if not pcall(function() SG.Parent=game:GetService("CoreGui") end) then
+    SG.Parent=LP:WaitForChild("PlayerGui")
 end
 
 -- ============================================================
---  NORMALIZACIÓN
+--  VENTANA PRINCIPAL  (compact: 290 x 400)
 -- ============================================================
+local W, H = 290, 400
+
+local Main = Instance.new("Frame")
+Main.Name="Main"; Main.Size=UDim2.new(0,W,0,0)
+Main.Position=UDim2.new(0.5,-W/2,0.5,0)
+Main.BackgroundColor3=C.BG; Main.BackgroundTransparency=0.08
+Main.BorderSizePixel=0; Main.Active=true; Main.Draggable=true; Main.ClipsDescendants=true
+Main.Parent=SG; R(Main,13); S(Main,Color3.fromRGB(55,65,120),1)
+
+-- Tira de color top
+local TopBar=Instance.new("Frame"); TopBar.Size=UDim2.new(1,0,0,2); TopBar.BackgroundColor3=C.ACCENT
+TopBar.BorderSizePixel=0; TopBar.ZIndex=5; TopBar.Parent=Main; R(TopBar,2)
+local g=Instance.new("UIGradient"); g.Color=ColorSequence.new(C.ACCENT,C.ACCENT2); g.Rotation=0; g.Parent=TopBar
+
+-- ── BURBUJA MINIMIZAR ──────────────────────────────────────
+local Bubble=Instance.new("TextButton")
+Bubble.Size=UDim2.new(0,44,0,44); Bubble.Position=UDim2.new(0,10,0,80)
+Bubble.BackgroundColor3=C.ACCENT; Bubble.BorderSizePixel=0
+Bubble.Text="⬡"; Bubble.TextColor3=C.TEXT; Bubble.TextSize=20; Bubble.Font=Enum.Font.GothamBold
+Bubble.AutoButtonColor=false; Bubble.Visible=false; Bubble.ZIndex=60; Bubble.Parent=SG; R(Bubble,22)
+S(Bubble,C.ACCENT2,2)
+local bg2=Instance.new("UIGradient"); bg2.Color=ColorSequence.new(C.ACCENT,C.ACCENT2); bg2.Rotation=45; bg2.Parent=Bubble
+
+-- ── HEADER ─────────────────────────────────────────────────
+local Hdr=Instance.new("Frame"); Hdr.Size=UDim2.new(1,0,0,44)
+Hdr.BackgroundColor3=C.PANEL; Hdr.BackgroundTransparency=0.08; Hdr.BorderSizePixel=0; Hdr.Parent=Main; R(Hdr,13)
+local HFix=Instance.new("Frame"); HFix.Size=UDim2.new(1,0,0,13); HFix.Position=UDim2.new(0,0,1,-13)
+HFix.BackgroundColor3=C.PANEL; HFix.BackgroundTransparency=0.08; HFix.BorderSizePixel=0; HFix.Parent=Hdr
+
+local TIco=LBL(Hdr,"⬡",17,C.ACCENT,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+TIco.Size=UDim2.new(0,32,1,0); TIco.Position=UDim2.new(0,5,0,0); TIco.ZIndex=4
+local TTxt=LBL(Hdr,"CONECTA PALABRAS",12,C.TEXT,Enum.Font.GothamBold)
+TTxt.Size=UDim2.new(1,-105,0,18); TTxt.Position=UDim2.new(0,38,0,5); TTxt.ZIndex=4
+local STxt=LBL(Hdr,"Monitor en tiempo real v5",9,C.TEXTD,Enum.Font.Gotham)
+STxt.Size=UDim2.new(1,-105,0,14); STxt.Position=UDim2.new(0,38,0,24); STxt.ZIndex=4
+
+local BMin=BTN(Hdr,"—",UDim2.new(0,28,0,26),Color3.fromRGB(20,38,65),C.ACCENT)
+BMin.Position=UDim2.new(1,-31,0.5,-13); BMin.TextSize=13; BMin.ZIndex=4
+
+-- ── BODY ───────────────────────────────────────────────────
+local Body=Instance.new("Frame"); Body.Size=UDim2.new(1,-12,1,-50)
+Body.Position=UDim2.new(0,6,0,46); Body.BackgroundTransparency=1; Body.Parent=Main
+
+-- ── PREFIJO ACTUAL (grande, visible) ───────────────────────
+local PreFrm=Instance.new("Frame"); PreFrm.Size=UDim2.new(1,0,0,58)
+PreFrm.BackgroundColor3=C.CARD; PreFrm.BackgroundTransparency=0.05; PreFrm.BorderSizePixel=0; PreFrm.Parent=Body; R(PreFrm,10)
+S(PreFrm,Color3.fromRGB(45,55,100),1)
+
+local PreLabel=LBL(PreFrm,"Detectando prefijo...",13,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+PreLabel.Size=UDim2.new(1,0,0,18); PreLabel.Position=UDim2.new(0,0,0,4)
+
+local PreWord=LBL(PreFrm,"---",28,C.ACCENT,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+PreWord.Size=UDim2.new(1,0,0,32); PreWord.Position=UDim2.new(0,0,0,22)
+
+-- ── TABS ───────────────────────────────────────────────────
+local TabFrm=Instance.new("Frame"); TabFrm.Size=UDim2.new(1,0,0,26)
+TabFrm.Position=UDim2.new(0,0,0,62); TabFrm.BackgroundColor3=C.PANEL
+TabFrm.BackgroundTransparency=0.2; TabFrm.BorderSizePixel=0; TabFrm.Parent=Body; R(TabFrm,7)
+
+local TB1=BTN(TabFrm,"✅ Usadas",UDim2.new(0.33,-2,1,-4),C.ACCENT,C.TEXT)
+TB1.Position=UDim2.new(0,2,0,2); TB1.TextSize=10; R(TB1,5)
+local TB2=BTN(TabFrm,"🔍 Prefijo",UDim2.new(0.33,-2,1,-4),Color3.fromRGB(20,24,44),C.TEXTD)
+TB2.Position=UDim2.new(0.33,1,0,2); TB2.TextSize=10; R(TB2,5)
+local TB3=BTN(TabFrm,"📝 Manual",UDim2.new(0.34,-2,1,-4),Color3.fromRGB(20,24,44),C.TEXTD)
+TB3.Position=UDim2.new(0.66,1,0,2); TB3.TextSize=10; R(TB3,5)
+
+-- ── INFO BAR ───────────────────────────────────────────────
+local InfoFrm=Instance.new("Frame"); InfoFrm.Size=UDim2.new(1,0,0,20)
+InfoFrm.Position=UDim2.new(0,0,0,92); InfoFrm.BackgroundTransparency=1; InfoFrm.Parent=Body
+local InfoLbl=LBL(InfoFrm,"Escaneando GUI del juego...",9,C.TEXTM,Enum.Font.Gotham)
+InfoLbl.Size=UDim2.new(1,0,1,0); InfoLbl.Position=UDim2.new(0,2,0,0)
+
+-- ── LISTA PRINCIPAL ────────────────────────────────────────
+local ListFrm=Instance.new("Frame"); ListFrm.Size=UDim2.new(1,0,0,236)
+ListFrm.Position=UDim2.new(0,0,0,115); ListFrm.BackgroundColor3=C.PANEL
+ListFrm.BackgroundTransparency=0.12; ListFrm.BorderSizePixel=0; ListFrm.ClipsDescendants=true; ListFrm.Parent=Body
+R(ListFrm,9); S(ListFrm,Color3.fromRGB(32,38,72),1)
+
+local Scroll=Instance.new("ScrollingFrame")
+Scroll.Size=UDim2.new(1,-6,1,0); Scroll.BackgroundTransparency=1; Scroll.BorderSizePixel=0
+Scroll.ScrollBarThickness=3; Scroll.ScrollBarImageColor3=C.SCROLL
+Scroll.CanvasSize=UDim2.new(0,0,0,0); Scroll.ScrollingDirection=Enum.ScrollingDirection.Y; Scroll.Parent=ListFrm
+local SLayout=Instance.new("UIListLayout"); SLayout.SortOrder=Enum.SortOrder.LayoutOrder; SLayout.Padding=UDim.new(0,2); SLayout.Parent=Scroll
+local SPad=Instance.new("UIPadding"); SPad.PaddingTop=UDim.new(0,3); SPad.PaddingLeft=UDim.new(0,3); SPad.PaddingRight=UDim.new(0,2); SPad.Parent=Scroll
+
+-- Placeholder
+local PHFrm=Instance.new("Frame"); PHFrm.Size=UDim2.new(1,0,1,0); PHFrm.BackgroundTransparency=1; PHFrm.ZIndex=3; PHFrm.Parent=ListFrm
+local PHT=LBL(PHFrm,"Esperando datos del juego...",11,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+PHT.Size=UDim2.new(1,0,0,20); PHT.Position=UDim2.new(0,0,0.4,0); PHT.ZIndex=3
+local PHS=LBL(PHFrm,"El script detecta las palabras automáticamente",9,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+PHS.Size=UDim2.new(1,0,0,16); PHS.Position=UDim2.new(0,0,0.4,24); PHS.ZIndex=3
+
+-- ── INPUT MANUAL (tab 3) ────────────────────────────────────
+local ManFrm=Instance.new("Frame"); ManFrm.Size=UDim2.new(1,0,0,236)
+ManFrm.Position=UDim2.new(0,0,0,115); ManFrm.BackgroundTransparency=1; ManFrm.Visible=false; ManFrm.Parent=Body
+
+local ManDesc=LBL(ManFrm,"Escribe el prefijo que te dio el juego:",9,C.TEXTD,Enum.Font.Gotham)
+ManDesc.Size=UDim2.new(1,0,0,16); ManDesc.Position=UDim2.new(0,2,0,2)
+
+local ManInputF=Instance.new("Frame"); ManInputF.Size=UDim2.new(1,0,0,36)
+ManInputF.Position=UDim2.new(0,0,0,20); ManInputF.BackgroundColor3=C.CARD
+ManInputF.BackgroundTransparency=0.05; ManInputF.BorderSizePixel=0; ManInputF.Parent=ManFrm; R(ManInputF,9)
+S(ManInputF,Color3.fromRGB(45,55,100),1)
+
+local ManBox=Instance.new("TextBox"); ManBox.Size=UDim2.new(1,-50,1,-8); ManBox.Position=UDim2.new(0,8,0,4)
+ManBox.BackgroundTransparency=1; ManBox.PlaceholderText="ej: NA, AR, JAS, ES..."
+ManBox.PlaceholderColor3=C.TEXTM; ManBox.Text=""; ManBox.TextColor3=C.TEXT
+ManBox.TextSize=16; ManBox.Font=Enum.Font.GothamBold; ManBox.ClearTextOnFocus=false
+ManBox.TextXAlignment=Enum.TextXAlignment.Left; ManBox.Parent=ManInputF
+
+local ManBtn=BTN(ManInputF,"→",UDim2.new(0,36,0,28),C.ACCENT,C.TEXT)
+ManBtn.Position=UDim2.new(1,-40,0.5,-14); ManBtn.TextSize=16
+
+-- Lista de resultados del tab manual
+local ManList=Instance.new("ScrollingFrame"); ManList.Size=UDim2.new(1,0,0,172)
+ManList.Position=UDim2.new(0,0,0,60); ManList.BackgroundColor3=C.PANEL
+ManList.BackgroundTransparency=0.12; ManList.BorderSizePixel=0
+ManList.ScrollBarThickness=3; ManList.ScrollBarImageColor3=C.SCROLL
+ManList.CanvasSize=UDim2.new(0,0,0,0); ManList.Parent=ManFrm; R(ManList,8)
+S(ManList,Color3.fromRGB(32,38,72),1)
+local MLLayout=Instance.new("UIListLayout"); MLLayout.SortOrder=Enum.SortOrder.LayoutOrder; MLLayout.Padding=UDim.new(0,2); MLLayout.Parent=ManList
+local MLPad=Instance.new("UIPadding"); MLPad.PaddingTop=UDim.new(0,3); MLPad.PaddingLeft=UDim.new(0,3); MLPad.PaddingRight=UDim.new(0,2); MLPad.Parent=ManList
+
+local ManInfoLbl=LBL(ManFrm,"",9,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+ManInfoLbl.Size=UDim2.new(1,0,0,14); ManInfoLbl.Position=UDim2.new(0,0,0,44)
+
+-- ── HANDLE RESIZE ──────────────────────────────────────────
+local Handle=Instance.new("Frame"); Handle.Size=UDim2.new(1,0,0,12)
+Handle.Position=UDim2.new(0,0,1,-12); Handle.BackgroundColor3=C.CARD2
+Handle.BackgroundTransparency=0.3; Handle.BorderSizePixel=0; Handle.Active=true; Handle.ZIndex=10; Handle.Parent=Main; R(Handle,6)
+local HLine=Instance.new("Frame"); HLine.Size=UDim2.new(0,36,0,3); HLine.Position=UDim2.new(0.5,-18,0.5,-1)
+HLine.BackgroundColor3=C.ACCENT; HLine.BackgroundTransparency=0.5; HLine.BorderSizePixel=0; HLine.ZIndex=11; HLine.Parent=Handle; R(HLine,2)
+
+-- ============================================================
+--  DICCIONARIO SEED DEL JUEGO
+--  (palabras que el juego Conecta Palabras acepta — español)
+--  Construido a partir de patrones observados en el juego:
+--  acepta palabras comunes del español, nombres propios NO.
+-- ============================================================
+local DICT = {}
+local DICT_SET = {}  -- para búsqueda O(1)
+
+local WORDS_RAW = {
+-- A
+"ábaco","abad","abadía","abeja","abismo","ablandar","abono","abrazo","abrir","absoluto",
+"abuelo","abuela","abundar","acabar","acción","aceite","acento","aceptar","acero","aclarar",
+"acordar","acoso","acto","acudir","acuerdo","adaptar","adelante","adentro","adorar","adulto",
+"afecto","afición","agencia","agosto","agua","águila","aguja","ahora","aire","ajeno",
+"ajustar","alabar","aldea","alegre","alegría","alejar","alma","altar","alto","altura",
+"amanecer","amar","amargo","ambiente","amigo","amiga","amor","amplio","ancho","ángulo",
+"animal","ánimo","antes","apagar","apoyo","aprender","árbol","arena","arma","aroma",
+"arte","ayer","azul","azúcar",
+-- B
+"bailar","baile","banco","barco","barrio","batalla","bello","bella","besar","blanco",
+"boca","bonito","bosque","brazo","bueno","buscar","burbuja","bajar","barro","base",
+"beber","bien","brillar","burla",
+-- C
+"cabeza","camino","campo","cantar","casa","cielo","ciudad","conocer","corazón","correr",
+"comer","comprar","coche","cocina","color","corona","contra","contigo","construir","cosa",
+"cuerpo","cuatro","cinco","cien","calor","calma","cambio","canción","claro","clase",
+"clima","cobrar","comenzar","comunicar","confianza","confiar","conjunto","contar","crecer",
+"crear","creer","cultura","cumplir","curiosidad","caer","calle","carta","cerca","cierto",
+"círculo","conejo",
+-- CH
+"chico","chica","chocolate","chiste","choza","charla","champiñón","chispa",
+-- D
+"danza","dato","dedo","día","dinero","dormir","dulce","durante","donde","deber",
+"decidir","defender","dejar","deseo","destino","diez","dominar","duda","dureza","dar",
+"decir","dentro","descansar","diferente",
+-- E
+"edad","elegir","empezar","encontrar","energía","entre","entonces","escuela","escribir",
+"escuchar","esperar","estar","estrella","espejo","espacio","espada","espalda","especial",
+"esperanza","estilo","esfuerzo","existir","éxito","echar","ejemplo","empuje","encender",
+"enfrentar","enojo","enseñar","entrar","enviar","equipo","error","escoger","espíritu",
+"estudiar",
+-- F
+"familia","feliz","final","flor","forma","fuerza","fuego","fruta","frente","famoso",
+"fiel","fluir","fondo","futuro","fe","fallar","fama","faro","favor","fiesta",
+"fila","fin","flauta","flecha","flojo","flujo","frío","frasco",
+-- G
+"gato","grande","gracias","grupo","gente","guerra","gusto","globo","gris","ganar",
+"genio","gloria","gritar","guiar","ganador","garra","golpe","gordo","gramo","grifo",
+-- H
+"hablar","hacer","hermano","hermana","hombre","hora","historia","hueso","hallar",
+"honor","horizonte","humano","humilde","haber","hambre","hecho","héroe","hierro",
+"hijo","hija","hilo","hogar","honrar","humor","humo","huir",
+-- I
+"idea","idioma","igual","inicio","imagen","importante","isla","ilusión","impulso",
+"interés","intuición","ignorar","impacto","intentar","inventar","izquierda","invierno",
+-- J
+"jardín","jefe","joven","juego","justo","junto","jornada","juicio","jalar","joya",
+"jugar","juntar","jaula","jabón","jamás","jerga",
+-- L
+"largo","libro","lugar","luna","lengua","lento","libre","luchar","luz","latir",
+"lazo","leal","lejos","llamar","llegar","lleno","lograr","lado","lanzar","lavar",
+"leer","levantar","limpiar","listo","llevar","lluvia","lobo","loca","loco","lodo",
+-- LL
+"llave","llama","llanto","llano",
+-- M
+"mano","mar","mundo","mujer","madre","malo","mapa","mesa","música","mirar",
+"mente","meta","miedo","mismo","modo","momento","motor","mover","mejora","mandar",
+"manera","matar","mayor","menor","meter","morir","mostrar","magia","marzo","masa",
+"miel","monte","muslo","mudo",
+-- N
+"noche","nombre","nuevo","nunca","nadie","natural","negro","nivel","norte","nacer",
+"nada","naranja","niño","niña","nación","necesitar","noble","norma","nieve","niebla",
+"nudo","nuez",
+-- Ñ
+"ñoño","ñame",
+-- O
+"obra","oreja","oscuro","objeto","oeste","oso","orden","origen","olvido","opinar",
+"opción","ocultar","odio","ofrecer","oir","ola","otro","océano","oficio","ojo",
+"olivo","ombligo","onza","ópera","oración","orilla","otoño","oveja",
+-- P
+"padre","país","palabra","papel","parque","perro","pequeño","poder","pez","primera",
+"persona","puerta","plaza","planta","plata","playa","poca","poco","paciencia","pasión",
+"paz","pensar","perder","pieza","planeta","presente","problema","proceso","promesa",
+"propio","pulso","pagar","partir","pasado","pedir","pelear","peor","piel","pisar",
+"placer","pleno","practicar","primo","prueba","puño","pecho","pelo","pena","pino",
+"piso","polo","polvo","poro","pozo","prado","presa","puma",
+-- Q
+"querer","quien","quizá","quieto","quedar","queja","quemar","quinto","queso","quema",
+-- R
+"rama","rápido","ratón","reino","reto","rato","río","rojo","raíz","razón",
+"realidad","recuerdo","reflejo","regla","relación","respeto","respuesta","riesgo",
+"ritmo","rumbo","rabia","reír","reparar","repetir","resistir","roble","roca","rocío",
+"rodar","rogar","ropa","rosa","roto","rubio","rueda","rugir","ruido","ruina",
+-- S
+"sala","saltar","sangre","saber","secreto","segundo","siempre","sobre","sol","sencillo",
+"sentir","ser","silencio","simple","sistema","solución","sueño","surco","sacar",
+"seguir","serio","servir","siglo","sitio","sonrisa","subir","suerte","suma","sabio",
+"salud","selva","señal","silla","soga","soplo","sordo","suave","suelo","sumar",
+-- T
+"tarde","tener","tiempo","tierra","todo","trabajo","triste","talento","tarea","temor",
+"teoría","terminar","tomar","total","tradición","talla","texto","tipo","tocar","tono",
+"torpe","trueno","tubo","techo","tela","tembl","tigre","tiza","tobillo","tórtola",
+"tronco","tropa","trozo","tumba",
+-- U
+"último","unir","uno","usar","único","universo","unión","urgente","ubicar","unidad",
+-- V
+"valor","vida","vez","viento","verde","volar","voz","viejo","vista","valiente",
+"verdad","versión","vía","viaje","visión","voluntad","valer","vencer","venir","ver",
+"vivir","volver","vacío","vapor","vara","vela","vena","ventana","verano","vergüenza",
+"viudo","volcán","vuelo","vulgo",
+-- X
+"xilófono",
+-- Y
+"yema","yerno","yeso","yoga","yugo",
+-- Z
+"zapato","zona","zumo","zafiro","zorro","zanjar","zarpa","zoológico","zorro","zurdo",
+}
+
+-- Normalización
 local AMAP = {
     ["á"]="a",["à"]="a",["â"]="a",["ä"]="a",["ã"]="a",
     ["é"]="e",["è"]="e",["ê"]="e",["ë"]="e",
@@ -146,1103 +320,442 @@ local AMAP = {
 local function norm(w)
     if not w then return "" end
     w = tostring(w):lower():match("^%s*(.-)%s*$") or ""
-    for a,b in pairs(AMAP) do w = w:gsub(a,b) end
+    for a,b in pairs(AMAP) do w=w:gsub(a,b) end
     return w
 end
 
--- ============================================================
---  TRIE
--- ============================================================
-local function newNode() return {ch={},words={}} end
-local ROOT = newNode()
-local TOTAL = 0
-
-local function insert(word)
-    local n = ROOT
-    for i=1,#word do
-        local c=word:sub(i,i)
-        if not n.ch[c] then n.ch[c]=newNode() end
-        n=n.ch[c]
-    end
-    if not n.words[word] then
-        n.words[word]=true
-        TOTAL=TOTAL+1
+-- Carga diccionario
+for _,w in ipairs(WORDS_RAW) do
+    local n = norm(w)
+    if #n >= 2 and n:match("^[a-z]+$") then
+        DICT[#DICT+1] = n
+        DICT_SET[n]   = true
     end
 end
 
-local function collect(n,res,lim)
-    if #res>=lim then return end
-    for w in pairs(n.words) do res[#res+1]=w; if #res>=lim then return end end
-    for _,ch in pairs(n.ch) do if #res<lim then collect(ch,res,lim) end end
-end
-
-local function search(pre,lim)
-    local n=ROOT
-    for i=1,#pre do
-        local c=pre:sub(i,i)
-        if not n.ch[c] then return {},0 end
-        n=n.ch[c]
+-- Búsqueda por prefijo
+local function searchPrefix(pre, limit)
+    local res = {}
+    for _,w in ipairs(DICT) do
+        if w:sub(1,#pre) == pre then
+            res[#res+1] = w
+            if limit and #res >= limit then break end
+        end
     end
-    local res={}
-    collect(n,res,lim+300)
     table.sort(res)
-    local tot=#res
-    local shown={}
-    for i=1,math.min(lim,tot) do shown[i]=res[i] end
-    return shown,tot
+    return res
 end
 
 -- ============================================================
---  DICCIONARIO SEED — 1000+ palabras ES+EN
+--  ESTADO
 -- ============================================================
-local SEED = {
--- ── ESPAÑOL completo A ──
-"abarcar","abeja","abertura","abismo","ablandar","abolir","abono","abordar",
-"abrazo","abrir","absurdo","abuelo","abuela","abundar","acabar","academia",
-"accion","aceite","acento","aceptar","acero","aclarar","acoger","acordar",
-"acoso","acto","actor","actriz","acudir","acuerdo","acusar","adaptar",
-"adelante","adentro","adivinar","admitir","adorar","adulto","afecto","aficion",
-"agencia","agosto","agregar","agua","aguila","aguja","ahora","aire","ajeno",
-"ajustar","alabar","aldea","alegre","alegria","alejar","alma","altar","alto",
-"altura","amanecer","amar","amargo","ambiente","amigo","amiga","amor","amplio",
-"ancho","angulo","animal","animo","antes","anuncio","apagar","apoyo","aprender",
-"arbol","arena","arma","armada","armado","armadura","armamento","armar",
-"armario","armas","aroma","arte","ayer","azul","azucar","abeja","abejas",
--- ── ESPAÑOL B ──
-"bailar","baile","banco","barco","barrio","batalla","bello","bella","besar",
-"blanco","boca","bonito","bosque","brazo","bueno","buscar","burbuja","bajar",
-"barro","base","beber","bien","boca","brazo","brillar","bueno","burla",
--- ── ESPAÑOL C ──
-"cabeza","camino","campo","cantar","casa","cielo","ciudad","conocer","corazon",
-"correr","comer","comprar","coche","cocina","colores","corona","contra","contigo",
-"construir","concepto","cosa","cuerpo","cuatro","cinco","cien","calor","calma",
-"cambio","cancion","claro","clase","clima","cobrar","cocinar","color","comenzar",
-"comunicar","confianza","confiar","conjunto","contacto","contar","corriente",
-"crecer","crear","creer","critica","cultura","cumplir","curiosidad","caer",
-"calle","canta","carta","cerca","cerveza","cierto","circulo","cobarde",
-"cochino","comenzar","como","conejo","confiar","conocer","cortar","costa",
--- ── ESPAÑOL D ──
-"danza","dato","dedo","dia","dinero","dormir","dulce","durante","donde",
-"deber","decidir","defender","dejar","deseo","destino","diez","dominar",
-"duda","dueno","dureza","dar","decir","dentro","descansar","diferente",
--- ── ESPAÑOL E ──
-"edad","elegir","empezar","encontrar","energia","entre","entonces","escuela",
-"escribir","escuchar","esperar","esta","estar","estrella","espejo","espacio",
-"espada","espalda","especial","esperanza","estilo","esfuerzo","existir","exito",
-"echar","ejemplo","empuje","encender","enfrentar","enojo","ensenar","entrar",
-"enviar","equipo","error","escoger","esconder","espiritu","estudiar","evaluar",
--- ── ESPAÑOL F ──
-"familia","feliz","final","flor","forma","fuerza","fuego","fruta","frente",
-"famoso","fiel","fluir","fondo","futuro","fe","fallar","fama","faro",
-"favor","fiesta","fila","fin","flauta","flecha","flojo","flujo",
--- ── ESPAÑOL G ──
-"gato","grande","gracias","grupo","gente","guerra","gusto","globo","gris",
-"ganar","genio","gloria","gritar","guiar","ganador","garra","golpe","gordo",
--- ── ESPAÑOL H ──
-"hablar","hacer","hermano","hermana","hombre","hora","historia","hueso",
-"hallar","herramienta","honor","horizonte","humano","humilde","haber","hambre",
-"hecho","heroe","hierro","hijo","hija","hilo","hogar","honrar","humor",
--- ── ESPAÑOL I ──
-"idea","idioma","igual","inicio","imagen","importante","isla","identidad",
-"ilusion","impulso","interes","intuicion","ignorar","impacto","intentar",
-"inventar","ir","izquierda",
--- ── ESPAÑOL J ──
-"jardin","jefe","joven","juego","justo","junto","jornada","juicio","jalar",
-"jamás","jerga","joya","jugar","juntar",
--- ── ESPAÑOL L ──
-"largo","libro","lugar","luna","lengua","lento","libre","luchar","luz",
-"latir","lazo","leal","lejos","llamar","llegar","lleno","lograr","lado",
-"lanzar","lastima","lavar","leer","levantar","limpiar","listo","llevar",
--- ── ESPAÑOL M ──
-"mano","mar","mundo","mujer","madre","malo","mapa","mesa","musica","mirar",
-"mente","meta","miedo","mismo","modo","momento","motor","mover","mejora",
-"mandar","manera","matar","mayor","menor","meter","mirar","morir","mostrar",
--- ── ESPAÑOL N ──
-"noche","nombre","nuevo","nunca","nadie","natural","negro","nivel","norte",
-"nacion","necesitar","noble","norma","nacer","nada","naranja","nino","nina",
--- ── ESPAÑOL O ──
-"obra","oreja","oscuro","objeto","oeste","oso","osa","orden","origen",
-"olvido","opinar","opcion","ocultar","odio","ofrecer","oir","ola","otro",
--- ── ESPAÑOL P ──
-"padre","pais","palabra","papel","parque","perro","pequeno","poder","pez",
-"primera","persona","puerta","plaza","planta","plata","playa","poca","poco",
-"paciencia","pasion","paz","pensar","perder","pieza","planeta","presente",
-"problema","proceso","promesa","propio","pulso","pagar","partir","pasado",
-"pedir","pelear","peor","perder","piel","pisar","placer","pleno","practicar",
--- ── ESPAÑOL Q ──
-"querer","quien","quiza","quieto","quedar","queja","quemar","quinto",
--- ── ESPAÑOL R ──
-"rama","rapido","raton","reino","reto","rato","rio","rojo","raiz","razon",
-"realidad","recuerdo","reflejo","regla","relacion","respeto","respuesta",
-"riesgo","ritmo","rumbo","radar","rabia","reir","reparar","repetir","resistir",
--- ── ESPAÑOL S ──
-"sala","saltar","sangre","saber","secreto","segundo","siempre","sobre","sol",
-"sencillo","sentir","sera","ser","silencio","simple","sistema","solucion",
-"sueno","surco","saber","sacar","seguir","serio","servir","siglo","sitio",
-"sociedad","sonrisa","sortear","subir","suerte","suma",
--- ── ESPAÑOL SC (IMPORTANTE: palabras con sca/sco/scu/scr) ──
-"scam","scar","scary","scatter","scene","score","scout","screen","screw",
--- ── ESPAÑOL T ──
-"tarde","tener","tercer","tiempo","tierra","todo","trabajo","triste",
-"talento","tarea","temor","teoria","terminar","tomar","total","tradicion",
-"talla","tampoco","tan","tarde","texto","tipo","tocar","tono","torpe",
--- ── ESPAÑOL U ──
-"ultimo","unir","uno","usar","unico","universo","union","urgente","utopia",
-"ubicar","unidad",
--- ── ESPAÑOL V ──
-"valor","vida","vez","viento","verde","volar","voz","viejo","vista",
-"valiente","verdad","version","via","viaje","vision","voluntad","valer",
-"vencer","venir","ver","vez","vivir","volver",
--- ── ESPAÑOL Z ──
-"zapato","zona","zumo","zafiro","zorro","zanjar","zeal","zero",
-
--- ── INGLÉS A ──
-"able","absorb","abstract","accept","access","action","active","adapt","add",
-"adopt","advance","after","again","age","agree","ahead","aim","alert","align",
-"alive","allow","almost","along","already","also","always","among","ancient",
-"answer","appear","apple","apply","approach","area","argue","around","arrive",
-"arrow","ask","assume","atom","attempt","attract","autumn","aware","awful",
-"abandon","abuse","achieve","acquire","address","admit","affect","afford",
-"agent","ahead","alarm","album","alcohol","alive","ally","alter","amazing",
-"amount","angry","announce","apart","attack","avoid",
--- ── INGLÉS B ──
-"back","balance","ball","bank","base","bear","beat","become","before","begin",
-"believe","belong","beneath","beyond","bind","bird","black","blame","blend",
-"block","bloom","blue","bond","book","born","both","brain","branch","brave",
-"break","breathe","bridge","bright","bring","broad","build","burn","burst",
-"bad","bag","band","banner","barely","battle","beauty","bed","big","bite",
-"blade","blank","blaze","bleed","blind","blood","blow","blur","body","boss",
--- ── INGLÉS C ──
-"call","calm","came","capture","card","carry","catch","cause","center","chain",
-"chance","change","chase","check","child","choose","circle","city","claim",
-"clear","climb","close","code","cold","collect","color","combine","come",
-"commit","common","complete","connect","consider","control","cool","copy",
-"core","count","country","cover","craft","crash","create","cross","cut",
-"camp","can","care","chart","clean","cloud","club","coin","crew","crime",
-"crowd","cry","cube","cure","current","curve","cycle",
--- ── INGLÉS D ──
-"dark","dash","data","deal","decide","deep","define","describe","design",
-"detail","develop","direct","discover","display","divide","door","down",
-"dream","drive","drop","dynamic","daily","damage","dare","dead","dear",
-"debt","decay","delay","dense","deny","depth","desire","despite","doubt",
-"draft","draw","drift","drill","dry","due","dull","dust",
--- ── INGLÉS E ──
-"each","edge","eight","empty","engage","enter","even","every","evolve","exact",
-"expand","explore","express","extend","eye","earn","ease","eat","echo",
-"effect","effort","either","elect","elite","else","emerge","emotion","enable",
-"end","enemy","enforce","enjoy","enough","ensure","equal","escape","event",
--- ── INGLÉS F ──
-"face","fact","fall","fast","field","fight","fill","find","fire","first",
-"five","flag","flat","flow","focus","follow","food","force","form","four",
-"free","fresh","from","full","future","fade","fail","fair","fake","fame",
-"far","farm","fear","feel","few","fight","final","fine","flash","fleet",
-"flesh","float","floor","fly","fold","fond","font","fool","foot","fork",
--- ── INGLÉS G ──
-"game","gather","girl","give","glad","glass","good","grant","great","green",
-"ground","group","grow","guide","gain","gap","gate","gaze","gear","glow",
-"go","goal","gold","grab","grade","grand","gray","grip","guard","guess",
-"gym",
--- ── INGLÉS H ──
-"hand","happy","hard","head","heal","hear","heart","heavy","help","here",
-"high","hold","home","hope","huge","human","hunt","habit","half","halt",
-"harm","harsh","have","hide","hint","hit","hold","hole","honest","hot",
-"hour","humble","hurry","hurt",
--- ── INGLÉS I ──
-"idea","impact","improve","include","inner","into","iron","image","imagine",
-"imply","input","insight","instead","intent","interest","invent","involve",
--- ── INGLÉS J-K ──
-"join","just","keep","kind","king","know","jump","keen","lack","large",
--- ── INGLÉS L ──
-"land","last","late","layer","lead","learn","left","level","life","light",
-"link","lion","list","live","long","look","loop","lose","love","label",
-"launch","lay","lean","limit","listen","local","lock","log","lone","loss",
--- ── INGLÉS M ──
-"made","make","many","mark","meet","mind","miss","mode","moon","more",
-"most","move","much","must","map","match","matter","mean","merge","metal",
-"might","mix","model","moment","moral","motion","motor","mount","move",
--- ── INGLÉS N ──
-"name","near","need","next","night","node","none","note","null","narrow",
-"natural","network","next","nice","noble","noise","norm","north","notion",
--- ── INGLÉS O ──
-"observe","only","open","orbit","order","other","over","object","offer",
-"often","old","once","one","option","origin","output","own",
--- ── INGLÉS P ──
-"page","part","past","path","pattern","peak","pick","place","plan","play",
-"point","power","pull","push","pace","pain","pale","pass","pause","pay",
-"peace","phase","pick","pile","pilot","pipe","pitch","pixel","plant","plus",
-"port","pose","prime","print","probe","proof","pure","purpose",
--- ── INGLÉS Q-R ──
-"quest","quick","quiet","quote","race","rain","reach","read","real","rely",
-"rest","reveal","ride","ring","rise","road","rock","role","room","rule",
-"rush","radar","rage","raise","rank","rapid","rate","raw","react","record",
-"reduce","refer","reflect","refuse","region","relate","remain","remove",
-"repeat","replace","report","resolve","result","return","reveal","reward",
--- ── INGLÉS S ──
-"same","save","scan","scar","scary","scatter","scene","seek","seem","send",
-"side","sign","sing","slow","snow","some","song","soon","soul","space",
-"spark","split","start","stay","step","still","stop","store","story","stream",
-"strong","such","surge","swim","safe","salt","scale","scope","score","scout",
-"screen","screw","scrub","seal","search","shade","shape","share","sharp",
-"shift","ship","shoot","short","shout","show","shut","sight","skill","skin",
-"slip","slot","smart","smile","smoke","snap","soft","solid","sort","south",
-"speed","spend","spin","spoke","spread","spring","stack","stage","stake",
-"stand","state","status","stay","steel","stone","store","straight","stress",
-"strike","string","strip","stroke","structure","style","sun","supply","swap",
-"switch","symbol","system","scratch","script","scroll","score","scare",
--- ── INGLÉS T ──
-"task","tell","test","than","then","time","told","track","trail","tree",
-"true","trust","turn","type","table","take","talk","target","teach","team",
-"tend","term","text","theme","think","threat","through","throw","tight",
-"token","top","touch","tough","trade","transform","trend","trial","trick",
-"trigger","truth","try","tube","tune",
--- ── INGLÉS U-V ──
-"unity","used","vast","view","voice","value","vary","verify","version",
-"via","void","volume","vote",
--- ── INGLÉS W ──
-"wait","walk","warm","water","wave","well","wide","will","wind","wise",
-"word","work","world","write","wake","warn","watch","weak","wealth","web",
-"weight","west","what","where","which","white","whole","wild","win","wish",
-"without","wonder","worth",
--- ── INGLÉS X-Z ──
-"yield","zero","zone","zoom","xenon",
--- ── ONO/ARM especiales ──
-"ono","onomatopeya","ona","once","online",
-"arma","armada","armado","armadura","armamento","armar","armario","armas",
-"armor","army","arm","arms","armed","arrange","arrest","arrive",
--- ── SCR / SCA / SCO (inglés) ──
-"scratch","screen","scream","script","scroll","scrap","scrub","scar",
-"scan","scam","scary","scatter","scene","scale","scope","score","scout",
-"scare","scarce","scarf","scarlet","scatter",
-}
+local usedWords   = {}   -- set de palabras ya usadas en la ronda
+local usedList    = {}   -- lista ordenada para mostrar
+local currentPre  = ""   -- prefijo actual del juego
+local currentTab  = 1    -- 1=usadas, 2=prefijo, 3=manual
+local minimized   = false
 
 -- ============================================================
---  CARGA
+--  RESIZE
 -- ============================================================
-local isReady   = false
-local loadedCnt = 0
-
-local function loadSeed()
-    local dedup = {}
-    for _,w in ipairs(SEED) do
-        local n = norm(w)
-        if #n >= 2 and n:match("^[a-z]+$") and not dedup[n] then
-            dedup[n] = true
-            insert(n)
-        end
-    end
-    loadedCnt = TOTAL
-end
-
-local URLS = {
-    { lang="EN", url="https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt", fmt="txt" },
-    { lang="ES", url="https://raw.githubusercontent.com/words/an-array-of-spanish-words/master/index.js", fmt="js" },
-}
-
-local function loadURL(e)
-    local ok, body = httpGet(e.url)
-    if not ok or not body then return 0 end
-    local prev = TOTAL
-    if e.fmt == "js" then
-        for w in body:gmatch('"([^"]+)"') do
-            local n=norm(w)
-            if #n>=2 and #n<=28 and n:match("^[a-z]+$") then insert(n) end
-        end
-    else
-        for line in body:gmatch("[^\r\n]+") do
-            local n=norm(line:match("^%s*(.-)%s*$") or "")
-            if #n>=2 and #n<=28 and n:match("^[a-z]+$") then insert(n) end
-        end
-    end
-    loadedCnt = TOTAL
-    return TOTAL - prev
-end
-
--- ============================================================
---  HELPERS UI
--- ============================================================
-local function R(p,r) local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 8); c.Parent=p; return c end
-local function G(p,c0,c1,rot) local g=Instance.new("UIGradient"); g.Color=ColorSequence.new(c0,c1); g.Rotation=rot or 90; g.Parent=p end
-local function S(p,col,th) local s=Instance.new("UIStroke"); s.Color=col; s.Thickness=th or 1; s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; s.Parent=p; return s end
-local function TW(obj,props,t,sty,dir)
-    TweenSvc:Create(obj,TweenInfo.new(t or CFG.ANIM, sty or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out),props):Play()
-end
-local function LBL(par,txt,sz,col,fnt,ax)
-    local l=Instance.new("TextLabel"); l.BackgroundTransparency=1; l.Text=txt; l.TextSize=sz or 13
-    l.TextColor3=col or C.TEXT; l.Font=fnt or Enum.Font.Gotham
-    l.TextXAlignment=ax or Enum.TextXAlignment.Left; l.TextYAlignment=Enum.TextYAlignment.Center
-    l.TextTruncate=Enum.TextTruncate.AtEnd; l.Parent=par; return l
-end
-local function BTN(par,txt,sz,bg,tc)
-    local b=Instance.new("TextButton"); b.Size=sz or UDim2.new(0,60,0,26)
-    b.BackgroundColor3=bg or C.CARD; b.BorderSizePixel=0; b.Text=txt
-    b.TextColor3=tc or C.TEXT; b.TextSize=12; b.Font=Enum.Font.GothamBold
-    b.AutoButtonColor=false; b.Parent=par; R(b,7); return b
-end
-
--- ============================================================
---  INICIALIZAR SCREENGUI
--- ============================================================
-pcall(function()
-    local cg = game:GetService("CoreGui")
-    local old = cg:FindFirstChild("CW_GUI")
-    if old then old:Destroy() end
-end)
-pcall(function()
-    local pg = LP:WaitForChild("PlayerGui", 5)
-    if pg then
-        local old = pg:FindFirstChild("CW_GUI")
-        if old then old:Destroy() end
+local resizing=false; local resY0=0; local resH0=H
+Handle.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
+        resizing=true; resY0=i.Position.Y; resH0=Main.AbsoluteSize.Y
     end
 end)
-
-local SG = Instance.new("ScreenGui")
-SG.Name            = "CW_GUI"
-SG.ResetOnSpawn    = false
-SG.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
-SG.IgnoreGuiInset  = true
-local _ok = pcall(function() SG.Parent = game:GetService("CoreGui") end)
-if not _ok or not SG.Parent then
-    SG.Parent = LP:WaitForChild("PlayerGui")
-end
-
--- ============================================================
---  VENTANA PRINCIPAL
--- ============================================================
-local W0 = CFG.W
-local H0 = CFG.H
-
-local Main = Instance.new("Frame")
-Main.Name              = "Main"
-Main.Size              = UDim2.new(0, W0, 0, 0)
-Main.Position          = UDim2.new(0.5, -W0/2, 0.5, 0)
-Main.BackgroundColor3  = C.BG
-Main.BackgroundTransparency = CFG.BG_TRANS
-Main.BorderSizePixel   = 0
-Main.Active            = true
-Main.Draggable         = true
-Main.ClipsDescendants  = true
-Main.Parent            = SG
-R(Main, 14)
-S(Main, Color3.fromRGB(60, 70, 120), 1)
-
--- Gradiente de fondo glassmorphism
-G(Main, Color3.fromRGB(14,18,34), Color3.fromRGB(8,10,22), 135)
-
--- ── BOLITA DE MINIMIZAR ────────────────────────────────────
-local Bubble = Instance.new("TextButton")
-Bubble.Name              = "Bubble"
-Bubble.Size              = UDim2.new(0, 44, 0, 44)
-Bubble.Position          = UDim2.new(0.5, -22, 0.5, -22)
-Bubble.BackgroundColor3  = C.ACCENT
-Bubble.BorderSizePixel   = 0
-Bubble.Text              = "⬡"
-Bubble.TextColor3        = C.WHITE
-Bubble.TextSize          = 20
-Bubble.Font              = Enum.Font.GothamBold
-Bubble.AutoButtonColor   = false
-Bubble.Visible           = false
-Bubble.ZIndex            = 50
-Bubble.Parent            = SG
-R(Bubble, 22)
-S(Bubble, C.ACCENT2, 2)
-G(Bubble, C.ACCENT, C.ACCENT2, 45)
-
--- Posición libre de la bolita (draggable)
-local bubbleDragging = false
-local bubbleDragOffset = Vector2.new(0,0)
-Bubble.InputBegan:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.Touch or
-       inp.UserInputType == Enum.UserInputType.MouseButton1 then
-        bubbleDragging = true
-        bubbleDragOffset = Vector2.new(
-            inp.Position.X - Bubble.AbsolutePosition.X,
-            inp.Position.Y - Bubble.AbsolutePosition.Y
-        )
+Handle.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
+        resizing=false; H=Main.AbsoluteSize.Y
     end
 end)
-Bubble.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.Touch or
-       inp.UserInputType == Enum.UserInputType.MouseButton1 then
-        bubbleDragging = false
-    end
+UIS.InputChanged:Connect(function(i)
+    if not resizing then return end
+    if i.UserInputType~=Enum.UserInputType.Touch and i.UserInputType~=Enum.UserInputType.MouseButton1 then return end
+    local dy=i.Position.Y-resY0
+    local nh=math.clamp(resH0+dy,280,600)
+    Main.Size=UDim2.new(0,W,0,nh)
+    local listH=nh-52-62-20-115-12
+    listH=math.max(listH,80)
+    ListFrm.Size=UDim2.new(1,0,0,listH)
+    ManList.Size=UDim2.new(1,0,0,math.max(listH-64,60))
 end)
-UIS.InputChanged:Connect(function(inp)
-    if bubbleDragging and (inp.UserInputType == Enum.UserInputType.Touch or
-       inp.UserInputType == Enum.UserInputType.MouseButton1) then
-        local vp = game.Workspace.CurrentCamera.ViewportSize
-        local nx = math.clamp(inp.Position.X - bubbleDragOffset.X, 0, vp.X - 44)
-        local ny = math.clamp(inp.Position.Y - bubbleDragOffset.Y, 0, vp.Y - 44)
-        Bubble.Position = UDim2.new(0, nx, 0, ny)
-    end
-end)
-
--- ── HEADER ────────────────────────────────────────────────
-local Header = Instance.new("Frame")
-Header.Size              = UDim2.new(1, 0, 0, 46)
-Header.BackgroundColor3  = C.GLASS
-Header.BackgroundTransparency = 0.1
-Header.BorderSizePixel   = 0
-Header.Parent            = Main
-R(Header, 14)
--- Fix corners bottom
-local HFix = Instance.new("Frame")
-HFix.Size             = UDim2.new(1,0,0,14)
-HFix.Position         = UDim2.new(0,0,1,-14)
-HFix.BackgroundColor3 = C.GLASS
-HFix.BackgroundTransparency = 0.1
-HFix.BorderSizePixel  = 0
-HFix.ZIndex           = Header.ZIndex
-HFix.Parent           = Header
-
--- Barra color top
-local TopBar = Instance.new("Frame")
-TopBar.Size            = UDim2.new(1,0,0,2)
-TopBar.BackgroundColor3 = C.ACCENT
-TopBar.BorderSizePixel = 0
-TopBar.ZIndex          = 5
-TopBar.Parent          = Main
-R(TopBar,2)
-G(TopBar, C.ACCENT3, C.ACCENT2, 0)
-
-local TitleIcon = LBL(Header,"⬡",18,C.ACCENT,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
-TitleIcon.Size=UDim2.new(0,34,1,0); TitleIcon.Position=UDim2.new(0,6,0,0); TitleIcon.ZIndex=4
-
-local TitleTxt = LBL(Header,"CONECTA PALABRAS",13,C.TEXT,Enum.Font.GothamBold)
-TitleTxt.Size=UDim2.new(1,-130,0,20); TitleTxt.Position=UDim2.new(0,42,0,6); TitleTxt.ZIndex=4
-local SubTxt = LBL(Header,"Word Finder + IA v4",9,C.TEXTD,Enum.Font.Gotham)
-SubTxt.Size=UDim2.new(1,-130,0,14); SubTxt.Position=UDim2.new(0,42,0,26); SubTxt.ZIndex=4
-
--- Botón ⚙
-local BtnGear = BTN(Header,"⚙",UDim2.new(0,28,0,28),Color3.fromRGB(22,28,50),C.TEXTD)
-BtnGear.Position=UDim2.new(1,-63,0.5,-14); BtnGear.TextSize=15; BtnGear.ZIndex=4
-
--- Botón minimizar (— dash)
-local BtnMin = BTN(Header,"—",UDim2.new(0,28,0,28),Color3.fromRGB(22,40,65),C.ACCENT)
-BtnMin.Position=UDim2.new(1,-32,0.5,-14); BtnMin.TextSize=14; BtnMin.ZIndex=4
-
--- ── BODY ──────────────────────────────────────────────────
-local Body = Instance.new("Frame")
-Body.Size=UDim2.new(1,-14,1,-52)
-Body.Position=UDim2.new(0,7,0,48)
-Body.BackgroundTransparency=1
-Body.Parent=Main
-
--- ── STATUS BAR ────────────────────────────────────────────
-local StatusBar = Instance.new("Frame")
-StatusBar.Size=UDim2.new(1,0,0,26)
-StatusBar.Position=UDim2.new(0,0,0,0)
-StatusBar.BackgroundColor3=C.GLASS2
-StatusBar.BackgroundTransparency=0.2
-StatusBar.BorderSizePixel=0
-StatusBar.Parent=Body
-R(StatusBar,7)
-
-local SDot = LBL(StatusBar,"●",10,C.ACCENT,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-SDot.Size=UDim2.new(0,20,1,0); SDot.Position=UDim2.new(0,2,0,0)
-local STxt = LBL(StatusBar,"Iniciando...",9,C.TEXTD,Enum.Font.Gotham)
-STxt.Size=UDim2.new(1,-100,1,0); STxt.Position=UDim2.new(0,22,0,0)
-local SCnt = LBL(StatusBar,"0 palabras",9,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Right)
-SCnt.Size=UDim2.new(0,80,1,0); SCnt.Position=UDim2.new(1,-82,0,0)
-
-local PrgTrack = Instance.new("Frame")
-PrgTrack.Size=UDim2.new(1,0,0,2); PrgTrack.Position=UDim2.new(0,0,1,-2)
-PrgTrack.BackgroundColor3=Color3.fromRGB(28,32,55); PrgTrack.BorderSizePixel=0; PrgTrack.Parent=StatusBar; R(PrgTrack,2)
-local PrgFill = Instance.new("Frame")
-PrgFill.Size=UDim2.new(0,0,1,0); PrgFill.BackgroundColor3=C.ACCENT; PrgFill.BorderSizePixel=0; PrgFill.Parent=PrgTrack; R(PrgFill,2)
-G(PrgFill, C.ACCENT3, C.ACCENT2, 0)
-
--- ── INPUT ─────────────────────────────────────────────────
-local InputF = Instance.new("Frame")
-InputF.Size=UDim2.new(1,0,0,40)
-InputF.Position=UDim2.new(0,0,0,30)
-InputF.BackgroundColor3=C.GLASS2
-InputF.BackgroundTransparency=0.1
-InputF.BorderSizePixel=0
-InputF.Parent=Body
-R(InputF,10)
-S(InputF,Color3.fromRGB(50,58,100),1)
-
-local IIcon = LBL(InputF,"🔍",14,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-IIcon.Size=UDim2.new(0,32,1,0); IIcon.Position=UDim2.new(0,0,0,0)
-
-local PBox = Instance.new("TextBox")
-PBox.Size=UDim2.new(1,-72,1,-8); PBox.Position=UDim2.new(0,32,0,4)
-PBox.BackgroundTransparency=1; PBox.PlaceholderText="sca, ono, arma, con..."
-PBox.PlaceholderColor3=C.TEXTM; PBox.Text=""
-PBox.TextColor3=C.TEXT; PBox.TextSize=15; PBox.Font=Enum.Font.GothamBold
-PBox.ClearTextOnFocus=false; PBox.TextXAlignment=Enum.TextXAlignment.Left
-PBox.Parent=InputF
-
-local BtnClear = BTN(InputF,"✕",UDim2.new(0,32,0,26),Color3.fromRGB(40,22,26),C.TEXTD)
-BtnClear.Position=UDim2.new(1,-36,0.5,-13); BtnClear.TextSize=11
-BtnClear.MouseButton1Click:Connect(function() PBox.Text="" pcall(function() PBox:CaptureFocus() end) end)
-BtnClear.TouchTap:Connect(function() PBox.Text="" end)
-
-PBox.Focused:Connect(function() TW(InputF,{BackgroundColor3=C.CARD},0.12) S(InputF,C.ACCENT,1.5) end)
-PBox.FocusLost:Connect(function() TW(InputF,{BackgroundColor3=C.GLASS2},0.12) S(InputF,Color3.fromRGB(50,58,100),1) end)
-
--- ── TABS ──────────────────────────────────────────────────
-local TabsF = Instance.new("Frame")
-TabsF.Size=UDim2.new(1,0,0,26); TabsF.Position=UDim2.new(0,0,0,74)
-TabsF.BackgroundColor3=C.GLASS2; TabsF.BackgroundTransparency=0.3; TabsF.BorderSizePixel=0; TabsF.Parent=Body
-R(TabsF,7)
-
-local TBsearch = BTN(TabsF,"🔍 Buscar",UDim2.new(0.5,-2,1,-4),C.ACCENT,C.WHITE)
-TBsearch.Position=UDim2.new(0,2,0,2); TBsearch.TextSize=11; R(TBsearch,5)
-local TBai = BTN(TabsF,"🤖 IA",UDim2.new(0.5,-2,1,-4),Color3.fromRGB(22,25,46),C.TEXTD)
-TBai.Position=UDim2.new(0.5,0,0,2); TBai.TextSize=11; R(TBai,5)
-
--- ── CONTADOR ──────────────────────────────────────────────
-local ResF = Instance.new("Frame")
-ResF.Size=UDim2.new(1,0,0,20); ResF.Position=UDim2.new(0,0,0,104)
-ResF.BackgroundTransparency=1; ResF.Parent=Body
-local ResLbl = LBL(ResF,"Escribe un prefijo para buscar",9,C.TEXTM,Enum.Font.Gotham)
-ResLbl.Size=UDim2.new(1,-60,1,0); ResLbl.Position=UDim2.new(0,2,0,0)
-local LangBg = Instance.new("Frame"); LangBg.Size=UDim2.new(0,56,0,16)
-LangBg.Position=UDim2.new(1,-58,0.5,-8); LangBg.BackgroundColor3=C.GLASS2; LangBg.BorderSizePixel=0; LangBg.Parent=ResF; R(LangBg,8)
-local LangL = LBL(LangBg,"ES+EN",9,C.ACCENT,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
-LangL.Size=UDim2.new(1,0,1,0)
-
--- ── LISTA ─────────────────────────────────────────────────
-local LIST_H = CFG.ITEM_H * CFG.LIST_ROWS
-
-local ListF = Instance.new("Frame")
-ListF.Size=UDim2.new(1,0,0,LIST_H)
-ListF.Position=UDim2.new(0,0,0,127)
-ListF.BackgroundColor3=C.GLASS
-ListF.BackgroundTransparency=0.15
-ListF.BorderSizePixel=0; ListF.ClipsDescendants=true; ListF.Parent=Body
-R(ListF,9); S(ListF,Color3.fromRGB(35,42,80),1)
-
-local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size=UDim2.new(1,-8,1,0); Scroll.BackgroundTransparency=1
-Scroll.BorderSizePixel=0; Scroll.ScrollBarThickness=3; Scroll.ScrollBarImageColor3=C.SCROLL
-Scroll.CanvasSize=UDim2.new(0,0,0,0); Scroll.ScrollingDirection=Enum.ScrollingDirection.Y
-Scroll.Parent=ListF
-local LL = Instance.new("UIListLayout"); LL.SortOrder=Enum.SortOrder.LayoutOrder; LL.Padding=UDim.new(0,1); LL.Parent=Scroll
-local LP2 = Instance.new("UIPadding"); LP2.PaddingTop=UDim.new(0,2); LP2.PaddingLeft=UDim.new(0,3); LP2.PaddingRight=UDim.new(0,2); LP2.Parent=Scroll
-
--- Placeholder
-local PHF = Instance.new("Frame"); PHF.Size=UDim2.new(1,0,1,0); PHF.BackgroundTransparency=1; PHF.ZIndex=3; PHF.Parent=ListF
-local PHI = LBL(PHF,"⬡",28,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center); PHI.Size=UDim2.new(1,0,0,36); PHI.Position=UDim2.new(0,0,0.2,0); PHI.ZIndex=3
-local PHT = LBL(PHF,"Escribe para buscar",11,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center); PHT.Size=UDim2.new(1,0,0,18); PHT.Position=UDim2.new(0,0,0.2,40); PHT.ZIndex=3
-local PHS = LBL(PHF,"sca · ono · arm · con · esp...",9,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center); PHS.Size=UDim2.new(1,0,0,14); PHS.Position=UDim2.new(0,0,0.2,60); PHS.ZIndex=3
-
--- ── HANDLE RESIZE (línea para arrastrar y cambiar tamaño) ──
-local HandleF = Instance.new("Frame")
-HandleF.Size=UDim2.new(1,0,0,14)
-HandleF.Position=UDim2.new(0,0,1,-14)
-HandleF.BackgroundColor3=C.GLASS2
-HandleF.BackgroundTransparency=0.3
-HandleF.BorderSizePixel=0
-HandleF.Active=true
-HandleF.ZIndex=10
-HandleF.Parent=Main
-R(HandleF,7)
-
--- Línea visual centrada
-local HandleLine = Instance.new("Frame")
-HandleLine.Size=UDim2.new(0,40,0,3); HandleLine.Position=UDim2.new(0.5,-20,0.5,-1)
-HandleLine.BackgroundColor3=C.ACCENT; HandleLine.BackgroundTransparency=0.4; HandleLine.BorderSizePixel=0
-HandleLine.ZIndex=11; HandleLine.Parent=HandleF; R(HandleLine,2)
-
--- ── PANEL IA ──────────────────────────────────────────────
-local AIF = Instance.new("Frame")
-AIF.Size=UDim2.new(1,0,0,LIST_H)
-AIF.Position=UDim2.new(0,0,0,127)
-AIF.BackgroundColor3=Color3.fromRGB(10,16,32)
-AIF.BackgroundTransparency=0.1
-AIF.BorderSizePixel=0; AIF.ClipsDescendants=true; AIF.Visible=false; AIF.Parent=Body
-R(AIF,9); S(AIF,Color3.fromRGB(40,50,100),1)
-
-local AIScroll = Instance.new("ScrollingFrame")
-AIScroll.Size=UDim2.new(1,0,1,-42); AIScroll.BackgroundTransparency=1
-AIScroll.BorderSizePixel=0; AIScroll.ScrollBarThickness=3; AIScroll.ScrollBarImageColor3=C.SCROLL
-AIScroll.CanvasSize=UDim2.new(0,0,0,0); AIScroll.Parent=AIF
-local AIL = Instance.new("UIListLayout"); AIL.SortOrder=Enum.SortOrder.LayoutOrder; AIL.Padding=UDim.new(0,5); AIL.Parent=AIScroll
-local AIP2 = Instance.new("UIPadding"); AIP2.PaddingTop=UDim.new(0,5); AIP2.PaddingLeft=UDim.new(0,5); AIP2.PaddingRight=UDim.new(0,5); AIP2.Parent=AIScroll
-
-local AIBar = Instance.new("Frame")
-AIBar.Size=UDim2.new(1,0,0,40); AIBar.Position=UDim2.new(0,0,1,-40)
-AIBar.BackgroundColor3=C.GLASS2; AIBar.BackgroundTransparency=0.1; AIBar.BorderSizePixel=0; AIBar.Parent=AIF
-R(AIBar,8)
-
-local AIBox = Instance.new("TextBox")
-AIBox.Size=UDim2.new(1,-52,1,-8); AIBox.Position=UDim2.new(0,5,0,4)
-AIBox.BackgroundTransparency=1; AIBox.PlaceholderText="Pide palabras con 'sca', 'ono'..."
-AIBox.PlaceholderColor3=C.TEXTM; AIBox.Text=""; AIBox.TextColor3=C.TEXT
-AIBox.TextSize=12; AIBox.Font=Enum.Font.Gotham; AIBox.ClearTextOnFocus=false
-AIBox.TextXAlignment=Enum.TextXAlignment.Left; AIBox.Parent=AIBar
-
-local AISend = BTN(AIBar,"➤",UDim2.new(0,40,0,30),C.ACCENT,C.WHITE)
-AISend.Position=UDim2.new(1,-44,0.5,-15); AISend.TextSize=13
-
--- ── PANEL SETTINGS ────────────────────────────────────────
-local SetF = Instance.new("Frame")
-SetF.Size=UDim2.new(1,0,1,0); SetF.BackgroundColor3=Color3.fromRGB(8,12,24)
-SetF.BackgroundTransparency=0.05; SetF.BorderSizePixel=0; SetF.Visible=false; SetF.ZIndex=20; SetF.Parent=Main
-R(SetF,14)
-S(SetF,Color3.fromRGB(60,70,130),1)
-
-local SetTitle = LBL(SetF,"⚙  Configuración IA",14,C.TEXT,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
-SetTitle.Size=UDim2.new(1,0,0,38); SetTitle.Position=UDim2.new(0,0,0,8); SetTitle.ZIndex=21
-
-local SetDesc = LBL(SetF,"API Key de OpenRouter:",10,C.TEXTD,Enum.Font.Gotham)
-SetDesc.Size=UDim2.new(1,-20,0,16); SetDesc.Position=UDim2.new(0,10,0,54); SetDesc.ZIndex=21
-
-local KeyF = Instance.new("Frame")
-KeyF.Size=UDim2.new(1,-20,0,38); KeyF.Position=UDim2.new(0,10,0,72)
-KeyF.BackgroundColor3=C.GLASS2; KeyF.BorderSizePixel=0; KeyF.ZIndex=21; KeyF.Parent=SetF
-R(KeyF,9); S(KeyF,Color3.fromRGB(50,60,110),1)
-
-local KeyBox = Instance.new("TextBox")
-KeyBox.Size=UDim2.new(1,-10,1,-8); KeyBox.Position=UDim2.new(0,5,0,4)
-KeyBox.BackgroundTransparency=1; KeyBox.PlaceholderText="sk-or-v1-xxxxxxxx..."
-KeyBox.PlaceholderColor3=C.TEXTM; KeyBox.Text=""; KeyBox.TextColor3=C.TEXT
-KeyBox.TextSize=11; KeyBox.Font=Enum.Font.Gotham; KeyBox.ClearTextOnFocus=false
-KeyBox.TextXAlignment=Enum.TextXAlignment.Left; KeyBox.ZIndex=22; KeyBox.Parent=KeyF
-
-local SetInfo = LBL(SetF,"Gratis en openrouter.ai → API Keys",9,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-SetInfo.Size=UDim2.new(1,-20,0,14); SetInfo.Position=UDim2.new(0,10,0,114); SetInfo.ZIndex=21
-
-local SetStatus = LBL(SetF,"Sin API Key",10,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-SetStatus.Size=UDim2.new(1,-20,0,16); SetStatus.Position=UDim2.new(0,10,0,130); SetStatus.ZIndex=21
-
-local BtnSave = BTN(SetF,"✓ Guardar",UDim2.new(0.45,0,0,32),C.ACCENT,C.WHITE)
-BtnSave.Position=UDim2.new(0.04,0,0,150); BtnSave.TextSize=12; BtnSave.ZIndex=21
-local BtnCancel = BTN(SetF,"✕ Cancelar",UDim2.new(0.45,0,0,32),Color3.fromRGB(36,18,20),C.RED)
-BtnCancel.Position=UDim2.new(0.52,0,0,150); BtnCancel.TextSize=12; BtnCancel.ZIndex=21
-
-local ModelLbl = LBL(SetF,"Modelo: meta-llama/llama-3.3-70b-instruct:free",8,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-ModelLbl.Size=UDim2.new(1,-20,0,14); ModelLbl.Position=UDim2.new(0,10,0,188); ModelLbl.ZIndex=21
-
-local TokenTip = LBL(SetF,"💡 La IA usa pocos tokens: solo pide palabras con prefijo.\nMáx. 20 palabras por respuesta.",9,C.ORANGE,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-TokenTip.Size=UDim2.new(1,-20,0,32); TokenTip.Position=UDim2.new(0,10,0,208); TokenTip.TextWrapped=true; TokenTip.ZIndex=21
-
--- ============================================================
---  ESTADO GLOBAL
--- ============================================================
-local apiKey     = ""
-local currentTab = "search"
-local aiOrder    = 0
-local aiHistory  = {}
-local minimized  = false
 
 -- ============================================================
 --  MINIMIZE / RESTORE
 -- ============================================================
-local function doMinimize()
-    minimized = true
-    TW(Main, { Size=UDim2.new(0,W0,0,0), BackgroundTransparency=1 }, 0.2)
-    task.delay(0.22, function()
-        Main.Visible = false
-        -- Coloca la bolita cerca de la esquina
-        local vp = game.Workspace.CurrentCamera.ViewportSize
-        Bubble.Position = UDim2.new(0, vp.X - 56, 0, 80)
-        TW(Bubble, { Size=UDim2.new(0,0,0,0), Position=UDim2.new(0,vp.X-22,0,102) }, 0)
-        Bubble.Visible = true
-        TW(Bubble, { Size=UDim2.new(0,44,0,44), Position=UDim2.new(0,vp.X-56,0,80) }, 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+-- Drag de burbuja
+local bDrag=false; local bOff=Vector2.new(0,0)
+Bubble.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
+        bDrag=true; bOff=Vector2.new(i.Position.X-Bubble.AbsolutePosition.X, i.Position.Y-Bubble.AbsolutePosition.Y)
+    end
+end)
+Bubble.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then bDrag=false end
+end)
+UIS.InputChanged:Connect(function(i)
+    if not bDrag then return end
+    if i.UserInputType~=Enum.UserInputType.Touch and i.UserInputType~=Enum.UserInputType.MouseButton1 then return end
+    local vp=game.Workspace.CurrentCamera.ViewportSize
+    Bubble.Position=UDim2.new(0,math.clamp(i.Position.X-bOff.X,0,vp.X-44),0,math.clamp(i.Position.Y-bOff.Y,0,vp.Y-44))
+end)
+
+local function doMin()
+    minimized=true
+    TW(Main,{Size=UDim2.new(0,W,0,0)},0.18)
+    task.delay(0.2,function()
+        Main.Visible=false
+        local vp=game.Workspace.CurrentCamera.ViewportSize
+        Bubble.Size=UDim2.new(0,0,0,0)
+        Bubble.Position=UDim2.new(0,vp.X-50,0,90)
+        Bubble.Visible=true
+        TW(Bubble,{Size=UDim2.new(0,44,0,44)},0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
     end)
 end
+local function doRes()
+    minimized=false; Bubble.Visible=false; Main.Visible=true
+    TW(Main,{Size=UDim2.new(0,W,0,H),Position=UDim2.new(0.5,-W/2,0.5,-H/2)},0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+end
+BMin.MouseButton1Click:Connect(doMin); BMin.TouchTap:Connect(doMin)
+Bubble.MouseButton1Click:Connect(doRes); Bubble.TouchTap:Connect(doRes)
 
-local function doRestore()
-    minimized = false
-    Bubble.Visible = false
-    Main.Visible   = true
-    Main.BackgroundTransparency = CFG.BG_TRANS
-    Main.Size = UDim2.new(0,W0,0,0)
-    TW(Main, { Size=UDim2.new(0,W0,0,H0) }, 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+-- ============================================================
+--  RENDER LISTA USADAS
+-- ============================================================
+local itemConns = {}
+
+local function clearScroll(scr)
+    for _,c in ipairs(scr:GetChildren()) do
+        if c:IsA("Frame") then c:Destroy() end
+    end
+    for _,c in ipairs(itemConns) do pcall(function() c:Disconnect() end) end
+    itemConns={}
 end
 
-BtnMin.MouseButton1Click:Connect(doMinimize)
-BtnMin.TouchTap:Connect(doMinimize)
-Bubble.MouseButton1Click:Connect(doRestore)
-Bubble.TouchTap:Connect(doRestore)
+local function addRow(scr, idx, word, color, badge, badgeColor)
+    local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,28)
+    row.BackgroundColor3=(idx%2==0) and C.CARD2 or C.CARD
+    row.BackgroundTransparency=0.1; row.BorderSizePixel=0; row.LayoutOrder=idx; row.Parent=scr; R(row,5)
 
--- ============================================================
---  RESIZE (handle inferior arrastrable)
--- ============================================================
-local resizing       = false
-local resizeStartY   = 0
-local resizeStartH   = H0
-local resizeStartW   = W0
+    local numL=LBL(row,tostring(idx),8,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+    numL.Size=UDim2.new(0,18,1,0); numL.Position=UDim2.new(0,0,0,0)
 
-HandleF.InputBegan:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.Touch or
-       inp.UserInputType == Enum.UserInputType.MouseButton1 then
-        resizing     = true
-        resizeStartY = inp.Position.Y
-        resizeStartH = Main.AbsoluteSize.Y
-        resizeStartW = Main.AbsoluteSize.X
-    end
-end)
-HandleF.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.Touch or
-       inp.UserInputType == Enum.UserInputType.MouseButton1 then
-        resizing = false
-        -- guarda nuevas dimensiones
-        H0 = Main.AbsoluteSize.Y
-        W0 = Main.AbsoluteSize.X
-    end
-end)
-UIS.InputChanged:Connect(function(inp)
-    if not resizing then return end
-    if inp.UserInputType ~= Enum.UserInputType.Touch and
-       inp.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-    local dy = inp.Position.Y - resizeStartY
-    local newH = math.clamp(resizeStartH + dy, CFG.MIN_H, CFG.MAX_H)
-    -- ajusta lista y AIPanel dinámicamente
-    local bodyH = newH - 52
-    local listH = bodyH - 127 - 14  -- menos header body menos handle
-    listH = math.max(listH, CFG.ITEM_H * 3)
-    Main.Size = UDim2.new(0, resizeStartW, 0, newH)
-    ListF.Size = UDim2.new(1,0,0,listH)
-    AIF.Size   = UDim2.new(1,0,0,listH)
-    HandleF.Position = UDim2.new(0,0,1,-14)
-end)
+    local wL=LBL(row,word,13,color or C.TEXT,Enum.Font.GothamBold)
+    wL.Size=UDim2.new(1,-76,1,0); wL.Position=UDim2.new(0,20,0,0)
 
--- ============================================================
---  TABS
--- ============================================================
-local function setTab(t)
-    currentTab = t
-    if t == "search" then
-        ListF.Visible=true; ResF.Visible=true; AIF.Visible=false
-        TW(TBsearch,{BackgroundColor3=C.ACCENT},0.12); TBsearch.TextColor3=C.WHITE
-        TW(TBai,{BackgroundColor3=Color3.fromRGB(22,25,46)},0.12); TBai.TextColor3=C.TEXTD
-    else
-        ListF.Visible=false; ResF.Visible=false; AIF.Visible=true
-        TW(TBai,{BackgroundColor3=C.ACCENT2},0.12); TBai.TextColor3=C.WHITE
-        TW(TBsearch,{BackgroundColor3=Color3.fromRGB(22,25,46)},0.12); TBsearch.TextColor3=C.TEXTD
-    end
-end
-TBsearch.MouseButton1Click:Connect(function() setTab("search") end)
-TBsearch.TouchTap:Connect(function() setTab("search") end)
-TBai.MouseButton1Click:Connect(function() setTab("ai") end)
-TBai.TouchTap:Connect(function() setTab("ai") end)
-
--- ============================================================
---  SETTINGS
--- ============================================================
-BtnGear.MouseButton1Click:Connect(function() KeyBox.Text=apiKey; SetF.Visible=true end)
-BtnGear.TouchTap:Connect(function() KeyBox.Text=apiKey; SetF.Visible=true end)
-local function closeSet() SetF.Visible=false end
-BtnCancel.MouseButton1Click:Connect(closeSet); BtnCancel.TouchTap:Connect(closeSet)
-BtnSave.MouseButton1Click:Connect(function()
-    apiKey = KeyBox.Text:match("^%s*(.-)%s*$") or ""
-    if #apiKey > 10 then
-        SetStatus.Text="✓ API Key guardada"; SetStatus.TextColor3=C.GREEN
-    else
-        SetStatus.Text="⚠ Key vacía o inválida"; SetStatus.TextColor3=C.ORANGE
-    end
-    task.delay(1.2,closeSet)
-end)
-BtnSave.TouchTap:Connect(function()
-    apiKey = KeyBox.Text:match("^%s*(.-)%s*$") or ""
-    if #apiKey > 10 then
-        SetStatus.Text="✓ API Key guardada"; SetStatus.TextColor3=C.GREEN
-    else
-        SetStatus.Text="⚠ Key vacía o inválida"; SetStatus.TextColor3=C.ORANGE
-    end
-    task.delay(1.2,closeSet)
-end)
-
--- ============================================================
---  CHAT IA — BURBUJA
--- ============================================================
-local function addBubble(text, isUser)
-    aiOrder = aiOrder + 1
-    local bub = Instance.new("Frame")
-    bub.Size=UDim2.new(1,0,0,10)
-    bub.BackgroundColor3 = isUser and Color3.fromRGB(22,42,75) or Color3.fromRGB(16,26,52)
-    bub.BorderSizePixel=0; bub.LayoutOrder=aiOrder; bub.AutomaticSize=Enum.AutomaticSize.Y
-    bub.Parent=AIScroll
-    R(bub,7)
-    S(bub, isUser and Color3.fromRGB(60,90,160) or Color3.fromRGB(40,55,110), 1)
-
-    local who = LBL(bub, isUser and "Tú" or "🤖 IA", 8,
-        isUser and C.ACCENT or C.ACCENT2, Enum.Font.GothamBold)
-    who.Size=UDim2.new(1,-10,0,14); who.Position=UDim2.new(0,6,0,3)
-
-    local msg = Instance.new("TextLabel")
-    msg.BackgroundTransparency=1; msg.Size=UDim2.new(1,-12,0,0); msg.Position=UDim2.new(0,6,0,18)
-    msg.Text=text; msg.TextSize=11; msg.Font=Enum.Font.Gotham; msg.TextColor3=C.TEXT
-    msg.TextWrapped=true; msg.TextXAlignment=Enum.TextXAlignment.Left
-    msg.TextYAlignment=Enum.TextYAlignment.Top; msg.AutomaticSize=Enum.AutomaticSize.Y
-    msg.Parent=bub
-
-    task.wait()
-    local total=0
-    for _,ch in ipairs(AIScroll:GetChildren()) do
-        if ch:IsA("Frame") then total=total+ch.AbsoluteSize.Y+6 end
-    end
-    AIScroll.CanvasSize=UDim2.new(0,0,0,total+12)
-    AIScroll.CanvasPosition=Vector2.new(0,math.max(0,total-AIScroll.AbsoluteSize.Y+12))
-    return msg
-end
-
--- ============================================================
---  OPENROUTER IA — LLAMADA REAL
--- ============================================================
--- Sistema prompt compacto (ahorra tokens)
-local SYS = "Eres asistente del juego Conecta Palabras (Roblox). "..
-    "Cuando el usuario pida palabras con un prefijo, responde SOLO con una lista "..
-    "de máximo 15 palabras en español e inglés que comiencen con ese prefijo, "..
-    "separadas por comas, sin explicaciones. "..
-    "Si no es una petición de palabras, responde en UNA oración corta."
-
-local aiLoading = false
-
-local function callAI(userMsg, callback)
-    if #apiKey < 8 then
-        callback("⚠️ Configura tu API Key en ⚙ primero.\n\nVe a openrouter.ai → crea cuenta gratis → API Keys → copia tu key y pégala aquí.")
-        return
+    if badge then
+        local bg=Instance.new("Frame"); bg.Size=UDim2.new(0,36,0,16); bg.Position=UDim2.new(1,-72,0.5,-8)
+        bg.BackgroundColor3=badgeColor or C.CARD; bg.BorderSizePixel=0; bg.Parent=row; R(bg,5)
+        local bl=LBL(bg,badge,8,C.TEXT,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+        bl.Size=UDim2.new(1,0,1,0)
     end
 
-    -- Construye historial (solo últimos 4 pares para ahorrar tokens)
-    local msgs = {{ role="system", content=SYS }}
-    local start = math.max(1, #aiHistory-7)
-    for i=start,#aiHistory do msgs[#msgs+1]=aiHistory[i] end
-    msgs[#msgs+1] = { role="user", content=userMsg }
-
-    local payload = jsonEnc({
-        model      = "meta-llama/llama-3.3-70b-instruct:free",
-        max_tokens = 256,
-        temperature = 0.3,
-        messages   = msgs,
-    })
-
-    local hdrs = {
-        ["Content-Type"]  = "application/json",
-        ["Authorization"] = "Bearer "..apiKey,
-        ["HTTP-Referer"]  = "https://www.roblox.com",
-        ["X-Title"]       = "ConectaPalabrasRoblox",
-    }
-
-    task.spawn(function()
-        local ok, body, code = httpPost(
-            "https://openrouter.ai/api/v1/chat/completions",
-            hdrs, payload
-        )
-
-        if not ok or not body then
-            callback("❌ Sin conexión. Verifica que el exploit tiene acceso HTTP.\n(Delta: activa 'Allow HTTP' si lo pide)")
-            return
-        end
-
-        -- Intenta parsear
-        local content = parseAIResponse(body)
-        if not content or content == "" then
-            -- muestra cuerpo crudo para debug
-            local snippet = body:sub(1,120)
-            callback("❌ Respuesta inesperada:\n"..snippet)
-            return
-        end
-
-        -- Guarda en historial
-        aiHistory[#aiHistory+1] = { role="user",      content=userMsg }
-        aiHistory[#aiHistory+1] = { role="assistant", content=content }
-        if #aiHistory > 16 then
-            local nh={}
-            for i=#aiHistory-15,#aiHistory do nh[#nh+1]=aiHistory[i] end
-            aiHistory=nh
-        end
-
-        callback(content)
-    end)
-end
-
-local function sendAI()
-    if aiLoading then return end
-    local msg = AIBox.Text:match("^%s*(.-)%s*$") or ""
-    if #msg == 0 then return end
-    AIBox.Text=""
-    addBubble(msg, true)
-    aiLoading=true
-    AISend.Text="⏳"; TW(AISend,{BackgroundColor3=C.TEXTM},0.1)
-    local think = addBubble("✦ Pensando...", false)
-    callAI(msg, function(resp)
-        aiLoading=false
-        AISend.Text="➤"; TW(AISend,{BackgroundColor3=C.ACCENT},0.1)
-        if think and think.Parent then think.Text=resp end
-    end)
-end
-AISend.MouseButton1Click:Connect(sendAI); AISend.TouchTap:Connect(sendAI)
-AIBox.FocusLost:Connect(function(e) if e then sendAI() end end)
-
--- ============================================================
---  POOL DE ITEMS
--- ============================================================
-local POOL = CFG.LIST_ROWS + 3
-local pool  = {}
-
-local function makeItem(i)
-    local row = Instance.new("Frame")
-    row.Name=("R%d"):format(i); row.Size=UDim2.new(1,0,0,CFG.ITEM_H)
-    row.BackgroundColor3=(i%2==0) and C.CARD2 or C.CARD
-    row.BackgroundTransparency=0.1; row.BorderSizePixel=0; row.LayoutOrder=i; row.Visible=false; row.Parent=Scroll
-    R(row,5)
-
-    local num=LBL(row,tostring(i),8,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-    num.Name="N"; num.Size=UDim2.new(0,20,1,0); num.Position=UDim2.new(0,0,0,0)
-
-    local dot=Instance.new("Frame"); dot.Size=UDim2.new(0,3,0,3)
-    dot.Position=UDim2.new(0,22,0.5,-1); dot.BackgroundColor3=C.ACCENT; dot.BorderSizePixel=0; dot.Parent=row; R(dot,2)
-
-    local wlbl=LBL(row,"",13,C.TEXT,Enum.Font.GothamBold)
-    wlbl.Name="W"; wlbl.Size=UDim2.new(1,-80,1,0); wlbl.Position=UDim2.new(0,28,0,0)
-
-    local lb=Instance.new("Frame"); lb.Name="LB"; lb.Size=UDim2.new(0,26,0,16)
-    lb.Position=UDim2.new(1,-60,0.5,-8); lb.BackgroundColor3=Color3.fromRGB(20,26,48)
-    lb.BorderSizePixel=0; lb.Parent=row; R(lb,5)
-    local ll=LBL(lb,"",8,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-    ll.Name="LL"; ll.Size=UDim2.new(1,0,1,0)
-
-    local cp=Instance.new("TextButton"); cp.Name="CP"
-    cp.Size=UDim2.new(0,32,0,20); cp.Position=UDim2.new(1,-35,0.5,-10)
-    cp.BackgroundColor3=Color3.fromRGB(25,35,70); cp.BorderSizePixel=0
-    cp.Text="📋"; cp.TextSize=10; cp.AutoButtonColor=false; cp.Parent=row; R(cp,5)
+    -- Botón copiar
+    local cp=Instance.new("TextButton"); cp.Size=UDim2.new(0,32,0,20); cp.Position=UDim2.new(1,-34,0.5,-10)
+    cp.BackgroundColor3=Color3.fromRGB(22,32,68); cp.BorderSizePixel=0; cp.Text="📋"
+    cp.TextSize=10; cp.AutoButtonColor=false; cp.Parent=row; R(cp,5)
+    local function doCopy()
+        pcall(function()
+            if setclipboard then setclipboard(word)
+            elseif syn and syn.set_clipboard then syn.set_clipboard(word) end
+        end)
+        cp.BackgroundColor3=C.GREEN; cp.Text="✓"
+        task.delay(1,function() if cp and cp.Parent then cp.BackgroundColor3=Color3.fromRGB(22,32,68); cp.Text="📋" end end)
+    end
+    itemConns[#itemConns+1]=cp.MouseButton1Click:Connect(doCopy)
+    itemConns[#itemConns+1]=cp.TouchTap:Connect(doCopy)
     return row
 end
-for i=1,POOL do pool[i]=makeItem(i) end
+
+local function updateCanvas(scr)
+    local h=0
+    for _,c in ipairs(scr:GetChildren()) do
+        if c:IsA("Frame") then h=h+c.AbsoluteSize.Y+2 end
+    end
+    scr.CanvasSize=UDim2.new(0,0,0,h+6)
+end
 
 -- ============================================================
---  RENDER LISTA
+--  TABS LOGIC
 -- ============================================================
-local copyConns={}
+local function renderUsadas()
+    clearScroll(Scroll)
+    PHFrm.Visible=(#usedList==0)
+    if #usedList==0 then
+        PHT.Text="Aún no hay palabras usadas"
+        PHS.Text="Juega una ronda para verlas aquí"
+        return
+    end
+    -- Muestra todas las palabras usadas, resaltando la última
+    for i,w in ipairs(usedList) do
+        local isLast=(i==#usedList)
+        addRow(Scroll, i, w,
+            isLast and C.YELLOW or C.TEXTD,
+            isLast and "ÚLTIMA" or tostring(#w).."L",
+            isLast and Color3.fromRGB(60,50,10) or C.CARD2)
+    end
+    updateCanvas(Scroll)
+    -- Auto-scroll al final
+    task.wait()
+    Scroll.CanvasPosition=Vector2.new(0,math.max(0,Scroll.CanvasSize.Y.Offset-Scroll.AbsoluteSize.Y))
+end
 
-local function renderList(words, total, pre)
-    PHF.Visible=(#words==0)
-    for _,c in ipairs(copyConns) do pcall(function() c:Disconnect() end) end
-    copyConns={}
+local function renderPrefijo()
+    clearScroll(Scroll)
+    PHFrm.Visible=false
+    if currentPre=="" then
+        PHFrm.Visible=true
+        PHT.Text="Sin prefijo detectado aún"
+        PHS.Text="El prefijo se lee automáticamente del juego"
+        return
+    end
+    -- Busca palabras con el prefijo actual que NO estén ya usadas
+    local candidates=searchPrefix(currentPre, 80)
+    local available={}
+    for _,w in ipairs(candidates) do
+        if not usedWords[w] then available[#available+1]=w end
+    end
+    InfoLbl.Text=tostring(#available).." disponibles con \""..currentPre:upper().."\""
+    if #available==0 then
+        PHFrm.Visible=true
+        PHT.Text="Sin sugerencias para \""..currentPre:upper().."\""
+        PHS.Text="El diccionario puede no tener esta combinación"
+        return
+    end
+    for i,w in ipairs(available) do
+        addRow(Scroll, i, w, C.GREEN, tostring(#w).."L", Color3.fromRGB(10,40,25))
+    end
+    updateCanvas(Scroll)
+end
 
-    for i=1,POOL do
-        local row=pool[i]; local w=words[i]
-        if w then
-            row.Visible=true; row.LayoutOrder=i
-            row.BackgroundColor3=(i%2==0) and C.CARD2 or C.CARD
-            row:FindFirstChild("N").Text=tostring(i)
-            row:FindFirstChild("W").Text=w
-            local lb=row:FindFirstChild("LB"); if lb then local ll=lb:FindFirstChild("LL"); if ll then ll.Text=tostring(#w).."L" end end
-            local cp=row:FindFirstChild("CP")
-            if cp then
-                local function doCopy()
-                    pcall(function()
-                        if setclipboard then setclipboard(w)
-                        elseif syn and syn.set_clipboard then syn.set_clipboard(w)
-                        elseif Clipboard then Clipboard:set(w) end
-                    end)
-                    cp.BackgroundColor3=C.GREEN; cp.Text="✓"
-                    task.delay(0.9,function() if cp and cp.Parent then TW(cp,{BackgroundColor3=Color3.fromRGB(25,35,70)},0.3); cp.Text="📋" end end)
+local function renderManual(pre)
+    clearScroll(ManList)
+    if pre=="" then ManInfoLbl.Text=""; return end
+    local pn=norm(pre)
+    local candidates=searchPrefix(pn, 60)
+    local available={}
+    for _,w in ipairs(candidates) do
+        if not usedWords[w] then available[#available+1]=w end
+    end
+    ManInfoLbl.Text=tostring(#available).." disponibles con \""..pre:upper().."\""
+    if #available==0 then
+        local noRes=Instance.new("TextLabel"); noRes.Size=UDim2.new(1,0,0,28)
+        noRes.BackgroundTransparency=1; noRes.Text="Sin resultados"
+        noRes.TextColor3=C.RED; noRes.TextSize=11; noRes.Font=Enum.Font.Gotham
+        noRes.TextXAlignment=Enum.TextXAlignment.Center; noRes.LayoutOrder=1; noRes.Parent=ManList
+        ManList.CanvasSize=UDim2.new(0,0,0,32)
+        return
+    end
+    for i,w in ipairs(available) do
+        addRow(ManList, i, w, C.GREEN, tostring(#w).."L", Color3.fromRGB(10,40,25))
+    end
+    local h=0
+    for _,c in ipairs(ManList:GetChildren()) do if c:IsA("Frame") then h=h+30 end end
+    ManList.CanvasSize=UDim2.new(0,0,0,h+6)
+end
+
+local function setTab(t)
+    currentTab=t
+    local tabs={TB1,TB2,TB3}
+    local colors={C.ACCENT,C.GREEN,C.ORANGE}
+    for i,tb in ipairs(tabs) do
+        if i==t then TW(tb,{BackgroundColor3=colors[i]},0.12); tb.TextColor3=C.TEXT
+        else TW(tb,{BackgroundColor3=Color3.fromRGB(20,24,44)},0.12); tb.TextColor3=C.TEXTD end
+    end
+    ListFrm.Visible=(t==1 or t==2)
+    ManFrm.Visible=(t==3)
+    if t==1 then renderUsadas()
+    elseif t==2 then renderPrefijo()
+    end
+end
+
+TB1.MouseButton1Click:Connect(function() setTab(1) end); TB1.TouchTap:Connect(function() setTab(1) end)
+TB2.MouseButton1Click:Connect(function() setTab(2) end); TB2.TouchTap:Connect(function() setTab(2) end)
+TB3.MouseButton1Click:Connect(function() setTab(3) end); TB3.TouchTap:Connect(function() setTab(3) end)
+
+ManBtn.MouseButton1Click:Connect(function() renderManual(ManBox.Text) end)
+ManBtn.TouchTap:Connect(function() renderManual(ManBox.Text) end)
+ManBox.FocusLost:Connect(function(e) if e then renderManual(ManBox.Text) end end)
+
+-- ============================================================
+--  LECTURA DE GUI DEL JUEGO — CORE
+--  Busca en PlayerGui todos los TextLabels/TextBoxes y extrae:
+--  1. El prefijo actual (letras grandes en pantalla)
+--  2. Palabras que aparecen como jugadas
+-- ============================================================
+
+-- Filtra strings que son palabras de juego (no UI chrome)
+local UI_IGNORE = {
+    "chairs","pets","profile","vip","invite","store","free","classic",
+    "proportionsnormal","avatarpartscaletype","inner","main","content","hud",
+    "leftbar","rightbar","bottomrightbar","container","textlabel","frame",
+}
+local function isUIChrome(s)
+    local sl=s:lower()
+    for _,v in ipairs(UI_IGNORE) do if sl==v then return true end end
+    -- ignora nombres propios (primera letra mayúscula + letras mezcladas)
+    if s:match("^%u") and not s:match("^%u%l+$") then return true end
+    return false
+end
+
+-- Detecta si parece prefijo del juego (2-5 letras mayúsculas)
+local function looksPrefijo(s)
+    return s:match("^%u%u+$") and #s >= 2 and #s <= 5
+end
+
+-- Detecta si es una palabra jugada (minúsculas o capitalizada, 3+ letras)
+local function looksPlayedWord(s)
+    local n=norm(s)
+    return #n >= 3 and n:match("^[a-z]+$") ~= nil and DICT_SET[n] ~= nil
+end
+
+local detectedPrefixes = {}   -- candidatos a prefijo
+local lastScanTime = 0
+
+local function scanGameGUI()
+    local pg = LP:FindFirstChild("PlayerGui")
+    if not pg then return end
+
+    local newUsed   = {}
+    local prefCands = {}
+
+    local function walkGUI(inst, depth)
+        if depth > 10 then return end
+        local cls = inst.ClassName
+        if cls == "TextLabel" or cls == "TextBox" or cls == "TextButton" then
+            local txt = (inst.Text or ""):match("^%s*(.-)%s*$")
+            if txt and #txt >= 2 and #txt <= 30 then
+                -- ¿Prefijo?
+                if looksPrefijo(txt) then
+                    prefCands[txt] = (prefCands[txt] or 0) + 1
                 end
-                copyConns[#copyConns+1]=cp.MouseButton1Click:Connect(doCopy)
-                copyConns[#copyConns+1]=cp.TouchTap:Connect(doCopy)
+                -- ¿Palabra jugada?
+                if looksPlayedWord(txt) and not isUIChrome(txt) then
+                    newUsed[norm(txt)] = true
+                end
             end
-        else
-            row.Visible=false
+        end
+        local ok, ch = pcall(function() return inst:GetChildren() end)
+        if not ok then return end
+        for _,c in ipairs(ch) do
+            pcall(function() walkGUI(c, depth+1) end)
         end
     end
 
-    local vis=math.min(#words,POOL)
-    Scroll.CanvasSize=UDim2.new(0,0,0,vis*(CFG.ITEM_H+1)+6)
-    Scroll.CanvasPosition=Vector2.new(0,0)
+    pcall(function() walkGUI(pg, 0) end)
 
-    if #words==0 then
-        ResLbl.Text=pre~="" and "Sin resultados para \""..pre.."\"" or "Escribe para buscar"
-        ResLbl.TextColor3=pre~="" and C.RED or C.TEXTM
-    elseif total>CFG.MAX_RES then
-        ResLbl.Text=CFG.MAX_RES.."+  para \""..pre.."\""; ResLbl.TextColor3=C.TEXTD
-    else
-        ResLbl.Text=total.." resultado"..(total~=1 and "s" or "").."  \""..pre.."\""; ResLbl.TextColor3=C.GREEN
+    -- Actualiza palabras usadas
+    local changed = false
+    for w in pairs(newUsed) do
+        if not usedWords[w] then
+            usedWords[w] = true
+            usedList[#usedList+1] = w
+            changed = true
+        end
+    end
+
+    -- Prefijo más frecuente
+    local bestPre, bestCount = "", 0
+    for p,cnt in pairs(prefCands) do
+        if cnt > bestCount then bestPre=p; bestCount=cnt end
+    end
+    local preNorm = norm(bestPre)
+    if preNorm ~= currentPre and #preNorm >= 2 then
+        currentPre = preNorm
+        PreWord.Text = bestPre:upper()
+        PreLabel.Text = "Prefijo actual detectado:"
+        PreWord.TextColor3 = C.ACCENT
+        -- Destella
+        TW(PreWord,{TextColor3=C.GREEN},0.1)
+        task.delay(0.3,function() TW(PreWord,{TextColor3=C.ACCENT},0.2) end)
+        changed = true
+    end
+
+    if changed then
+        InfoLbl.Text = tostring(#usedList).." palabras usadas · prefijo: "..(currentPre~="" and currentPre:upper() or "---")
+        -- Refresca pestaña activa
+        if currentTab == 1 then renderUsadas()
+        elseif currentTab == 2 then renderPrefijo() end
     end
 end
 
--- ============================================================
---  BÚSQUEDA TIEMPO REAL
--- ============================================================
-local lastPre=""
-local deb=nil
-
-local function doSearch(raw)
-    local pre=norm(raw)
-    if pre==lastPre then return end; lastPre=pre
-    if #pre==0 then
-        renderList({},0,""); ResLbl.Text="Escribe un prefijo para buscar"; ResLbl.TextColor3=C.TEXTM; PHF.Visible=true; return
+-- Hook RemoteEvents para capturar palabras enviadas por el servidor
+local function hookRemotes()
+    local function tryHook(inst, path, depth)
+        if depth > 6 then return end
+        if inst.ClassName == "RemoteEvent" then
+            pcall(function()
+                inst.OnClientEvent:Connect(function(...)
+                    for _,a in ipairs({...}) do
+                        local s = tostring(a)
+                        local n = norm(s)
+                        -- ¿El servidor mandó una palabra nueva?
+                        if #n >= 3 and n:match("^[a-z]+$") and not usedWords[n] then
+                            -- guarda independientemente del diccionario
+                            -- (el servidor sabe más que nuestro diccionario)
+                            usedWords[n]=true
+                            usedList[#usedList+1]=n
+                            InfoLbl.Text=tostring(#usedList).." palabras · prefijo: "..(currentPre~="" and currentPre:upper() or "---")
+                            if currentTab==1 then renderUsadas() end
+                        end
+                        -- ¿Prefijo nuevo?
+                        if looksPrefijo(s) then
+                            local pn=norm(s)
+                            if pn ~= currentPre then
+                                currentPre=pn
+                                PreWord.Text=s:upper()
+                                PreLabel.Text="Prefijo (via red):"
+                                if currentTab==2 then renderPrefijo() end
+                            end
+                        end
+                    end
+                end)
+            end)
+        end
+        local ok,ch=pcall(function() return inst:GetChildren() end)
+        if not ok then return end
+        for _,c in ipairs(ch) do pcall(function() tryHook(c,path.."."..c.Name,depth+1) end) end
     end
-    if not isReady then ResLbl.Text="⏳ Cargando..."; ResLbl.TextColor3=C.TEXTD; return end
-    PHF.Visible=false
-    local words,total=search(pre,CFG.MAX_RES)
-    renderList(words,total,pre)
+    pcall(function() tryHook(game:GetService("ReplicatedStorage"),"RS",0) end)
+    pcall(function() tryHook(game.Workspace,"WS",0) end)
 end
 
-PBox:GetPropertyChangedSignal("Text"):Connect(function()
-    local t=PBox.Text
-    if deb then task.cancel(deb) end
-    deb=task.delay(0.07,function() doSearch(t) end)
-end)
-PBox.FocusLost:Connect(function(e) if e then doSearch(PBox.Text) end end)
+-- ============================================================
+--  BOTÓN LIMPIAR RONDA
+-- ============================================================
+local BtnReset=BTN(Body,"🔄 Nueva ronda",UDim2.new(1,0,0,24),Color3.fromRGB(15,30,60),C.ACCENT)
+BtnReset.Position=UDim2.new(0,0,0,358); BtnReset.TextSize=10
+local function doReset()
+    usedWords={}; usedList={}; currentPre=""
+    PreWord.Text="---"; PreLabel.Text="Detectando prefijo..."
+    PreWord.TextColor3=C.ACCENT
+    InfoLbl.Text="Ronda nueva — esperando palabras..."
+    clearScroll(Scroll); clearScroll(ManList)
+    PHFrm.Visible=true; PHT.Text="Ronda nueva iniciada"; PHS.Text="Juega para capturar palabras"
+    ManInfoLbl.Text=""
+end
+BtnReset.MouseButton1Click:Connect(doReset); BtnReset.TouchTap:Connect(doReset)
 
 -- ============================================================
 --  ANIMACIÓN ENTRADA
 -- ============================================================
-TW(Main,{Size=UDim2.new(0,W0,0,H0),Position=UDim2.new(0.5,-W0/2,0.5,-H0/2)},
-    0.3,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+TW(Main,{Size=UDim2.new(0,W,0,H),Position=UDim2.new(0.5,-W/2,0.5,-H/2)},
+    0.28,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
 
--- Pulso dot
-local dotOn=true
+-- ============================================================
+--  LOOP PRINCIPAL — escanea cada 0.8s
+-- ============================================================
+hookRemotes()
+
 task.spawn(function()
-    while dotOn and Main.Parent do
-        if isReady then SDot.TextColor3=C.GREEN; task.wait(1)
-        else
-            TW(SDot,{TextColor3=C.ACCENT},0.5); task.wait(0.5)
-            TW(SDot,{TextColor3=C.TEXTM},0.5);  task.wait(0.5)
-        end
+    InfoLbl.Text="Iniciando monitor..."
+    task.wait(1.5)  -- espera a que la GUI del juego cargue
+    InfoLbl.Text="Monitoreando GUI del juego..."
+    while Main and Main.Parent do
+        pcall(scanGameGUI)
+        task.wait(0.8)
     end
 end)
 
--- ============================================================
---  CARGA DICCIONARIOS (BACKGROUND)
--- ============================================================
-task.spawn(function()
-    STxt.Text="Base interna..."
-    loadSeed()
-    SCnt.Text=TOTAL.." palabras"
-    TW(PrgFill,{Size=UDim2.new(0.1,0,1,0)},0.3)
-    isReady=true; SDot.TextColor3=C.GREEN; STxt.Text="✓ Base lista"
-
-    local steps={0.1,0.55,1.0}
-    for i,entry in ipairs(URLS) do
-        STxt.Text="⬇ "..entry.lang.."..."
-        SDot.TextColor3=C.ACCENT
-        local n=loadURL(entry)
-        SCnt.Text=TOTAL.." palabras"
-        TW(PrgFill,{Size=UDim2.new(steps[i+1] or 1,0,1,0)},0.5)
-        STxt.Text="✓ "..entry.lang.." +"..n; SDot.TextColor3=C.GREEN; task.wait(0.2)
-    end
-    TW(PrgFill,{Size=UDim2.new(1,0,1,0)},0.2)
-    STxt.Text="✓ Diccionario completo"; SCnt.Text=TOTAL.." palabras"
-
-    if #PBox.Text>0 then lastPre=""; doSearch(PBox.Text) end
-
-    task.wait(3)
-    dotOn=false
-    -- Colapsa barra de status con animación
-    TW(StatusBar,{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1},0.3)
-    task.wait(0.3)
-    StatusBar.Visible=false
-    -- Sube los elementos
-    TW(InputF,{Position=UDim2.new(0,0,0,2)},0.3)
-    TW(TabsF,{Position=UDim2.new(0,0,0,46)},0.3)
-    TW(ResF,{Position=UDim2.new(0,0,0,76)},0.3)
-    TW(ListF,{Position=UDim2.new(0,0,0,99)},0.3)
-    TW(AIF,{Position=UDim2.new(0,0,0,99)},0.3)
-end)
-
--- ============================================================
---  MENSAJE BIENVENIDA IA
--- ============================================================
-task.delay(0.6,function()
-    addBubble("¡Hola! 🤖 Soy tu asistente.\n\nEjemplos de lo que puedes pedirme:\n• 'palabras que empiecen con sca'\n• 'dame palabras en inglés con scr'\n• 'palabras en español con ono'\n\nConfigura tu API Key en ⚙ para activarme.\nopenrouter.ai → cuenta gratis → API Keys", false)
-end)
-
--- FIN SCRIPT
+-- ENDSCRIPT
