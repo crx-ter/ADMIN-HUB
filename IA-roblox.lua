@@ -5,349 +5,794 @@ local Players  = game:GetService("Players")
 local TweenSvc = game:GetService("TweenService")
 local UIS      = game:GetService("UserInputService")
 local RS       = game:GetService("ReplicatedStorage")
+local RunSvc   = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
 local LP       = Players.LocalPlayer
 
 -- ============================================================
---  PALETA — Glassmorphism oscuro violeta/azul
+--  HTTP — compatible Delta/KRNL/Synapse/Fluxus
+-- ============================================================
+local function httpReq(opts)
+    -- Prueba cada método en orden
+    for _, fn in ipairs({
+        function() return request and request(opts) end,
+        function() return syn and syn.request and syn.request(opts) end,
+        function() return http and http.request and http.request(opts) end,
+        function() return fluxus and fluxus.request and fluxus.request(opts) end,
+        function() return http_request and http_request(opts) end,
+    }) do
+        local ok, r = pcall(fn)
+        if ok and r and r.Body then return r end
+    end
+    -- Fallback HttpService para GET
+    if opts.Method == "GET" then
+        local ok, b = pcall(function()
+            return game:GetService("HttpService"):GetAsync(opts.Url, true)
+        end)
+        if ok and b then return {Body=b, StatusCode=200} end
+    end
+    return nil
+end
+
+local function httpPost(url, headers, body)
+    local r = httpReq({Url=url, Method="POST", Headers=headers, Body=body})
+    if r then return true, r.Body, r.StatusCode end
+    return false, nil, nil
+end
+
+-- ============================================================
+--  JSON mínimo
+-- ============================================================
+local function jEnc(v)
+    local t = type(v)
+    if t == "string" then
+        v = v:gsub('\\','\\\\'):gsub('"','\\"'):gsub('\n','\\n'):gsub('\r','\\r'):gsub('\t','\\t')
+        return '"'..v..'"'
+    elseif t == "number"  then return tostring(v)
+    elseif t == "boolean" then return v and "true" or "false"
+    elseif t == "table" then
+        if #v > 0 then
+            local p={}; for _,x in ipairs(v) do p[#p+1]=jEnc(x) end
+            return "["..table.concat(p,",").."]"
+        else
+            local p={}; for k,x in pairs(v) do p[#p+1]='"'..tostring(k)..'":'..jEnc(x) end
+            return "{"..table.concat(p,",").."}"
+        end
+    end
+    return "null"
+end
+
+-- Extrae el campo content de la respuesta OpenRouter
+-- Maneja múltiples formatos de respuesta
+local function parseAI(s)
+    if not s or s == "" then return nil end
+    -- Formato estándar choices[0].message.content
+    local c = s:match('"content"%s*:%s*"(.-)"(%s*[,}])')
+    if c then
+        c = c:gsub('\\"','"'):gsub('\\n','\n'):gsub('\\t','\t'):gsub('\\\\','\\')
+        if #c > 1 then return c end
+    end
+    -- Fallback más amplio
+    c = s:match('"content"%s*:%s*"([^"]*)"')
+    if c and #c > 0 then return c end
+    -- Busca error de API
+    local e = s:match('"error"%s*:%s*{.-"message"%s*:%s*"([^"]*)"')
+    if e then return "❌ Error API: "..e end
+    local e2 = s:match('"message"%s*:%s*"([^"]*)"')
+    if e2 and not e2:find("Bearer") then return "❌ "..e2 end
+    return nil
+end
+
+-- ============================================================
+--  PALETA
 -- ============================================================
 local C = {
-    -- Fondos con transparencia
-    BG       = Color3.fromRGB(6, 7, 16),
-    GLASS    = Color3.fromRGB(16, 19, 38),
-    GLASS2   = Color3.fromRGB(22, 27, 52),
-    GLASS3   = Color3.fromRGB(28, 34, 64),
-    -- Accentos
-    A1       = Color3.fromRGB(100, 150, 255),  -- azul eléctrico
-    A2       = Color3.fromRGB(140,  80, 255),  -- violeta
-    A3       = Color3.fromRGB( 60, 210, 255),  -- cyan
-    -- Estados
-    GREEN    = Color3.fromRGB( 56, 220, 130),
-    RED      = Color3.fromRGB(255,  65,  80),
-    ORANGE   = Color3.fromRGB(255, 160,  50),
-    YELLOW   = Color3.fromRGB(255, 220,  60),
-    -- Texto
-    TEXT     = Color3.fromRGB(230, 233, 255),
-    TEXTD    = Color3.fromRGB(140, 148, 190),
-    TEXTM    = Color3.fromRGB( 62,  68, 112),
-    -- Misc
-    BLACK    = Color3.fromRGB(0, 0, 0),
-    BORDER   = Color3.fromRGB(55, 65, 125),
-    SCROLL   = Color3.fromRGB(100, 150, 255),
-}
-
--- Transparencias
-local T = {
-    BG     = 0.10,
-    PANEL  = 0.14,
-    CARD   = 0.08,
-    CARD2  = 0.04,
-    HANDLE = 0.35,
+    BG      = Color3.fromRGB(7,8,18),
+    GLASS   = Color3.fromRGB(14,17,32),
+    GLASS2  = Color3.fromRGB(20,24,46),
+    GLASS3  = Color3.fromRGB(26,31,58),
+    A1      = Color3.fromRGB(100,150,255),
+    A2      = Color3.fromRGB(130,75,255),
+    A3      = Color3.fromRGB(60,210,255),
+    GREEN   = Color3.fromRGB(56,220,130),
+    RED     = Color3.fromRGB(255,65,80),
+    ORANGE  = Color3.fromRGB(255,160,50),
+    YELLOW  = Color3.fromRGB(255,215,55),
+    TEXT    = Color3.fromRGB(228,231,255),
+    TEXTD   = Color3.fromRGB(138,145,188),
+    TEXTM   = Color3.fromRGB(60,66,108),
+    SCROLL  = Color3.fromRGB(100,150,255),
+    USER_BG = Color3.fromRGB(22,42,80),
+    AI_BG   = Color3.fromRGB(16,22,46),
+    BORDER  = Color3.fromRGB(48,58,118),
+    SYS_BG  = Color3.fromRGB(22,30,58),
 }
 
 -- ============================================================
---  HELPERS UI
+--  UI HELPERS
 -- ============================================================
-local function rnd(p, r)
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = p
+local function R(p,r) local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 8); c.Parent=p end
+local function S(p,col,th) local s=Instance.new("UIStroke"); s.Color=col or C.BORDER; s.Thickness=th or 1; s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; s.Parent=p; return s end
+local function G(p,c0,c1,rot) local g=Instance.new("UIGradient"); g.Color=ColorSequence.new(c0,c1); g.Rotation=rot or 0; g.Parent=p end
+local function TW(o,pr,t,s,d) TweenSvc:Create(o,TweenInfo.new(t or 0.15,s or Enum.EasingStyle.Quad,d or Enum.EasingDirection.Out),pr):Play() end
+local function LBL(p,txt,sz,col,fnt,ax)
+    local l=Instance.new("TextLabel"); l.BackgroundTransparency=1; l.Text=txt; l.TextSize=sz or 12
+    l.TextColor3=col or C.TEXT; l.Font=fnt or Enum.Font.Gotham
+    l.TextXAlignment=ax or Enum.TextXAlignment.Left; l.TextYAlignment=Enum.TextYAlignment.Center
+    l.TextTruncate=Enum.TextTruncate.AtEnd; l.Parent=p; return l
 end
-local function str(p, col, th)
-    local s = Instance.new("UIStroke"); s.Color = col; s.Thickness = th or 1
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = p; return s
+local function BTN(p,txt,sz,bg,tc,fs)
+    local b=Instance.new("TextButton"); b.Size=sz; b.BackgroundColor3=bg or C.GLASS2
+    b.BorderSizePixel=0; b.Text=txt; b.TextColor3=tc or C.TEXT; b.TextSize=fs or 11
+    b.Font=Enum.Font.GothamBold; b.AutoButtonColor=false; b.Parent=p; R(b,7); return b
 end
-local function grad(p, c0, c1, rot)
-    local g = Instance.new("UIGradient")
-    g.Color = ColorSequence.new(c0, c1); g.Rotation = rot or 0; g.Parent = p
-end
-local function tw(o, pr, t, s, d)
-    TweenSvc:Create(o, TweenInfo.new(t or 0.15, s or Enum.EasingStyle.Quad,
-        d or Enum.EasingDirection.Out), pr):Play()
-end
-local function lbl(p, txt, sz, col, fnt, ax)
-    local l = Instance.new("TextLabel"); l.BackgroundTransparency = 1
-    l.Text = txt; l.TextSize = sz or 12; l.TextColor3 = col or C.TEXT
-    l.Font = fnt or Enum.Font.Gotham
-    l.TextXAlignment = ax or Enum.TextXAlignment.Left
-    l.TextYAlignment = Enum.TextYAlignment.Center
-    l.TextTruncate = Enum.TextTruncate.AtEnd; l.Parent = p; return l
-end
-local function btn(p, txt, sz, bg, tc, fs)
-    local b = Instance.new("TextButton"); b.Size = sz
-    b.BackgroundColor3 = bg or C.GLASS2; b.BorderSizePixel = 0
-    b.Text = txt; b.TextColor3 = tc or C.TEXT; b.TextSize = fs or 11
-    b.Font = Enum.Font.GothamBold; b.AutoButtonColor = false; b.Parent = p; rnd(b, 7)
-    return b
-end
--- Frame genérico glassmorphism
-local function gf(p, sz, pos, bg, trans, cr)
-    local f = Instance.new("Frame"); f.Size = sz; f.Position = pos or UDim2.new(0,0,0,0)
-    f.BackgroundColor3 = bg or C.GLASS; f.BackgroundTransparency = trans or T.PANEL
-    f.BorderSizePixel = 0; f.Parent = p; rnd(f, cr or 10); return f
+local function toggleStyle(btn, on, onCol, offCol)
+    btn.BackgroundColor3 = on and (onCol or C.GREEN) or (offCol or Color3.fromRGB(30,20,30))
+    btn.TextColor3 = on and C.TEXT or C.TEXTD
 end
 
 -- ============================================================
---  NORMALIZACIÓN
+--  ESTADO DE COMANDOS
 -- ============================================================
-local AM = {["á"]="a",["à"]="a",["â"]="a",["ä"]="a",["ã"]="a",
-    ["é"]="e",["è"]="e",["ê"]="e",["ë"]="e",["í"]="i",["ì"]="i",
-    ["î"]="i",["ï"]="i",["ó"]="o",["ò"]="o",["ô"]="o",["ö"]="o",
-    ["õ"]="o",["ú"]="u",["ù"]="u",["û"]="u",["ü"]="u",
-    ["ñ"]="n",["ç"]="c",["ý"]="y"}
-local function norm(w)
-    if not w then return "" end
-    w = tostring(w):lower():match("^%s*(.-)%s*$") or ""
-    for a,b in pairs(AM) do w = w:gsub(a,b) end
-    return w
-end
+local flyOn      = false; local flySpeed = 60; local flyConn = nil
+local noclipOn   = false; local noclipConn = nil
+local godOn      = false; local godConn = nil
+local flightOn   = false  -- flight = lanzar/empujar jugadores
+local espOn      = false; local espConns = {}
+local speedVal   = 16
+local jumpVal    = 50
+local savedPos   = {}     -- {name, x,y,z}
+
+-- Helpers de personaje
+local function getChar()  return LP.Character end
+local function getRoot()  local c=getChar(); return c and c:FindFirstChild("HumanoidRootPart") end
+local function getHum()   local c=getChar(); return c and c:FindFirstChildOfClass("Humanoid") end
 
 -- ============================================================
---  DICCIONARIO DE PRUEBA — palabras candidatas para probar
---  (el script las manda al servidor y guarda las que acepta)
+--  COMANDOS IY — implementación completa
 -- ============================================================
-local CANDIDATES = {
--- A
-"abad","abeja","abismo","abrazo","abrir","abuelo","abuela","accion","aceite",
-"acento","acero","acordar","acto","acudir","adaptar","adelante","adorar","afecto",
-"agua","aguila","ahora","aire","alegre","alegria","alma","alto","altura","amar",
-"amigo","amiga","amor","animal","antes","apoyo","aprender","arbol","arena","arma",
-"armada","armado","armadura","armar","armario","armas","aroma","arte","ayer","azul",
-"alacrán","aldea","alfil","alforja","alga","alhaja","alianza","alivio","almeja",
-"alondra","alpaca","amapola","amargo","ambar","ambiente","amplio","ancho","angulo",
-"animo","anuncio","apagar","arena","arco","ardor","ardilla","arpa","arroyo","asco",
--- AX AXI AXO
-"axila","axioma","axon",
--- B
-"bailar","baile","banco","barco","barrio","batalla","bello","bella","besar","blanco",
-"boca","bonito","bosque","brazo","bueno","buscar","burbuja","brillo","brisa","bronce",
-"bruja","bruto","bufalo","bufanda","buho","burro","busqueda",
--- C
-"cabeza","camino","campo","cantar","casa","cielo","ciudad","corazon","correr",
-"comer","comprar","cocina","corona","contra","construir","cuerpo","calor","calma",
-"cambio","cancion","claro","clase","clima","comenzar","conejo","confianza","contar",
-"crecer","crear","creer","cultura","cumplir","curiosidad","caballo","cadena",
-"caiman","calamar","caldera","camello","canela","capullo","cascada","castillo",
-"catedral","caudal","cayado","cazador","cedro","centavo","cereza","certeza",
-"cesped","chaleco","champiñon","charca","charco","chimenea","chispa","chivo",
-"chorizo","ciervo","cifra","cima","cincel","cipres","ciruelo","ciudad","clavel",
-"clavo","cobija","cocotero","codorniz","cofre","cogote","cohete","colina","colmena",
-"columna","cometa","concha","condor","conejo","consejo","copa","copete","corcho",
-"cordero","correa","corsario","cosecha","covarde","coyote","crisol","crisantemo",
--- CH
-"chalupa","charla","chico","chica","chocolate","chiste","choza",
--- D
-"danza","dato","dedo","dia","dinero","dormir","dulce","deber","decidir","defender",
-"dejar","deseo","destino","diez","dominar","duda","dar","decir","dentro","diferente",
-"delfin","delicia","demonio","desierto","diamante","diablo","dichoso","diluvio",
-"dinasta","dique","disco","disfraz","distancia","doblar","docena","dragon","drama",
--- E
-"edad","elegir","empezar","encontrar","energia","escuela","escribir","escuchar",
-"esperar","estar","estrella","espejo","espacio","especial","esperanza","esfuerzo",
-"existir","exito","elefante","embudo","empuje","encender","enfrentar","enojo",
-"ensenar","enviar","equipo","erizo","ermita","escama","escarcha","escorpion",
-"esmeralda","espiga","espina","estanque","estuario","etapa","evasion",
--- F
-"familia","feliz","final","flor","forma","fuerza","fuego","fruta","frente",
-"fe","fallar","fama","faro","favor","fiesta","fin","flauta","flecha","flujo","frio",
-"fabula","falcon","fantasma","faraon","faro","fastidia","fatiga","fauces","faz",
-"felino","felpudo","fermento","festin","fianza","fibra","fiera","filo","filosofia",
-"finura","fiordo","firma","fisura","flamingo","flecha","flota","fluido","follaje",
-"forja","fosa","frasco","fregona","fresno","fronda","fuerza","fulgur","fulgor",
--- G
-"gato","grande","gracias","grupo","gente","guerra","gusto","globo","gris","ganar",
-"genio","gloria","gritar","guiar","ganador","garra","golpe","gordo","grifo","gramo",
-"gabela","galera","gallina","galpon","gamba","ganso","garfio","garza","gavilan",
-"gavota","gema","gemido","geranio","gibbon","glaciar","gladio","goblin","goce",
-"golem","golondrina","gorila","gorrion","gozne","grajo","granada","granero","grapa",
-"grillo","grua","grumo","guante","guardabosque","guirnalda","guisante","gusano",
--- H
-"hablar","hacer","hermano","hermana","hombre","hora","historia","honor","horizonte",
-"humano","haber","hambre","heroe","hierro","hijo","hija","hogar","humor","humo",
-"hacha","halcon","hamaca","haya","hazana","hebra","hechizo","helecho","heraldo",
-"herbario","hiena","higuera","hinojo","hipocampo","hojarasca","hollin","hongo",
-"hormiga","huella","huerfano","hueso","huevo","huida","huracan",
--- I
-"idea","idioma","igual","inicio","imagen","isla","ilusion","impulso","interes",
-"invierno","iglesia","impar","incendio","indigo","indio","inferno","ingrediente",
-"insecto","instrumento","invierno","iris","ironia",
--- J
-"jardin","jefe","joven","juego","justo","junto","joya","jabali","jabón","jaula",
-"jilguero","jinete","jirafa","joroba","juncia","junco","juntura",
--- L
-"largo","libro","lugar","luna","lengua","lento","libre","luchar","luz","latir",
-"lazo","leal","lejos","llamar","llegar","lleno","lograr","lluvia","lobo","lodo",
-"labio","lagarto","laguna","lamento","lamprea","lancha","langosta","lapiz","lastre",
-"laurel","lavanda","lazo","lechuza","legumbre","lejia","lenteja","leon","leopardo",
-"liebre","limon","lince","lino","lirio","lisura","litoral","lombriz","loro","losa",
--- LL
-"llave","llama","llanto","llano","llanura","lloro",
--- M
-"mano","mar","mundo","mujer","madre","malo","mapa","mesa","musica","mirar",
-"mente","meta","miedo","mismo","modo","momento","motor","mover","magia","masa",
-"miel","monte","mudo","madera","madeja","madriguera","maiz","malecon","maleza",
-"manga","manjar","manta","mantel","manzana","marfil","marisco","marmol","maroma",
-"marrana","mastil","materia","maullido","mazorca","medallion","mejillon","melena",
-"melon","membrillo","menique","mercado","merengue","mezcal","miel","mimbre","mina",
-"mirlo","moho","molino","molusco","monje","monton","moral","morera","morsa","mosca",
-"mosquito","motera","motivo","muelle","muerdago","muesca","muleton","muralla","murmullo",
--- N
-"noche","nombre","nuevo","nunca","nadie","natural","negro","nivel","norte","nacer",
-"nada","naranja","nino","nina","nieve","niebla","nudo","nuez","nacar","narval",
-"nectarina","nenufar","nervio","nido","niquel","nogal","nomada","noria",
--- O
-"obra","oreja","oscuro","objeto","oeste","oso","orden","origen","olvido","opinar",
-"opcion","odio","ofrecer","ola","otro","oceano","oficio","ojo","olivo","ombligo",
-"onza","orilla","otono","oveja","oboe","ocelote","ocre","odre","ojiva","olmo",
-"ombligo","orca","oregano","oropendola","ortiga","osezno","ostra","otero","otono",
--- OPO
-"oponer","oponente","oportuno","oposicion","opresion","opresor",
--- P
-"padre","pais","palabra","papel","parque","perro","pequeno","poder","pez","persona",
-"puerta","plaza","planta","plata","playa","poco","paciencia","paz","pensar","perder",
-"pieza","planeta","proceso","promesa","propio","pecho","pelo","pena","pino","piso",
-"pajaro","paloma","palmera","panal","pantano","papagayo","papiro","parana","paramo",
-"parra","pastor","patria","patron","pavo","pedernal","peldano","pelicano","pepino",
-"perdiz","petalo","petrel","pez","picaflor","pichon","pielago","piloto","pincel",
-"pingüino","piraña","pirata","pluma","polilla","polvora","pomelo","porrón","potro",
-"praderas","presa","primavera","proa","puerco","pulpo","puma","pupila",
--- Q
-"querer","quien","quiza","quieto","quedar","queja","quemar","quinto","queso",
-"quebrada","quelonio","quemada","queso","quilate","quimera","quinteto",
--- R
-"rama","rapido","raton","reino","reto","rio","rojo","raiz","razon","realidad",
-"recuerdo","reflejo","regla","relacion","respeto","respuesta","riesgo","ritmo",
-"rumbo","rabia","roble","roca","rocio","rodar","ropa","rosa","rubio","rueda","ruido",
-"rana","rapaz","rastrojo","raya","rayo","rebanada","rebano","recluta","redoma",
-"redrojo","rejalgar","reliquia","remolacha","renacuajo","reptil","resina","retama",
-"retono","ribera","riel","rinoceronte","risco","rizo","rodaballo","roedora","romero",
-"ronquera","roseta","ruana","rueca","rugido","ruin","rumia","rutina",
--- S
-"sala","saltar","sangre","saber","secreto","segundo","siempre","sobre","sol","sencillo",
-"sentir","ser","silencio","simple","sistema","sueno","surco","sacar","seguir","suerte",
-"sabio","salud","selva","senal","silla","soplo","suelo","sumar","saeta","salamandra",
-"salmón","salvia","sandalo","sapillo","sardina","sauce","sauco","savana","sedal",
-"sedimento","semilla","sendero","serpiente","sicomoro","sierra","silice","siluro",
-"sirena","sisal","sobra","solsticio","sombra","soneto","sorda","sorbo","surcador",
--- T
-"tarde","tener","tiempo","tierra","todo","trabajo","triste","talento","tarea","temor",
-"teoria","terminar","tomar","total","tradicion","texto","tipo","tocar","tono","torpe",
-"techo","tela","tigre","tronco","tropa","tumba","talon","tallo","tamarindo","tapia",
-"tapir","taquilla","tarpon","tasajo","tecla","tejedor","tejido","tejon","tempestad",
-"tenaza","tendal","terral","tiberon","timon","tizne","toba","tobillo","tormenta",
-"tornillo","torrente","tortuga","tostada","trebejo","trebol","trepador","tribu",
-"tributo","trigal","trino","trocha","trueno","trufa","tuberculo","tucan","tulipan",
--- U
-"ultimo","unir","uno","usar","unico","universo","union","ubicar","unidad",
-"umbral","uncial","ungüento","urraca","utopia","uvero",
--- V
-"valor","vida","vez","viento","verde","volar","voz","viejo","vista","valiente",
-"verdad","version","via","viaje","vision","voluntad","valer","vencer","venir",
-"vivir","volver","vacio","vapor","vara","vela","vena","ventana","verano","verguenza",
-"vibora","volcan","vuelo","vaivén","valija","vaquero","vasija","vastago","vate",
-"vedado","velamen","venado","verdor","vergel","vertice","vestigio","vientre",
-"vigilia","vilano","virote","viscacha","visera","vitela","viuda","vorago",
--- X
-"xilofono","xenofobia","xerografia",
--- Y
-"yema","yerno","yeso","yoga","yugo","yuca","yute","yacimiento","yacare",
--- Z
-"zapato","zona","zumo","zafiro","zorro","zanjar","zarpa","zurdo","zarzal","zorzal",
-"zanahoria","zancudo","zapoteca","zarpazo","zopilote","zoologia",
--- Palabras raras/cortas que el juego suele aceptar
-"ax","xi","ox","ex",
--- Números romanos / siglas que acepta
-"xiii","xix","xxi","xxx",
-}
+local CMD = {}
 
--- ============================================================
---  ESTADO GLOBAL
--- ============================================================
-local validSet   = {}   -- word(norm) -> true  (aceptadas por servidor)
-local rejSet     = {}   -- word(norm) -> true  (rechazadas)
-local usedRound  = {}   -- word(norm) -> true  (jugadas esta ronda)
-local validArr   = {}   -- lista ordenada de válidas
-local currentPre = ""   -- prefijo actual
-local probeRemote = nil -- RemoteFunction/Event de validación
-local probeMode  = "none" -- "function"|"event"|"none"
-local probeActive = false
-local probeCount  = 0
-local probeTotal  = 0
-local interceptCount = 0
-
-local function addValid(w)
-    local n = norm(w); if #n < 2 then return end
-    if not validSet[n] then
-        validSet[n] = true; rejSet[n] = nil
-        validArr[#validArr+1] = n
-        table.sort(validArr)
+-- ─── FLY ──────────────────────────────────────────────────
+function CMD.fly(speed)
+    speed = tonumber(speed) or flySpeed
+    flySpeed = speed; flyOn = true
+    local root = getRoot(); if not root then return "❌ Sin personaje" end
+    if flyConn then flyConn:Disconnect() end
+    -- Limpia objetos previos
+    for _, v in ipairs(root:GetChildren()) do
+        if v.Name == "IY_BV" or v.Name == "IY_BG" then v:Destroy() end
     end
+    local hum = getHum()
+    if hum then hum.PlatformStand = true end
+    local bv = Instance.new("BodyVelocity")
+    bv.Name = "IY_BV"; bv.Velocity = Vector3.new(0,0,0)
+    bv.MaxForce = Vector3.new(1e5,1e5,1e5); bv.Parent = root
+    local bg = Instance.new("BodyGyro")
+    bg.Name = "IY_BG"; bg.MaxTorque = Vector3.new(1e5,1e5,1e5)
+    bg.P = 1e4; bg.D = 100; bg.CFrame = root.CFrame; bg.Parent = root
+    flyConn = RunSvc.Heartbeat:Connect(function()
+        if not flyOn or not root or not root.Parent then
+            pcall(function() flyConn:Disconnect() end); return
+        end
+        local cam = workspace.CurrentCamera
+        local d = Vector3.new(0,0,0)
+        local isTouch = UIS.TouchEnabled and not UIS.KeyboardEnabled
+        if not isTouch then
+            if UIS:IsKeyDown(Enum.KeyCode.W) then d=d+cam.CFrame.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.S) then d=d-cam.CFrame.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.A) then d=d-cam.CFrame.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.D) then d=d+cam.CFrame.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.E) or UIS:IsKeyDown(Enum.KeyCode.Space) then d=d+Vector3.new(0,1,0) end
+            if UIS:IsKeyDown(Enum.KeyCode.Q) then d=d-Vector3.new(0,1,0) end
+        end
+        bv.Velocity = d.Magnitude>0 and d.Unit*flySpeed or Vector3.new(0,0,0)
+        bg.CFrame = cam.CFrame
+    end)
+    return "✈️ Fly ON · velocidad "..speed
 end
-local function addRej(w)
-    local n = norm(w); if #n < 2 then return end
-    if not validSet[n] then rejSet[n] = true end
-end
-local function markUsed(w)
-    local n = norm(w); if #n < 2 then return end
-    usedRound[n] = true; addValid(n)
-end
-local function searchValid(pre)
-    local res = {}
-    for _,w in ipairs(validArr) do
-        if w:sub(1,#pre)==pre and not usedRound[w] then res[#res+1]=w end
+
+function CMD.unfly()
+    flyOn = false
+    if flyConn then flyConn:Disconnect(); flyConn=nil end
+    local root=getRoot(); local hum=getHum()
+    if root then
+        for _,v in ipairs(root:GetChildren()) do
+            if v.Name=="IY_BV" or v.Name=="IY_BG" then v:Destroy() end
+        end
     end
-    return res
+    if hum then hum.PlatformStand=false end
+    return "🚫 Fly OFF"
+end
+
+-- ─── NOCLIP ───────────────────────────────────────────────
+function CMD.noclip()
+    noclipOn = true
+    if noclipConn then noclipConn:Disconnect() end
+    noclipConn = RunSvc.Stepped:Connect(function()
+        if not noclipOn then pcall(function() noclipConn:Disconnect() end); return end
+        local c=getChar(); if not c then return end
+        for _,p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide=false end
+        end
+    end)
+    return "👻 Noclip ON"
+end
+
+function CMD.clip()
+    noclipOn = false
+    if noclipConn then noclipConn:Disconnect(); noclipConn=nil end
+    local c=getChar(); if c then
+        for _,p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide=true end
+        end
+    end
+    return "✅ Noclip OFF"
+end
+
+-- ─── SPEED / JUMP ─────────────────────────────────────────
+function CMD.speed(n)
+    speedVal = tonumber(n) or 50
+    local h=getHum(); if h then h.WalkSpeed=speedVal end
+    return "⚡ Speed: "..speedVal
+end
+function CMD.jump(n)
+    jumpVal = tonumber(n) or 80
+    local h=getHum(); if h then h.JumpPower=jumpVal end
+    return "🦘 Jump: "..jumpVal
+end
+function CMD.jumpheight(n)
+    local v=tonumber(n) or 7.2
+    local h=getHum(); if h then h.JumpHeight=v end
+    return "🦘 JumpHeight: "..v
+end
+
+-- ─── GOD ──────────────────────────────────────────────────
+function CMD.god()
+    godOn=true
+    if godConn then godConn:Disconnect() end
+    local h=getHum(); if h then h.MaxHealth=math.huge; h.Health=math.huge end
+    godConn=RunSvc.Heartbeat:Connect(function()
+        if not godOn then pcall(function() godConn:Disconnect() end); return end
+        local h2=getHum(); if h2 then h2.Health=h2.MaxHealth end
+    end)
+    return "🛡️ God ON"
+end
+function CMD.ungod()
+    godOn=false
+    if godConn then godConn:Disconnect(); godConn=nil end
+    local h=getHum(); if h then h.MaxHealth=100; h.Health=100 end
+    return "💔 God OFF"
+end
+
+-- ─── TELEPORT ─────────────────────────────────────────────
+function CMD.tp(a,b,cc)
+    local root=getRoot(); if not root then return "❌ Sin personaje" end
+    local x,y,z=tonumber(a),tonumber(b),tonumber(cc)
+    if x and y and z then
+        root.CFrame=CFrame.new(x,y,z)
+        return "📍 Tp → ("..x..","..y..","..z..")"
+    end
+    -- busca jugador por nombre
+    local name=tostring(a or ""):lower()
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(name) and p.Character then
+            local r2=p.Character:FindFirstChild("HumanoidRootPart")
+            if r2 then root.CFrame=r2.CFrame*CFrame.new(0,0,3); return "📍 Tp → "..p.Name end
+        end
+    end
+    return "❌ Jugador no encontrado: "..tostring(a)
+end
+
+function CMD.goto_(target)
+    return CMD.tp(tostring(target))
+end
+
+function CMD.bring(target)
+    local root=getRoot(); if not root then return "❌ Sin personaje" end
+    local name=tostring(target or ""):lower(); local count=0
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LP and p.Name:lower():find(name) and p.Character then
+            local r2=p.Character:FindFirstChild("HumanoidRootPart")
+            if r2 then r2.CFrame=root.CFrame*CFrame.new(0,0,2); count=count+1 end
+        end
+    end
+    return count>0 and "🤝 Traído: "..target or "❌ No encontrado"
+end
+
+-- ─── INVISIBLE ────────────────────────────────────────────
+function CMD.invisible()
+    local c=getChar(); if not c then return "❌ Sin personaje" end
+    for _,p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") then pcall(function() p.Transparency=1 end)
+        elseif p:IsA("Decal")  then pcall(function() p.Transparency=1 end)
+        elseif p:IsA("SpecialMesh") then pcall(function() p.Scale=Vector3.new(0,0,0) end)
+        end
+    end
+    return "👁️ Invisible"
+end
+
+function CMD.visible()
+    local c=getChar(); if not c then return "❌ Sin personaje" end
+    for _,p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") then
+            local name=p.Name:lower()
+            if name=="humanoidrootpart" then pcall(function() p.Transparency=1 end)
+            else pcall(function() p.Transparency=0 end) end
+        elseif p:IsA("Decal") then pcall(function() p.Transparency=0 end)
+        elseif p:IsA("SpecialMesh") then pcall(function() p.Scale=Vector3.new(1,1,1) end)
+        end
+    end
+    return "👁️ Visible"
+end
+
+-- ─── FLIGHT (lanza jugadores al aire) ─────────────────────
+-- "flight" en IY usualmente = fuerza/impulso sobre otros
+function CMD.flight(target, power)
+    local root=getRoot(); if not root then return "❌ Sin personaje" end
+    local pow=tonumber(power) or 100
+    local name=tostring(target or ""):lower(); local count=0
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LP and (name=="" or name=="all" or p.Name:lower():find(name)) then
+            if p.Character then
+                local r2=p.Character:FindFirstChild("HumanoidRootPart")
+                local h2=p.Character:FindFirstChildOfClass("Humanoid")
+                if r2 then
+                    local bv=Instance.new("BodyVelocity")
+                    bv.Velocity=Vector3.new(math.random(-pow,pow),pow*2,math.random(-pow,pow))
+                    bv.MaxForce=Vector3.new(1e5,1e5,1e5); bv.Parent=r2
+                    game:GetService("Debris"):AddItem(bv,0.3)
+                    count=count+1
+                end
+            end
+        end
+    end
+    return count>0 and "🚀 Flight lanzado a "..count.." jugadores (pow "..pow..")" or "❌ Sin objetivo"
+end
+
+-- ─── OTROS COMANDOS IY ────────────────────────────────────
+function CMD.reset()
+    local h=getHum(); if h then h.Health=0 end; return "💀 Reset"
+end
+function CMD.sit()
+    local h=getHum(); if h then h.Sit=true end; return "🪑 Sentado"
+end
+function CMD.unsit()
+    local h=getHum(); if h then h.Sit=false end; return "🚶 De pie"
+end
+function CMD.chat(...)
+    local msg=table.concat({...}," ")
+    pcall(function() LP:Chat(msg) end)
+    return "💬 Chat: "..msg
+end
+function CMD.time(n)
+    local t=tonumber(n) or 14
+    Lighting.TimeOfDay=("%02d:00:00"):format(math.clamp(t,0,23))
+    return "🕐 Hora: "..t
+end
+function CMD.brightness(n)
+    Lighting.Brightness=tonumber(n) or 1; return "☀️ Brillo: "..(n or 1)
+end
+function CMD.fogend(n)
+    Lighting.FogEnd=tonumber(n) or 100000; return "🌫️ FogEnd: "..(n or 100000)
+end
+function CMD.fov(n)
+    workspace.CurrentCamera.FieldOfView=math.clamp(tonumber(n) or 70,1,120)
+    return "🎥 FOV: "..(n or 70)
+end
+function CMD.zoom(n)
+    pcall(function() LP.CameraMaxZoomDistance=tonumber(n) or 100 end)
+    return "🔭 Zoom: "..(n or 100)
+end
+function CMD.gravity(n)
+    workspace.Gravity=tonumber(n) or 196.2; return "🌍 Gravedad: "..(n or 196.2)
+end
+function CMD.hum(n)  -- cambia max health
+    local h=getHum(); local v=tonumber(n) or 100
+    if h then h.MaxHealth=v; h.Health=v end; return "❤️ HP: "..v
+end
+function CMD.freeze(target)
+    local name=tostring(target or "me"):lower()
+    local function doFreeze(char)
+        for _,p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then pcall(function() p.Anchored=true end) end
+        end
+    end
+    if name=="me" or name=="self" then
+        local c=getChar(); if c then doFreeze(c) end; return "🧊 Congelado"
+    end
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(name) and p.Character then doFreeze(p.Character) end
+    end
+    return "🧊 Congelado: "..target
+end
+function CMD.unfreeze(target)
+    local name=tostring(target or "me"):lower()
+    local function doUnfreeze(char)
+        for _,p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then pcall(function() p.Anchored=false end) end
+        end
+    end
+    if name=="me" then local c=getChar(); if c then doUnfreeze(c) end; return "✅ Descongelado"
+    end
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(name) and p.Character then doUnfreeze(p.Character) end
+    end
+    return "✅ Descongelado: "..target
+end
+function CMD.kill(target)
+    local name=tostring(target or ""):lower()
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(name) and p.Character then
+            local h2=p.Character:FindFirstChildOfClass("Humanoid")
+            if h2 then h2.Health=0 end
+        end
+    end
+    return "💀 Killed: "..target
+end
+function CMD.seizure(target)
+    local name=tostring(target or ""):lower()
+    task.spawn(function()
+        for i=1,80 do
+            for _,p in ipairs(Players:GetPlayers()) do
+                if p.Name:lower():find(name) and p~=LP and p.Character then
+                    local r2=p.Character:FindFirstChild("HumanoidRootPart")
+                    if r2 then
+                        r2.CFrame=r2.CFrame*CFrame.new(
+                            math.random(-3,3),math.random(-1,1),math.random(-3,3))
+                    end
+                end
+            end
+            task.wait(0.05)
+        end
+    end)
+    return "🌀 Seizure: "..target
+end
+function CMD.follow(target)
+    local name=tostring(target or ""):lower()
+    task.spawn(function()
+        for i=1,200 do
+            local root=getRoot(); if not root then break end
+            for _,p in ipairs(Players:GetPlayers()) do
+                if p.Name:lower():find(name) and p.Character then
+                    local r2=p.Character:FindFirstChild("HumanoidRootPart")
+                    if r2 then root.CFrame=r2.CFrame*CFrame.new(0,0,3) end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+    return "🏃 Siguiendo: "..target.." (20s)"
+end
+function CMD.looptp(target)
+    CMD.follow(target); return "🔁 LoopTP: "..target
+end
+function CMD.spin()
+    task.spawn(function()
+        for i=1,360 do
+            local root=getRoot(); if not root then break end
+            root.CFrame=root.CFrame*CFrame.fromEulerAnglesXYZ(0,math.rad(10),0)
+            task.wait(0.02)
+        end
+    end)
+    return "🌀 Spin!"
+end
+function CMD.attach(target)
+    local root=getRoot(); if not root then return "❌ Sin personaje" end
+    local name=tostring(target or ""):lower()
+    task.spawn(function()
+        for i=1,300 do
+            if not flyOn then break end
+            for _,p in ipairs(Players:GetPlayers()) do
+                if p.Name:lower():find(name) and p.Character then
+                    local r2=p.Character:FindFirstChild("HumanoidRootPart")
+                    if r2 then root.CFrame=r2.CFrame*CFrame.new(0,3,0) end
+                end
+            end
+            task.wait(0.05)
+        end
+    end)
+    return "🔗 Attach: "..target.." (necesita fly)"
+end
+function CMD.particles()
+    local c=getChar(); if not c then return "❌" end
+    local root=getRoot()
+    if root then
+        local pe=Instance.new("ParticleEmitter")
+        pe.Rate=50; pe.Speed=NumberRange.new(5,15)
+        pe.LightEmission=0.8; pe.LightInfluence=0.2
+        pe.Color=ColorSequence.new(C.A1,C.A3)
+        pe.Parent=root; game:GetService("Debris"):AddItem(pe,4)
+    end
+    return "✨ Partículas"
+end
+function CMD.fixcam()
+    workspace.CurrentCamera.CameraType=Enum.CameraType.Custom
+    return "📷 Cámara arreglada"
+end
+function CMD.camlock(target)
+    local name=tostring(target or ""):lower()
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(name) and p.Character then
+            workspace.CurrentCamera.CameraSubject=p.Character:FindFirstChildOfClass("Humanoid") or p.Character
+            return "📷 Cámara → "..p.Name
+        end
+    end
+    return "❌ No encontrado"
+end
+function CMD.explore()
+    -- Muestra todos los jugadores en sala
+    local lines={"👥 Jugadores en sala:"}
+    for _,p in ipairs(Players:GetPlayers()) do
+        lines[#lines+1]=" · "..p.Name..(p==LP and " (tú)" or "")
+    end
+    return table.concat(lines,"\n")
+end
+
+-- ─── GUARDAR / IR POSICIONES ──────────────────────────────
+function CMD.savepos(name)
+    local root=getRoot(); if not root then return "❌ Sin personaje" end
+    local p=root.Position
+    savedPos[name:lower()]={name=name, x=math.floor(p.X), y=math.floor(p.Y), z=math.floor(p.Z)}
+    return "📌 Guardado: \""..name.."\" ("..math.floor(p.X)..","..math.floor(p.Y)..","..math.floor(p.Z)..")"
+end
+function CMD.tppos(name)
+    local entry=savedPos[name:lower()]
+    if not entry then
+        -- busca parcial
+        for k,v in pairs(savedPos) do if k:find(name:lower()) then entry=v; break end end
+    end
+    if not entry then
+        local list={}; for k in pairs(savedPos) do list[#list+1]=k end
+        return "❌ No existe \""..name.."\"\nGuardadas: "..( #list>0 and table.concat(list,", ") or "(ninguna)")
+    end
+    local root=getRoot(); if not root then return "❌ Sin personaje" end
+    root.CFrame=CFrame.new(entry.x,entry.y,entry.z)
+    return "📍 → \""..entry.name.."\" ("..entry.x..","..entry.y..","..entry.z..")"
+end
+function CMD.listpos()
+    local lines={"📌 Posiciones guardadas:"}
+    for k,v in pairs(savedPos) do
+        lines[#lines+1]=" · "..v.name.." ("..v.x..","..v.y..","..v.z..")"
+    end
+    if #lines==1 then return "📌 Sin posiciones guardadas aún" end
+    return table.concat(lines,"\n")
+end
+function CMD.delpos(name)
+    savedPos[name:lower()]=nil; return "🗑️ Eliminada: "..name
+end
+
+-- ─── PARSER CENTRAL ───────────────────────────────────────
+local function runCmd(input)
+    if not input or input=="" then return nil end
+    local parts={}
+    for p in input:gmatch("%S+") do parts[#parts+1]=p end
+    local c=parts[1] and parts[1]:lower() or ""
+    local a2,a3,a4=parts[2],parts[3],parts[4]
+
+    if c=="fly"        then return CMD.fly(a2)
+    elseif c=="unfly" or c=="nofly" then return CMD.unfly()
+    elseif c=="noclip" then return CMD.noclip()
+    elseif c=="clip"  or c=="collide" then return CMD.clip()
+    elseif c=="speed" or c=="ws"      then return CMD.speed(a2)
+    elseif c=="jump"  or c=="jp"      then return CMD.jump(a2)
+    elseif c=="jumpheight"            then return CMD.jumpheight(a2)
+    elseif c=="god"                   then return CMD.god()
+    elseif c=="ungod"                 then return CMD.ungod()
+    elseif c=="tp"                    then return CMD.tp(a2,a3,a4)
+    elseif c=="goto"  or c=="goto_"   then return CMD.goto_(a2)
+    elseif c=="bring"                 then return CMD.bring(a2)
+    elseif c=="invisible" or c=="invis" then return CMD.invisible()
+    elseif c=="visible" or c=="vis"   then return CMD.visible()
+    elseif c=="flight"                then return CMD.flight(a2,a3)
+    elseif c=="reset"                 then return CMD.reset()
+    elseif c=="sit"                   then return CMD.sit()
+    elseif c=="unsit"                 then return CMD.unsit()
+    elseif c=="chat"                  then return CMD.chat(table.unpack(parts,2))
+    elseif c=="time"                  then return CMD.time(a2)
+    elseif c=="brightness"            then return CMD.brightness(a2)
+    elseif c=="fogend"                then return CMD.fogend(a2)
+    elseif c=="fov"                   then return CMD.fov(a2)
+    elseif c=="zoom"                  then return CMD.zoom(a2)
+    elseif c=="gravity" or c=="grav"  then return CMD.gravity(a2)
+    elseif c=="hum"   or c=="maxhealth" then return CMD.hum(a2)
+    elseif c=="freeze"                then return CMD.freeze(a2)
+    elseif c=="unfreeze"              then return CMD.unfreeze(a2)
+    elseif c=="kill"                  then return CMD.kill(a2)
+    elseif c=="seizure"               then return CMD.seizure(a2)
+    elseif c=="follow"                then return CMD.follow(a2)
+    elseif c=="looptp"                then return CMD.looptp(a2)
+    elseif c=="spin"                  then return CMD.spin()
+    elseif c=="attach"                then return CMD.attach(a2)
+    elseif c=="particles"             then return CMD.particles()
+    elseif c=="fixcam"                then return CMD.fixcam()
+    elseif c=="camlock"               then return CMD.camlock(a2)
+    elseif c=="explore" or c=="players" then return CMD.explore()
+    elseif c=="savepos" or c=="save"  then return CMD.savepos(a2 or "pos"..os.time())
+    elseif c=="tppos"  or c=="warp"   then return CMD.tppos(a2 or "")
+    elseif c=="listpos"               then return CMD.listpos()
+    elseif c=="delpos"                then return CMD.delpos(a2 or "")
+    end
+    return "❓ Cmd desconocido: "..c
 end
 
 -- ============================================================
---  LIMPIAR GUI PREVIA
+--  CONTEXTO DEL JUEGO
 -- ============================================================
-pcall(function() game:GetService("CoreGui"):FindFirstChild("CW_GUI"):Destroy() end)
+local gameInfo = { name="", placeId=tostring(game.PlaceId), players=0 }
+local function loadGameCtx()
+    pcall(function()
+        gameInfo.name = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+    end)
+    if gameInfo.name=="" then pcall(function() gameInfo.name=game.Name end) end
+    gameInfo.players = #Players:GetPlayers()
+end
+
+-- ============================================================
+--  IA — OpenRouter (meta-llama/llama-3.3-70b-instruct:free)
+-- ============================================================
+local apiKey    = ""
+local aiHistory = {}
+
+local function buildSysPrompt()
+    local posLines={}; for k,v in pairs(savedPos) do posLines[#posLines+1]=v.name.."("..v.x..","..v.y..","..v.z..")" end
+    local plrs={}; for _,p in ipairs(Players:GetPlayers()) do plrs[#plrs+1]=p.Name end
+    return "Eres un asistente de Roblox con acceso a comandos de Infinite Yield. Juegas "..gameInfo.name..
+    " (PlaceId:"..gameInfo.placeId.."). Jugadores: "..table.concat(plrs,",")..
+    ". Posiciones guardadas: "..( #posLines>0 and table.concat(posLines,"|") or "ninguna")..
+    ".\n\nPara ejecutar comandos pon <CMD>comando args</CMD>. Comandos: fly [vel], unfly, noclip, clip, speed [n], jump [n], god, ungod, tp [x y z / nombre], goto [jugador], bring [jugador], invisible, visible, flight [jugador] [power], freeze [me/jugador], unfreeze, kill [jugador], follow [jugador], spin, fov [n], zoom [n], gravity [n], time [0-23], chat [texto], savepos [nombre], tppos [nombre], listpos, explore.\n\nPara GUARDAR posición: <CMD>savepos NOMBRE</CMD>\nPara IR a posición: <CMD>tppos NOMBRE</CMD>\n\nResponde en español. Sé conciso (2-3 oraciones máx + comandos). Si el juego es Conecta Palabras ayuda con estrategias de prefijos y palabras."
+end
+
+local function extractCmds(text)
+    local cmds={}
+    for cmd in text:gmatch("<CMD>(.-)</CMD>") do
+        cmds[#cmds+1]=(cmd:match("^%s*(.-)%s*$"))
+    end
+    return cmds
+end
+
+local function cleanText(text)
+    return (text:gsub("<CMD>.-</CMD>",""):match("^%s*(.-)%s*$") or "")
+end
+
+local function callAI(userMsg, onResult)
+    if #apiKey < 8 then
+        onResult("⚠️ Sin API Key.\n\nVe a ⚙ y pega tu key de openrouter.ai\n(cuenta gratis, modelo gratuito)")
+        return
+    end
+    -- Construye historial (últimos 6 mensajes para ahorrar tokens)
+    local msgs={{ role="system", content=buildSysPrompt() }}
+    local start=math.max(1,#aiHistory-5)
+    for i=start,#aiHistory do msgs[#msgs+1]=aiHistory[i] end
+    msgs[#msgs+1]={ role="user", content=userMsg }
+
+    local payload=jEnc({
+        model="meta-llama/llama-3.3-70b-instruct:free",
+        max_tokens=350,
+        temperature=0.35,
+        messages=msgs,
+    })
+    local hdrs={
+        ["Content-Type"]  = "application/json",
+        ["Authorization"] = "Bearer "..apiKey,
+        ["HTTP-Referer"]  = "https://www.roblox.com",
+        ["X-Title"]       = "RobloxIYAssistant",
+    }
+    task.spawn(function()
+        local ok, body = httpPost("https://openrouter.ai/api/v1/chat/completions", hdrs, payload)
+        if not ok or not body then
+            onResult("❌ Sin conexión.\n• Verifica que Delta tiene HTTP activado\n• Comprueba tu API Key en ⚙")
+            return
+        end
+        local content = parseAI(body)
+        if not content or #content < 2 then
+            onResult("❌ Respuesta vacía.\nRespuesta raw:\n"..tostring(body):sub(1,120))
+            return
+        end
+        -- Guarda en historial
+        aiHistory[#aiHistory+1]={role="user",content=userMsg}
+        aiHistory[#aiHistory+1]={role="assistant",content=content}
+        if #aiHistory>12 then
+            local nh={}; for i=#aiHistory-11,#aiHistory do nh[#nh+1]=aiHistory[i] end; aiHistory=nh
+        end
+        -- Ejecuta comandos
+        local results={}
+        for _,cmd in ipairs(extractCmds(content)) do
+            local r=runCmd(cmd)
+            if r then results[#results+1]=r end
+        end
+        local clean=cleanText(content)
+        if #results>0 then
+            clean=(#clean>0 and clean.."\n\n" or "")..table.concat(results,"\n")
+        end
+        onResult(clean~="" and clean or "✅ Listo")
+    end)
+end
+
+-- ============================================================
+--  MAPEO RÁPIDO (sin llamar IA, ahorra tokens)
+-- ============================================================
+local QUICK = {
+    {p="fly%s*(%d*)",    fn=function(m) return "fly "..m end},
+    {p="vuelo?%s*(%d*)", fn=function(m) return "fly "..m end},
+    {p="volar%s*(%d*)",  fn=function(m) return "fly "..m end},
+    {p="aterrizar",      fn=function() return "unfly" end},
+    {p="quitar? vuelo",  fn=function() return "unfly" end},
+    {p="noclip",         fn=function() return "noclip" end},
+    {p="atravesar",      fn=function() return "noclip" end},
+    {p="clip",           fn=function() return "clip" end},
+    {p="god mode",       fn=function() return "god" end},
+    {p="modo? dios",     fn=function() return "god" end},
+    {p="god",            fn=function() return "god" end},
+    {p="quitar? god",    fn=function() return "ungod" end},
+    {p="invisible",      fn=function() return "invisible" end},
+    {p="visible",        fn=function() return "visible" end},
+    {p="spin",           fn=function() return "spin" end},
+    {p="reset",          fn=function() return "reset" end},
+    {p="morir",          fn=function() return "reset" end},
+    {p="speed%s+(%d+)",  fn=function(m) return "speed "..m end},
+    {p="velocidad%s+(%d+)", fn=function(m) return "speed "..m end},
+    {p="jump%s+(%d+)",   fn=function(m) return "jump "..m end},
+    {p="salto%s+(%d+)",  fn=function(m) return "jump "..m end},
+    {p="gravity%s+(%d+)", fn=function(m) return "gravity "..m end},
+    {p="gravedad%s+(%d+)", fn=function(m) return "gravity "..m end},
+    {p="fov%s+(%d+)",    fn=function(m) return "fov "..m end},
+}
+
+local function tryQuick(msg)
+    local ml=msg:lower()
+    -- Guardar posición
+    local sn = ml:match("guarda.+como%s+['\"]?([%w%s]+)['\"]?$") or
+               ml:match("guardar?.+posici[oó]n.+['\"]?([%w]+)['\"]?$") or
+               ml:match("^guarda%s+['\"]?([%w%s]+)['\"]?$")
+    if sn then sn=sn:match("^%s*(.-)%s*$"); return "savepos "..sn end
+    -- Ir a posición
+    local tn = ml:match("ve%s+a%s+['\"]?([%w%s]+)['\"]?$") or
+               ml:match("tp.+a%s+['\"]?([%w%s]+)['\"]?$") or
+               ml:match("ir%s+a%s+['\"]?([%w%s]+)['\"]?$") or
+               ml:match("teleport[aá].+['\"]?([%w%s]+)['\"]?$")
+    if tn then tn=tn:match("^%s*(.-)%s*$"); return "tppos "..tn end
+    -- Otros
+    for _,q in ipairs(QUICK) do
+        local m=ml:match(q.p)
+        if ml:match(q.p) then return q.fn(m or "") end
+    end
+    return nil
+end
+
+-- ============================================================
+--  GUI
+-- ============================================================
+pcall(function() game:GetService("CoreGui"):FindFirstChild("IYCHAT_GUI"):Destroy() end)
 pcall(function()
-    local pg = LP:FindFirstChild("PlayerGui")
-    if pg then local old=pg:FindFirstChild("CW_GUI"); if old then old:Destroy() end end
+    local pg=LP:FindFirstChild("PlayerGui")
+    if pg then local o=pg:FindFirstChild("IYCHAT_GUI"); if o then o:Destroy() end end
 end)
 
-local SG = Instance.new("ScreenGui")
-SG.Name="CW_GUI"; SG.ResetOnSpawn=false
+local SG=Instance.new("ScreenGui"); SG.Name="IYCHAT_GUI"; SG.ResetOnSpawn=false
 SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SG.IgnoreGuiInset=true
 if not pcall(function() SG.Parent=game:GetService("CoreGui") end) then
     SG.Parent=LP:WaitForChild("PlayerGui")
 end
 
--- ============================================================
---  VENTANA PRINCIPAL  270 × 410
--- ============================================================
-local W0, H0 = 270, 410
+local W,H=300,500
 
-local Main = Instance.new("Frame")
-Main.Name="Main"
-Main.Size=UDim2.new(0,W0,0,0)
-Main.Position=UDim2.new(0.5,-W0/2,0.5,0)
-Main.BackgroundColor3=C.BG
-Main.BackgroundTransparency=T.BG
+local Main=Instance.new("Frame"); Main.Name="Main"
+Main.Size=UDim2.new(0,W,0,0); Main.Position=UDim2.new(0.5,-W/2,0.5,0)
+Main.BackgroundColor3=C.BG; Main.BackgroundTransparency=0.07
 Main.BorderSizePixel=0; Main.Active=true; Main.Draggable=true; Main.ClipsDescendants=true
-Main.Parent=SG; rnd(Main,14); str(Main,C.BORDER,1)
+Main.Parent=SG; R(Main,14); S(Main,C.BORDER,1)
+G(Main,Color3.fromRGB(12,14,30),Color3.fromRGB(7,8,18),135)
 
--- Blur decorativo (gradiente diagonal)
-local BGrad=Instance.new("UIGradient")
-BGrad.Color=ColorSequence.new({
-    ColorSequenceKeypoint.new(0,   Color3.fromRGB(14,16,34)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(8, 9, 20)),
-    ColorSequenceKeypoint.new(1,   Color3.fromRGB(12,10,28)),
-})
-BGrad.Rotation=135; BGrad.Parent=Main
+-- Top accent line
+local TopL=Instance.new("Frame"); TopL.Size=UDim2.new(1,0,0,2); TopL.BorderSizePixel=0; TopL.ZIndex=5; TopL.Parent=Main; R(TopL,2)
+G(TopL,C.A3,C.A2,0)
 
--- Top accent line (gradiente A1→A2→A3)
-local TopLine=Instance.new("Frame"); TopLine.Size=UDim2.new(1,0,0,2)
-TopLine.BackgroundColor3=C.A1; TopLine.BorderSizePixel=0; TopLine.ZIndex=5; TopLine.Parent=Main; rnd(TopLine,2)
-grad(TopLine,C.A3,C.A2,0)
-
--- ── BURBUJA MINIMIZAR ──────────────────────────────────────
-local Bub=Instance.new("TextButton")
-Bub.Size=UDim2.new(0,0,0,0)
-Bub.BackgroundColor3=C.A1; Bub.BorderSizePixel=0
-Bub.Text="⬡"; Bub.TextColor3=C.TEXT; Bub.TextSize=20; Bub.Font=Enum.Font.GothamBold
-Bub.AutoButtonColor=false; Bub.Visible=false; Bub.ZIndex=60; Bub.Parent=SG; rnd(Bub,22)
-str(Bub,C.A2,2); grad(Bub,C.A1,C.A2,45)
-
+-- ── BURBUJA ────────────────────────────────────────────────
+local Bub=Instance.new("TextButton"); Bub.Size=UDim2.new(0,0,0,0)
+Bub.BackgroundColor3=C.A1; Bub.BorderSizePixel=0; Bub.Text="🤖"; Bub.TextColor3=C.TEXT
+Bub.TextSize=22; Bub.Font=Enum.Font.Gotham; Bub.AutoButtonColor=false; Bub.Visible=false; Bub.ZIndex=60; Bub.Parent=SG
+R(Bub,22); S(Bub,C.A2,2); G(Bub,C.A1,C.A2,45)
 local bDrag=false; local bOff=Vector2.new()
 Bub.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
@@ -358,666 +803,482 @@ Bub.InputEnded:Connect(function() bDrag=false end)
 UIS.InputChanged:Connect(function(i)
     if not bDrag then return end
     if i.UserInputType~=Enum.UserInputType.Touch and i.UserInputType~=Enum.UserInputType.MouseButton1 then return end
-    local vp=game.Workspace.CurrentCamera.ViewportSize
+    local vp=workspace.CurrentCamera.ViewportSize
     Bub.Position=UDim2.new(0,math.clamp(i.Position.X-bOff.X,0,vp.X-44),0,math.clamp(i.Position.Y-bOff.Y,0,vp.Y-44))
 end)
-
-local minimized=false
 local function doMin()
-    minimized=true; tw(Main,{Size=UDim2.new(0,W0,0,0)},0.18)
-    task.delay(0.2,function()
-        Main.Visible=false
-        local vp=game.Workspace.CurrentCamera.ViewportSize
-        Bub.Size=UDim2.new(0,0,0,0); Bub.Position=UDim2.new(0,vp.X-50,0,88); Bub.Visible=true
-        tw(Bub,{Size=UDim2.new(0,44,0,44)},0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+    TW(Main,{Size=UDim2.new(0,W,0,0)},0.18); task.delay(0.2,function()
+        Main.Visible=false; local vp=workspace.CurrentCamera.ViewportSize
+        Bub.Size=UDim2.new(0,0,0,0); Bub.Position=UDim2.new(0,vp.X-52,0,90); Bub.Visible=true
+        TW(Bub,{Size=UDim2.new(0,44,0,44)},0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
     end)
 end
 local function doRes()
-    minimized=false; Bub.Visible=false; Main.Visible=true
-    local curH=H0
-    tw(Main,{Size=UDim2.new(0,W0,0,curH),Position=UDim2.new(0.5,-W0/2,0.5,-curH/2)},
-        0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+    Bub.Visible=false; Main.Visible=true
+    TW(Main,{Size=UDim2.new(0,W,0,H),Position=UDim2.new(0.5,-W/2,0.5,-H/2)},0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
 end
 Bub.MouseButton1Click:Connect(doRes); Bub.TouchTap:Connect(doRes)
 
 -- ── HEADER ─────────────────────────────────────────────────
-local Hdr=gf(Main,UDim2.new(1,0,0,44),UDim2.new(0,0,0,0),C.GLASS,T.PANEL,14)
--- Fix corners bottom
+local Hdr=Instance.new("Frame"); Hdr.Size=UDim2.new(1,0,0,44)
+Hdr.BackgroundColor3=C.GLASS; Hdr.BackgroundTransparency=0.1; Hdr.BorderSizePixel=0; Hdr.Parent=Main; R(Hdr,14)
 local HF=Instance.new("Frame"); HF.Size=UDim2.new(1,0,0,14); HF.Position=UDim2.new(0,0,1,-14)
-HF.BackgroundColor3=C.GLASS; HF.BackgroundTransparency=T.PANEL; HF.BorderSizePixel=0; HF.Parent=Hdr
-
-local HIco=lbl(Hdr,"⬡",17,C.A1,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
-HIco.Size=UDim2.new(0,32,1,0); HIco.Position=UDim2.new(0,4,0,0); HIco.ZIndex=4
-local HTitle=lbl(Hdr,"CONECTA PALABRAS",12,C.TEXT,Enum.Font.GothamBold)
-HTitle.Size=UDim2.new(1,-100,0,18); HTitle.Position=UDim2.new(0,37,0,5); HTitle.ZIndex=4
-local HSub=lbl(Hdr,"Auto-extractor v7",9,C.TEXTD,Enum.Font.Gotham)
-HSub.Size=UDim2.new(1,-100,0,13); HSub.Position=UDim2.new(0,37,0,24); HSub.ZIndex=4
-
-local BMin=btn(Hdr,"—",UDim2.new(0,26,0,24),Color3.fromRGB(18,34,62),C.A1,13)
-BMin.Position=UDim2.new(1,-29,0.5,-12); BMin.ZIndex=4
+HF.BackgroundColor3=C.GLASS; HF.BackgroundTransparency=0.1; HF.BorderSizePixel=0; HF.Parent=Hdr
+LBL(Hdr,"🤖",18,C.A1,Enum.Font.Gotham,Enum.TextXAlignment.Center).Size=UDim2.new(0,34,1,0)
+local HTitle=LBL(Hdr,"IY ASISTENTE",12,C.TEXT,Enum.Font.GothamBold)
+HTitle.Size=UDim2.new(1,-110,0,18); HTitle.Position=UDim2.new(0,38,0,4)
+local HGame=LBL(Hdr,"Cargando...",9,C.TEXTD,Enum.Font.Gotham)
+HGame.Size=UDim2.new(1,-110,0,14); HGame.Position=UDim2.new(0,38,0,23)
+local BSet=BTN(Hdr,"⚙",UDim2.new(0,26,0,24),Color3.fromRGB(20,26,50),C.TEXTD,13)
+BSet.Position=UDim2.new(1,-57,0.5,-12); BSet.ZIndex=4
+local BMin=BTN(Hdr,"—",UDim2.new(0,26,0,24),Color3.fromRGB(18,35,62),C.A1,12)
+BMin.Position=UDim2.new(1,-28,0.5,-12); BMin.ZIndex=4
 BMin.MouseButton1Click:Connect(doMin); BMin.TouchTap:Connect(doMin)
 
--- ── BODY ───────────────────────────────────────────────────
-local Body=Instance.new("Frame"); Body.Size=UDim2.new(1,-10,1,-50)
-Body.Position=UDim2.new(0,5,0,46); Body.BackgroundTransparency=1; Body.Parent=Main
-
--- ── PREFIJO CARD ───────────────────────────────────────────
-local PreCard=gf(Body,UDim2.new(1,0,0,48),UDim2.new(0,0,0,0),C.GLASS2,T.CARD,10)
-str(PreCard,Color3.fromRGB(50,60,115),1)
-
-local PreTag=lbl(PreCard,"PREFIJO ACTUAL",8,C.TEXTM,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
-PreTag.Size=UDim2.new(0.5,0,0,14); PreTag.Position=UDim2.new(0,8,0,4)
-
-local ProbeTag=lbl(PreCard,"",8,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Right)
-ProbeTag.Size=UDim2.new(0.5,-8,0,14); ProbeTag.Position=UDim2.new(0.5,0,0,4)
-
-local PreWord=lbl(PreCard,"---",26,C.A1,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
-PreWord.Size=UDim2.new(0.55,0,0,30); PreWord.Position=UDim2.new(0,8,0,16)
-
-local PreAvail=lbl(PreCard,"0 disponibles",10,C.GREEN,Enum.Font.GothamBold,Enum.TextXAlignment.Right)
-PreAvail.Size=UDim2.new(0.42,0,0,14); PreAvail.Position=UDim2.new(0.58,0,0,20)
-local PreDict=lbl(PreCard,"0 en diccionario",8,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Right)
-PreDict.Size=UDim2.new(0.42,0,0,12); PreDict.Position=UDim2.new(0.58,0,0,34)
-
--- ── BARRA DE PROGRESO PROBE ────────────────────────────────
-local ProbeFrm=gf(Body,UDim2.new(1,0,0,22),UDim2.new(0,0,0,52),C.GLASS,0.2,7)
-str(ProbeFrm,Color3.fromRGB(38,46,90),1)
-
-local ProbeBar_track=Instance.new("Frame"); ProbeBar_track.Size=UDim2.new(1,-8,0,4)
-ProbeBar_track.Position=UDim2.new(0,4,0,4); ProbeBar_track.BackgroundColor3=Color3.fromRGB(24,28,55)
-ProbeBar_track.BorderSizePixel=0; ProbeBar_track.Parent=ProbeFrm; rnd(ProbeBar_track,3)
-
-local ProbeBar=Instance.new("Frame"); ProbeBar.Size=UDim2.new(0,0,1,0)
-ProbeBar.BackgroundColor3=C.A1; ProbeBar.BorderSizePixel=0; ProbeBar.Parent=ProbeBar_track; rnd(ProbeBar,3)
-grad(ProbeBar,C.A3,C.A2,0)
-
-local ProbeInfo=lbl(ProbeFrm,"Buscando RemoteFunction del juego...",8,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-ProbeInfo.Size=UDim2.new(1,0,0,12); ProbeInfo.Position=UDim2.new(0,0,0,10)
-
 -- ── TABS ───────────────────────────────────────────────────
-local TabFrm=gf(Body,UDim2.new(1,0,0,24),UDim2.new(0,0,0,78),C.GLASS,0.25,7)
+local TabF=Instance.new("Frame"); TabF.Size=UDim2.new(1,-10,0,24); TabF.Position=UDim2.new(0,5,0,48)
+TabF.BackgroundColor3=C.GLASS; TabF.BackgroundTransparency=0.2; TabF.BorderSizePixel=0; TabF.Parent=Main; R(TabF,7)
+local T1=BTN(TabF,"💬 Chat",UDim2.new(0.34,-2,1,-4),C.A1,C.TEXT,9); T1.Position=UDim2.new(0,2,0,2); R(T1,5)
+local T2=BTN(TabF,"⚡ Cmds",UDim2.new(0.33,-1,1,-4),Color3.fromRGB(18,22,44),C.TEXTD,9); T2.Position=UDim2.new(0.34,1,0,2); R(T2,5)
+local T3=BTN(TabF,"📌 Posiciones",UDim2.new(0.33,-1,1,-4),Color3.fromRGB(18,22,44),C.TEXTD,9); T3.Position=UDim2.new(0.67,0,0,2); R(T3,5)
 
-local TB1=btn(TabFrm,"✅ Disponibles",UDim2.new(0.34,-2,1,-4),C.GREEN,C.BLACK,9)
-TB1.Position=UDim2.new(0,2,0,2); rnd(TB1,5)
-local TB2=btn(TabFrm,"📚 Aprendidas",UDim2.new(0.33,-1,1,-4),Color3.fromRGB(18,22,44),C.TEXTD,9)
-TB2.Position=UDim2.new(0.34,1,0,2); rnd(TB2,5)
-local TB3=btn(TabFrm,"🔍 Manual",UDim2.new(0.33,-1,1,-4),Color3.fromRGB(18,22,44),C.TEXTD,9)
-TB3.Position=UDim2.new(0.67,0,0,2); rnd(TB3,5)
+-- ── PANEL CHAT ─────────────────────────────────────────────
+local ChatP=Instance.new("Frame"); ChatP.Size=UDim2.new(1,-10,1,-130); ChatP.Position=UDim2.new(0,5,0,76)
+ChatP.BackgroundTransparency=1; ChatP.Parent=Main
 
--- ── INFO BAR ───────────────────────────────────────────────
-local InfoLbl=lbl(Body,"Iniciando...",8,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-InfoLbl.Size=UDim2.new(1,0,0,14); InfoLbl.Position=UDim2.new(0,0,0,106)
+local MsgScroll=Instance.new("ScrollingFrame"); MsgScroll.Size=UDim2.new(1,0,1,-40)
+MsgScroll.BackgroundColor3=C.GLASS; MsgScroll.BackgroundTransparency=0.12; MsgScroll.BorderSizePixel=0
+MsgScroll.ScrollBarThickness=3; MsgScroll.ScrollBarImageColor3=C.SCROLL
+MsgScroll.CanvasSize=UDim2.new(0,0,0,0); MsgScroll.ScrollingDirection=Enum.ScrollingDirection.Y; MsgScroll.Parent=ChatP
+R(MsgScroll,10); S(MsgScroll,C.BORDER,1)
+local ML=Instance.new("UIListLayout"); ML.SortOrder=Enum.SortOrder.LayoutOrder; ML.Padding=UDim.new(0,5); ML.Parent=MsgScroll
+local MP=Instance.new("UIPadding"); MP.PaddingTop=UDim.new(0,5); MP.PaddingLeft=UDim.new(0,4); MP.PaddingRight=UDim.new(0,4); MP.PaddingBottom=UDim.new(0,4); MP.Parent=MsgScroll
 
--- ── LISTA ──────────────────────────────────────────────────
-local ListH=H0-50-48-22-24-14-14-30-10  -- espacio restante
+local IBar=Instance.new("Frame"); IBar.Size=UDim2.new(1,0,0,36); IBar.Position=UDim2.new(0,0,1,-36)
+IBar.BackgroundColor3=C.GLASS2; IBar.BackgroundTransparency=0.1; IBar.BorderSizePixel=0; IBar.Parent=ChatP
+R(IBar,9); S(IBar,C.BORDER,1)
+local MBox=Instance.new("TextBox"); MBox.Size=UDim2.new(1,-46,1,-10); MBox.Position=UDim2.new(0,7,0,5)
+MBox.BackgroundTransparency=1; MBox.PlaceholderText="activa fly · guarda como base1 · ve a base1..."
+MBox.PlaceholderColor3=C.TEXTM; MBox.Text=""; MBox.TextColor3=C.TEXT
+MBox.TextSize=12; MBox.Font=Enum.Font.Gotham; MBox.ClearTextOnFocus=false; MBox.TextXAlignment=Enum.TextXAlignment.Left; MBox.Parent=IBar
+local SendBtn=BTN(IBar,"➤",UDim2.new(0,34,0,26),C.A1,C.TEXT,13); SendBtn.Position=UDim2.new(1,-38,0.5,-13)
 
-local ListFrm=gf(Body,UDim2.new(1,0,0,ListH),UDim2.new(0,0,0,122),C.GLASS,T.PANEL,9)
-str(ListFrm,Color3.fromRGB(32,38,72),1)
+-- ── PANEL COMANDOS (Tab 2) ─────────────────────────────────
+local CmdP=Instance.new("Frame"); CmdP.Size=UDim2.new(1,-10,1,-130); CmdP.Position=UDim2.new(0,5,0,76)
+CmdP.BackgroundTransparency=1; CmdP.Visible=false; CmdP.Parent=Main
 
-local Scroll=Instance.new("ScrollingFrame")
-Scroll.Size=UDim2.new(1,-5,1,0); Scroll.BackgroundTransparency=1; Scroll.BorderSizePixel=0
-Scroll.ScrollBarThickness=3; Scroll.ScrollBarImageColor3=C.SCROLL
-Scroll.CanvasSize=UDim2.new(0,0,0,0); Scroll.ScrollingDirection=Enum.ScrollingDirection.Y; Scroll.Parent=ListFrm
-local SL=Instance.new("UIListLayout"); SL.SortOrder=Enum.SortOrder.LayoutOrder; SL.Padding=UDim.new(0,2); SL.Parent=Scroll
-local SP=Instance.new("UIPadding"); SP.PaddingTop=UDim.new(0,3); SP.PaddingLeft=UDim.new(0,3); SP.PaddingRight=UDim.new(0,2); SP.Parent=Scroll
+local CmdScroll=Instance.new("ScrollingFrame"); CmdScroll.Size=UDim2.new(1,0,1,0)
+CmdScroll.BackgroundColor3=C.GLASS; CmdScroll.BackgroundTransparency=0.12; CmdScroll.BorderSizePixel=0
+CmdScroll.ScrollBarThickness=3; CmdScroll.ScrollBarImageColor3=C.SCROLL; CmdScroll.CanvasSize=UDim2.new(0,0,0,0); CmdScroll.Parent=CmdP
+R(CmdScroll,10); S(CmdScroll,C.BORDER,1)
+local CL=Instance.new("UIListLayout"); CL.SortOrder=Enum.SortOrder.LayoutOrder; CL.Padding=UDim.new(0,4); CL.Parent=CmdScroll
+local CPad=Instance.new("UIPadding"); CPad.PaddingTop=UDim.new(0,5); CPad.PaddingLeft=UDim.new(0,5); CPad.PaddingRight=UDim.new(0,5); CPad.Parent=CmdScroll
 
-local PHF=Instance.new("Frame"); PHF.Size=UDim2.new(1,0,1,0); PHF.BackgroundTransparency=1; PHF.ZIndex=3; PHF.Parent=ListFrm
-local PHT=lbl(PHF,"Esperando...",10,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-PHT.Size=UDim2.new(1,0,0,16); PHT.Position=UDim2.new(0,0,0.35,0); PHT.ZIndex=3
-local PHS=lbl(PHF,"",8,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-PHS.Size=UDim2.new(1,-4,0,28); PHS.Position=UDim2.new(0,2,0.35,20); PHS.TextWrapped=true; PHS.ZIndex=3
+-- ── PANEL POSICIONES (Tab 3) ───────────────────────────────
+local PosP=Instance.new("Frame"); PosP.Size=UDim2.new(1,-10,1,-130); PosP.Position=UDim2.new(0,5,0,76)
+PosP.BackgroundTransparency=1; PosP.Visible=false; PosP.Parent=Main
 
--- ── PANEL MANUAL (tab 3) ───────────────────────────────────
-local ManFrm=Instance.new("Frame"); ManFrm.Size=UDim2.new(1,0,0,ListH)
-ManFrm.Position=UDim2.new(0,0,0,122); ManFrm.BackgroundTransparency=1; ManFrm.Visible=false; ManFrm.Parent=Body
+local PosScroll=Instance.new("ScrollingFrame"); PosScroll.Size=UDim2.new(1,0,1,-36)
+PosScroll.BackgroundColor3=C.GLASS; PosScroll.BackgroundTransparency=0.12; PosScroll.BorderSizePixel=0
+PosScroll.ScrollBarThickness=3; PosScroll.ScrollBarImageColor3=C.SCROLL; PosScroll.CanvasSize=UDim2.new(0,0,0,0); PosScroll.Parent=PosP
+R(PosScroll,9); S(PosScroll,C.BORDER,1)
+local PL=Instance.new("UIListLayout"); PL.SortOrder=Enum.SortOrder.LayoutOrder; PL.Padding=UDim.new(0,3); PL.Parent=PosScroll
+local PP=Instance.new("UIPadding"); PP.PaddingTop=UDim.new(0,4); PP.PaddingLeft=UDim.new(0,4); PP.PaddingRight=UDim.new(0,4); PP.Parent=PosScroll
 
-local ManIF=gf(ManFrm,UDim2.new(1,0,0,34),UDim2.new(0,0,0,0),C.GLASS2,T.CARD,9)
-str(ManIF,Color3.fromRGB(45,55,100),1)
-local ManBox=Instance.new("TextBox"); ManBox.Size=UDim2.new(1,-46,1,-8); ManBox.Position=UDim2.new(0,6,0,4)
-ManBox.BackgroundTransparency=1; ManBox.PlaceholderText="Escribe prefijo: opo, ax, nar..."
-ManBox.PlaceholderColor3=C.TEXTM; ManBox.Text=""; ManBox.TextColor3=C.TEXT
-ManBox.TextSize=14; ManBox.Font=Enum.Font.GothamBold; ManBox.ClearTextOnFocus=false
-ManBox.TextXAlignment=Enum.TextXAlignment.Left; ManBox.Parent=ManIF
+local SaveNow=BTN(PosP,"📌 Guardar posición actual",UDim2.new(1,0,0,30),Color3.fromRGB(12,26,56),C.A1,10)
+SaveNow.Position=UDim2.new(0,0,1,-32)
+local PosEmpty=LBL(PosP,"Sin posiciones\n\nEscríbele a la IA:\n\"guarda como camino1\"",10,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+PosEmpty.Size=UDim2.new(1,0,0,70); PosEmpty.Position=UDim2.new(0,0,0.25,0); PosEmpty.TextWrapped=true
 
-local ManBtn=btn(ManIF,"→",UDim2.new(0,36,0,26),C.A1,C.TEXT,15)
-ManBtn.Position=UDim2.new(1,-40,0.5,-13)
+-- Input nombre posición
+local PosIF=Instance.new("Frame"); PosIF.Size=UDim2.new(1,0,0,28); PosIF.Position=UDim2.new(0,0,1,-62)
+PosIF.BackgroundColor3=C.GLASS2; PosIF.BackgroundTransparency=0.1; PosIF.BorderSizePixel=0; PosIF.Visible=false; PosIF.Parent=PosP
+R(PosIF,8); S(PosIF,C.BORDER,1)
+local PosNB=Instance.new("TextBox"); PosNB.Size=UDim2.new(1,-46,1,-6); PosNB.Position=UDim2.new(0,5,0,3)
+PosNB.BackgroundTransparency=1; PosNB.PlaceholderText="Nombre (ej: camino1, base...)"
+PosNB.PlaceholderColor3=C.TEXTM; PosNB.Text=""; PosNB.TextColor3=C.TEXT
+PosNB.TextSize=12; PosNB.Font=Enum.Font.Gotham; PosNB.ClearTextOnFocus=false; PosNB.TextXAlignment=Enum.TextXAlignment.Left; PosNB.Parent=PosIF
+local PosOK=BTN(PosIF,"✓",UDim2.new(0,38,0,22),C.GREEN,C.TEXT,13); PosOK.Position=UDim2.new(1,-42,0.5,-11)
 
-local ManInfoL=lbl(ManFrm,"",8,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-ManInfoL.Size=UDim2.new(1,0,0,12); ManInfoL.Position=UDim2.new(0,0,0,38)
+-- ── SETTINGS ───────────────────────────────────────────────
+local SetP=Instance.new("Frame"); SetP.Size=UDim2.new(1,0,1,0)
+SetP.BackgroundColor3=Color3.fromRGB(7,9,20); SetP.BackgroundTransparency=0.04
+SetP.BorderSizePixel=0; SetP.Visible=false; SetP.ZIndex=20; SetP.Parent=Main; R(SetP,14); S(SetP,C.BORDER,1)
+LBL(SetP,"⚙  Configuración IA",14,C.TEXT,Enum.Font.GothamBold,Enum.TextXAlignment.Center).Size=UDim2.new(1,0,0,38)
+local KF=Instance.new("Frame"); KF.Size=UDim2.new(1,-20,0,36); KF.Position=UDim2.new(0,10,0,44)
+KF.BackgroundColor3=C.GLASS2; KF.BackgroundTransparency=0.1; KF.BorderSizePixel=0; KF.Parent=SetP; R(KF,9); S(KF,C.BORDER,1)
+local KBox=Instance.new("TextBox"); KBox.Size=UDim2.new(1,-10,1,-8); KBox.Position=UDim2.new(0,5,0,4)
+KBox.BackgroundTransparency=1; KBox.PlaceholderText="sk-or-v1-... (API Key OpenRouter)"
+KBox.PlaceholderColor3=C.TEXTM; KBox.Text=""; KBox.TextColor3=C.TEXT
+KBox.TextSize=11; KBox.Font=Enum.Font.Gotham; KBox.ClearTextOnFocus=false; KBox.TextXAlignment=Enum.TextXAlignment.Left; KBox.ZIndex=21; KBox.Parent=KF
+local KStat=LBL(SetP,"Sin API Key — la IA no estará disponible",10,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+KStat.Size=UDim2.new(1,-20,0,14); KStat.Position=UDim2.new(0,10,0,84); KStat.ZIndex=21
+local KSave=BTN(SetP,"✓ Guardar Key",UDim2.new(0.45,0,0,32),C.A1,C.TEXT,11); KSave.Position=UDim2.new(0.04,0,0,102); KSave.ZIndex=21
+local KClose=BTN(SetP,"✕ Cerrar",UDim2.new(0.45,0,0,32),Color3.fromRGB(36,16,18),C.RED,11); KClose.Position=UDim2.new(0.52,0,0,102); KClose.ZIndex=21
+local KInfo=LBL(SetP,"openrouter.ai → cuenta gratis → API Keys\nModelo: meta-llama/llama-3.3-70b-instruct:free\n\n💡 Comandos básicos funcionan sin key.\nLa IA activa para frases complejas.",9,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+KInfo.Size=UDim2.new(1,-20,0,70); KInfo.Position=UDim2.new(0,10,0,140); KInfo.TextWrapped=true; KInfo.ZIndex=21
+local function saveKey()
+    local k=(KBox.Text or ""):match("^%s*(.-)%s*$") or ""; apiKey=k
+    if #k>8 then KStat.Text="✓ Key guardada — IA activada"; KStat.TextColor3=C.GREEN
+    else KStat.Text="⚠ Key inválida — IA no disponible"; KStat.TextColor3=C.ORANGE end
+    task.delay(1.5,function() SetP.Visible=false end)
+end
+KSave.MouseButton1Click:Connect(saveKey); KSave.TouchTap:Connect(saveKey)
+KClose.MouseButton1Click:Connect(function() SetP.Visible=false end); KClose.TouchTap:Connect(function() SetP.Visible=false end)
+BSet.MouseButton1Click:Connect(function() KBox.Text=apiKey; SetP.Visible=true end)
+BSet.TouchTap:Connect(function() KBox.Text=apiKey; SetP.Visible=true end)
 
-local ManScroll=Instance.new("ScrollingFrame"); ManScroll.Size=UDim2.new(1,0,0,ListH-55)
-ManScroll.Position=UDim2.new(0,0,0,54); ManScroll.BackgroundColor3=C.GLASS
-ManScroll.BackgroundTransparency=T.PANEL; ManScroll.BorderSizePixel=0
-ManScroll.ScrollBarThickness=3; ManScroll.ScrollBarImageColor3=C.SCROLL
-ManScroll.CanvasSize=UDim2.new(0,0,0,0); ManScroll.Parent=ManFrm; rnd(ManScroll,8)
-str(ManScroll,Color3.fromRGB(32,38,72),1)
-local ML=Instance.new("UIListLayout"); ML.SortOrder=Enum.SortOrder.LayoutOrder; ML.Padding=UDim.new(0,2); ML.Parent=ManScroll
-local MP=Instance.new("UIPadding"); MP.PaddingTop=UDim.new(0,3); MP.PaddingLeft=UDim.new(0,3); MP.PaddingRight=UDim.new(0,2); MP.Parent=ManScroll
-
--- ── BOTONES INFERIORES ─────────────────────────────────────
-local BotFrm=Instance.new("Frame"); BotFrm.Size=UDim2.new(1,0,0,24)
-BotFrm.Position=UDim2.new(0,0,0,122+ListH+4); BotFrm.BackgroundTransparency=1; BotFrm.Parent=Body
-
-local BReset=btn(BotFrm,"🔄 Nueva ronda",UDim2.new(0.48,0,1,0),Color3.fromRGB(12,22,50),C.A1,9)
-BReset.Position=UDim2.new(0,0,0,0)
-local BCopy=btn(BotFrm,"📋 Copiar dict",UDim2.new(0.48,0,1,0),Color3.fromRGB(10,32,18),C.GREEN,9)
-BCopy.Position=UDim2.new(0.52,0,0,0)
-
--- ── HANDLE RESIZE ──────────────────────────────────────────
+-- ── RESIZE HANDLE ──────────────────────────────────────────
 local Handle=Instance.new("Frame"); Handle.Size=UDim2.new(1,0,0,10)
-Handle.Position=UDim2.new(0,0,1,-10); Handle.BackgroundColor3=C.GLASS3
-Handle.BackgroundTransparency=T.HANDLE; Handle.BorderSizePixel=0; Handle.Active=true; Handle.ZIndex=10; Handle.Parent=Main; rnd(Handle,5)
-local HLine=Instance.new("Frame"); HLine.Size=UDim2.new(0,30,0,3); HLine.Position=UDim2.new(0.5,-15,0.5,-1)
-HLine.BackgroundColor3=C.A1; HLine.BackgroundTransparency=0.5; HLine.BorderSizePixel=0; HLine.ZIndex=11; HLine.Parent=Handle; rnd(HLine,2)
-
-local resizing=false; local resY0=0; local resH0=H0
+Handle.Position=UDim2.new(0,0,1,-10); Handle.BackgroundColor3=C.GLASS2
+Handle.BackgroundTransparency=0.35; Handle.BorderSizePixel=0; Handle.Active=true; Handle.ZIndex=10; Handle.Parent=Main; R(Handle,5)
+local HL=Instance.new("Frame"); HL.Size=UDim2.new(0,28,0,3); HL.Position=UDim2.new(0.5,-14,0.5,-1)
+HL.BackgroundColor3=C.A1; HL.BackgroundTransparency=0.5; HL.BorderSizePixel=0; HL.ZIndex=11; HL.Parent=Handle; R(HL,2)
+local resOn=false; local rY0,rH0=0,H
 Handle.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
-        resizing=true; resY0=i.Position.Y; resH0=Main.AbsoluteSize.Y
+        resOn=true; rY0=i.Position.Y; rH0=Main.AbsoluteSize.Y
     end
 end)
-Handle.InputEnded:Connect(function() resizing=false; H0=Main.AbsoluteSize.Y end)
+Handle.InputEnded:Connect(function() resOn=false; H=Main.AbsoluteSize.Y end)
 UIS.InputChanged:Connect(function(i)
-    if not resizing then return end
+    if not resOn then return end
     if i.UserInputType~=Enum.UserInputType.Touch and i.UserInputType~=Enum.UserInputType.MouseButton1 then return end
-    local nh=math.clamp(resH0+(i.Position.Y-resY0),300,650)
-    Main.Size=UDim2.new(0,W0,0,nh)
-    local lh=nh-50-48-22-24-14-14-30-10
-    lh=math.max(lh,60)
-    ListFrm.Size=UDim2.new(1,0,0,lh)
-    ManFrm.Size=UDim2.new(1,0,0,lh)
-    ManScroll.Size=UDim2.new(1,0,0,math.max(lh-55,40))
-    BotFrm.Position=UDim2.new(0,0,0,122+lh+4)
+    local nh=math.clamp(rH0+(i.Position.Y-rY0),340,700)
+    Main.Size=UDim2.new(0,W,0,nh)
+    local ch=nh-130; ch=math.max(ch,120)
+    ChatP.Size=UDim2.new(1,-10,0,ch); CmdP.Size=UDim2.new(1,-10,0,ch); PosP.Size=UDim2.new(1,-10,0,ch)
 end)
 
 -- ============================================================
---  RENDER
+--  CHAT — añadir burbujas
 -- ============================================================
-local aConns={}; local curTab=1
-
-local function clearScroll(scr)
-    for _,c in ipairs(scr:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
-    for _,c in ipairs(aConns) do pcall(function() c:Disconnect() end) end
-    aConns={}
-    if scr.CanvasSize then scr.CanvasSize=UDim2.new(0,0,0,0) end
+local msgOrder=0
+local function addMsg(who, text, isUser, isSys)
+    msgOrder=msgOrder+1
+    local bub=Instance.new("Frame"); bub.Size=UDim2.new(1,0,0,10)
+    bub.BackgroundColor3=isSys and C.SYS_BG or (isUser and C.USER_BG or C.AI_BG)
+    bub.BackgroundTransparency=0.1; bub.BorderSizePixel=0; bub.LayoutOrder=msgOrder
+    bub.AutomaticSize=Enum.AutomaticSize.Y; bub.Parent=MsgScroll; R(bub,8)
+    S(bub, isUser and Color3.fromRGB(50,80,160) or (isSys and Color3.fromRGB(40,55,120) or Color3.fromRGB(35,45,100)), 1)
+    local wl=LBL(bub, isSys and "⚡" or (isUser and "👤 "..LP.Name or "🤖 IA"), 8,
+        isUser and C.A1 or (isSys and C.YELLOW or C.A2), Enum.Font.GothamBold)
+    wl.Size=UDim2.new(1,-10,0,13); wl.Position=UDim2.new(0,6,0,3)
+    local ml=Instance.new("TextLabel"); ml.BackgroundTransparency=1
+    ml.Size=UDim2.new(1,-12,0,0); ml.Position=UDim2.new(0,6,0,18)
+    ml.Text=text; ml.TextSize=11; ml.Font=Enum.Font.Gotham; ml.TextColor3=C.TEXT
+    ml.TextWrapped=true; ml.TextXAlignment=Enum.TextXAlignment.Left
+    ml.TextYAlignment=Enum.TextYAlignment.Top; ml.AutomaticSize=Enum.AutomaticSize.Y; ml.Parent=bub
+    task.wait(); task.wait()
+    local tot=0; for _,c in ipairs(MsgScroll:GetChildren()) do if c:IsA("Frame") then tot=tot+c.AbsoluteSize.Y+7 end end
+    MsgScroll.CanvasSize=UDim2.new(0,0,0,tot+12)
+    MsgScroll.CanvasPosition=Vector2.new(0,math.max(0,tot-MsgScroll.AbsoluteSize.Y+12))
+    return ml
 end
 
-local function addRow(scr, i, word, col, badge, bcol)
-    local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,26)
-    row.BackgroundColor3=(i%2==0) and C.GLASS3 or C.GLASS2
-    row.BackgroundTransparency=0.1; row.BorderSizePixel=0; row.LayoutOrder=i; row.Parent=scr; rnd(row,5)
-
-    local nl=lbl(row,tostring(i),7,C.TEXTM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-    nl.Size=UDim2.new(0,16,1,0)
-
-    local wl=lbl(row,word,12,col or C.TEXT,Enum.Font.GothamBold)
-    wl.Size=UDim2.new(1,-66,1,0); wl.Position=UDim2.new(0,18,0,0)
-
-    if badge then
-        local bf=Instance.new("Frame"); bf.Size=UDim2.new(0,28,0,14); bf.Position=UDim2.new(1,-58,0.5,-7)
-        bf.BackgroundColor3=bcol or C.GLASS; bf.BorderSizePixel=0; bf.Parent=row; rnd(bf,4)
-        lbl(bf,badge,7,C.TEXT,Enum.Font.Gotham,Enum.TextXAlignment.Center).Size=UDim2.new(1,0,1,0)
-    end
-
-    local cp=Instance.new("TextButton"); cp.Size=UDim2.new(0,26,0,18); cp.Position=UDim2.new(1,-28,0.5,-9)
-    cp.BackgroundColor3=Color3.fromRGB(20,28,65); cp.BorderSizePixel=0; cp.Text="📋"; cp.TextSize=9
-    cp.AutoButtonColor=false; cp.Parent=row; rnd(cp,4)
-    local function doCopy()
-        pcall(function()
-            if setclipboard then setclipboard(word)
-            elseif syn and syn.set_clipboard then syn.set_clipboard(word) end
-        end)
-        cp.BackgroundColor3=C.GREEN; cp.Text="✓"
-        task.delay(1,function() if cp and cp.Parent then cp.BackgroundColor3=Color3.fromRGB(20,28,65); cp.Text="📋" end end)
-    end
-    aConns[#aConns+1]=cp.MouseButton1Click:Connect(doCopy)
-    aConns[#aConns+1]=cp.TouchTap:Connect(doCopy)
-end
-
-local function updateCanvas(scr)
-    local h=0; for _,c in ipairs(scr:GetChildren()) do if c:IsA("Frame") then h=h+28 end end
-    scr.CanvasSize=UDim2.new(0,0,0,h+6)
-end
-
-local function renderMain()
-    clearScroll(Scroll)
-    if curTab==1 then
-        -- Disponibles
-        if currentPre=="" then
-            PHF.Visible=true; PHT.Text="Sin prefijo detectado"; PHS.Text="El script lo lee automáticamente de la pantalla del juego"; return
-        end
-        local av=searchValid(currentPre)
-        PHF.Visible=(#av==0)
-        if #av==0 then PHT.Text="Sin palabras conocidas con \""..currentPre:upper().."\""; PHS.Text="El diccionario crece con cada ronda · usa tab Manual para buscar"; return end
-        for i,w in ipairs(av) do addRow(Scroll,i,w,C.GREEN,tostring(#w).."L",Color3.fromRGB(8,36,18)) end
-        PreAvail.Text=tostring(#av).." disponibles"
-    elseif curTab==2 then
-        -- Diccionario aprendido
-        PHF.Visible=(#validArr==0); if #validArr==0 then PHT.Text="Diccionario vacío"; PHS.Text="Juega rondas o espera el probe automático"; return end
-        for i,w in ipairs(validArr) do
-            local used=usedRound[w]
-            addRow(Scroll,i,w,used and C.TEXTD or C.TEXT,
-                used and "USADA" or tostring(#w).."L",
-                used and Color3.fromRGB(36,18,8) or C.GLASS3)
-        end
-    elseif curTab==3 then
-        -- Usadas esta ronda
-        local us={}; for w in pairs(usedRound) do us[#us+1]=w end; table.sort(us)
-        PHF.Visible=(#us==0); if #us==0 then PHT.Text="Ninguna usada aún"; PHS.Text="Aparecen al detectarlas en pantalla"; return end
-        for i,w in ipairs(us) do addRow(Scroll,i,w,C.ORANGE,"USADA",Color3.fromRGB(38,22,6)) end
-    end
-    updateCanvas(Scroll)
-end
-
-local function renderManual(pre)
-    clearScroll(ManScroll)
-    if pre=="" then ManInfoL.Text=""; return end
-    local pn=norm(pre)
-    local av=searchValid(pn)
-    ManInfoL.Text=tostring(#av).." disponibles con \""..pre:upper().."\""
-    if #av==0 then
-        local f=Instance.new("TextLabel"); f.Size=UDim2.new(1,0,0,26); f.BackgroundTransparency=1
-        f.Text="Sin resultados (el dict tiene "..tostring(#validArr).." palabras)"; f.TextColor3=C.TEXTD
-        f.TextSize=9; f.Font=Enum.Font.Gotham; f.TextXAlignment=Enum.TextXAlignment.Center; f.LayoutOrder=1; f.Parent=ManScroll
-        ManScroll.CanvasSize=UDim2.new(0,0,0,32); return
-    end
-    for i,w in ipairs(av) do addRow(ManScroll,i,w,C.GREEN,tostring(#w).."L",Color3.fromRGB(8,36,18)) end
-    updateCanvas(ManScroll)
-end
-
-local function updatePreInfo()
-    if currentPre~="" then
-        local av=searchValid(currentPre)
-        PreAvail.Text=tostring(#av).." disponibles"
-        PreAvail.TextColor3=(#av>0) and C.GREEN or C.RED
-    end
-    PreDict.Text=tostring(#validArr).." en diccionario"
-end
-
+-- ============================================================
+--  TABS
+-- ============================================================
+local curTab=1
 local function setTab(t)
-    curTab=t
-    local cols={C.GREEN,C.A1,C.A3}
-    local tabs={TB1,TB2,TB3}
+    curTab=t; ChatP.Visible=(t==1); CmdP.Visible=(t==2); PosP.Visible=(t==3)
+    local cols={C.A1,C.ORANGE,C.GREEN}; local tabs={T1,T2,T3}
     for i,tb in ipairs(tabs) do
-        if i==t then tw(tb,{BackgroundColor3=cols[i]},0.12); tb.TextColor3=C.BLACK
-        else tw(tb,{BackgroundColor3=Color3.fromRGB(18,22,44)},0.12); tb.TextColor3=C.TEXTD end
+        if i==t then TW(tb,{BackgroundColor3=cols[i]},0.12); tb.TextColor3=Color3.fromRGB(0,0,0)
+        else TW(tb,{BackgroundColor3=Color3.fromRGB(18,22,44)},0.12); tb.TextColor3=C.TEXTD end
     end
-    ListFrm.Visible=(t==1 or t==2); ManFrm.Visible=(t==3)
-    if t~=3 then renderMain() end
 end
-
-TB1.MouseButton1Click:Connect(function() setTab(1) end); TB1.TouchTap:Connect(function() setTab(1) end)
-TB2.MouseButton1Click:Connect(function() setTab(2) end); TB2.TouchTap:Connect(function() setTab(2) end)
-TB3.MouseButton1Click:Connect(function() setTab(3) end); TB3.TouchTap:Connect(function() setTab(3) end)
-
-ManBtn.MouseButton1Click:Connect(function() renderManual(ManBox.Text) end)
-ManBtn.TouchTap:Connect(function() renderManual(ManBox.Text) end)
-ManBox.FocusLost:Connect(function(e) if e then renderManual(ManBox.Text) end end)
-
-BReset.MouseButton1Click:Connect(function()
-    usedRound={}; currentPre=""; PreWord.Text="---"; PreWord.TextColor3=C.A1
-    PreAvail.Text="0 disponibles"; InfoLbl.Text="Ronda nueva"; renderMain()
-end)
-BReset.TouchTap:Connect(function()
-    usedRound={}; currentPre=""; PreWord.Text="---"; PreWord.TextColor3=C.A1
-    PreAvail.Text="0 disponibles"; InfoLbl.Text="Ronda nueva"; renderMain()
-end)
-
-BCopy.MouseButton1Click:Connect(function()
-    local s=table.concat(validArr,"\n")
-    pcall(function() if setclipboard then setclipboard(s) elseif syn and syn.set_clipboard then syn.set_clipboard(s) end end)
-    BCopy.Text="✓ Copiado"; BCopy.BackgroundColor3=C.GREEN
-    task.delay(1.5,function() BCopy.Text="📋 Copiar dict"; BCopy.BackgroundColor3=Color3.fromRGB(10,32,18) end)
-end)
-BCopy.TouchTap:Connect(function()
-    local s=table.concat(validArr,"\n")
-    pcall(function() if setclipboard then setclipboard(s) elseif syn and syn.set_clipboard then syn.set_clipboard(s) end end)
-    BCopy.Text="✓ Copiado"; BCopy.BackgroundColor3=C.GREEN
-    task.delay(1.5,function() BCopy.Text="📋 Copiar dict"; BCopy.BackgroundColor3=Color3.fromRGB(10,32,18) end)
-end)
+T1.MouseButton1Click:Connect(function() setTab(1) end); T1.TouchTap:Connect(function() setTab(1) end)
+T2.MouseButton1Click:Connect(function() setTab(2) end); T2.TouchTap:Connect(function() setTab(2) end)
+T3.MouseButton1Click:Connect(function() setTab(3) end); T3.TouchTap:Connect(function() setTab(3) end)
 
 -- ============================================================
---  INTERCEPTOR — FireServer + OnClientEvent
+--  PANEL COMANDOS — botones + slider de velocidad
 -- ============================================================
-local hookedSet = {}
+local sliderConn=nil
 
-local function looksWord(s)
-    local n=norm(s); return #n>=2 and #n<=30 and n:match("^[a-z]+$")~=nil
-end
-local function looksPre(s)
-    return type(s)=="string" and s:match("^%u+$") and #s>=2 and #s<=6
-end
+local function makeSlider(parent, label, minV, maxV, initV, color, onChange)
+    -- Frame contenedor
+    local fr=Instance.new("Frame"); fr.Size=UDim2.new(1,0,0,44)
+    fr.BackgroundColor3=C.GLASS2; fr.BackgroundTransparency=0.1; fr.BorderSizePixel=0; fr.Parent=parent; R(fr,7)
+    -- Etiqueta
+    local lbl=LBL(fr,label,9,C.TEXTD,Enum.Font.Gotham); lbl.Size=UDim2.new(0.6,0,0,14); lbl.Position=UDim2.new(0,6,0,3)
+    local valLbl=LBL(fr,tostring(initV),10,color,Enum.Font.GothamBold,Enum.TextXAlignment.Right)
+    valLbl.Size=UDim2.new(0.38,0,0,14); valLbl.Position=UDim2.new(0.62,-4,0,3)
+    -- Track
+    local track=Instance.new("Frame"); track.Size=UDim2.new(1,-12,0,6); track.Position=UDim2.new(0,6,0,24)
+    track.BackgroundColor3=Color3.fromRGB(24,28,55); track.BorderSizePixel=0; track.Active=true; track.Parent=fr; R(track,4)
+    -- Fill
+    local fill=Instance.new("Frame"); fill.Size=UDim2.new((initV-minV)/(maxV-minV),0,1,0)
+    fill.BackgroundColor3=color; fill.BorderSizePixel=0; fill.Parent=track; R(fill,4)
+    -- Thumb
+    local thumb=Instance.new("Frame"); thumb.Size=UDim2.new(0,14,0,14)
+    thumb.Position=UDim2.new(fill.Size.X.Scale,0,0.5,-7)
+    thumb.BackgroundColor3=C.TEXT; thumb.BorderSizePixel=0; thumb.Active=true; thumb.ZIndex=3; thumb.Parent=track; R(thumb,7)
 
-local function onServerData(...)
-    for _,a in ipairs({...}) do
-        local s=tostring(a)
-        if looksPre(s) then
-            local pn=norm(s)
-            if pn~=currentPre then
-                currentPre=pn; PreWord.Text=s:upper()
-                tw(PreWord,{TextColor3=C.YELLOW},0.1); task.delay(0.4,function() tw(PreWord,{TextColor3=C.A1},0.3) end)
-                updatePreInfo(); if curTab==1 then renderMain() end
-            end
-        elseif looksWord(s) then
-            local n=norm(s); local wasNew=not validSet[n]
-            addValid(n); markUsed(n); interceptCount=interceptCount+1
-            InfoLbl.Text=tostring(#validArr).." palabras · "..tostring(interceptCount).." capturadas"
-            if wasNew then updatePreInfo(); if curTab==1 or curTab==2 then renderMain() end end
-        elseif type(a)=="table" then
-            for _,v in pairs(a) do
-                if type(v)=="string" then
-                    if looksPre(v) then local pn=norm(v); if pn~=currentPre then currentPre=pn; PreWord.Text=v:upper(); updatePreInfo() end
-                    elseif looksWord(v) then addValid(v); interceptCount=interceptCount+1 end
-                end
-            end
-        end
+    local dragging=false
+    local function updateSlider(absX)
+        local rel=math.clamp((absX-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
+        local val=math.floor(minV+(maxV-minV)*rel)
+        fill.Size=UDim2.new(rel,0,1,0)
+        thumb.Position=UDim2.new(rel,-7,0.5,-7)
+        valLbl.Text=tostring(val)
+        onChange(val)
     end
-end
-
-local function hookRemote(r, path)
-    if hookedSet[r] then return end; hookedSet[r]=true
-    if r.ClassName=="RemoteEvent" then
-        pcall(function() r.OnClientEvent:Connect(function(...) onServerData(...) end) end)
-    end
-end
-
-local function hookAll(root, d)
-    if d>6 then return end
-    local ok,ch=pcall(function() return root:GetChildren() end); if not ok then return end
-    for _,c in ipairs(ch) do
-        if c.ClassName=="RemoteEvent" or c.ClassName=="RemoteFunction" then hookRemote(c,c:GetFullName()) end
-        pcall(function() hookAll(c,d+1) end)
-    end
-end
-
--- Hook FireServer via metamethods (Delta soporta esto)
-local function hookFireServer()
-    local mt=pcall(function() return getrawmetatable(game) end) and getrawmetatable(game)
-    if not mt then return false end
-    local old=mt.__namecall
-    local ok=pcall(function()
-        setreadonly(mt,false)
-        mt.__namecall=newcclosure(function(self,...)
-            local m=getnamecallmethod()
-            if (m=="FireServer" or m=="InvokeServer") and
-               (self.ClassName=="RemoteEvent" or self.ClassName=="RemoteFunction") then
-                local args={...}
-                for _,a in ipairs(args) do
-                    if type(a)=="string" and looksWord(a) then
-                        local n=norm(a)
-                        task.delay(0.6,function()
-                            if not rejSet[n] then
-                                local wasNew=not validSet[n]
-                                addValid(n); markUsed(n); interceptCount=interceptCount+1
-                                if wasNew then updatePreInfo(); if curTab==1 or curTab==2 then renderMain() end end
-                            end
-                        end)
-                    end
-                end
-            end
-            return old(self,...)
-        end)
-        setreadonly(mt,true)
-    end)
-    return ok
-end
-
--- ============================================================
---  PROBE AUTOMÁTICO — prueba candidatos contra el servidor
---  Encuentra el RemoteFunction de validación e invoca cada palabra
--- ============================================================
-local PROBE_DELAY = 0.12   -- segundos entre pruebas (no spamear)
-
--- Busca RemoteFunctions que sirvan para validar palabras
-local function findValidationRemote()
-    local candidates = {}
-    local function scan(inst, d)
-        if d>6 then return end
-        local ok,ch=pcall(function() return inst:GetChildren() end); if not ok then return end
-        for _,c in ipairs(ch) do
-            if c.ClassName=="RemoteFunction" then
-                -- Prioriza las que tengan nombres relacionados a palabras/validación
-                local name=c.Name:lower()
-                local score=0
-                if name:find("word") or name:find("palabra") then score=10
-                elseif name:find("valid") or name:find("check") then score=9
-                elseif name:find("submit") or name:find("send") then score=8
-                elseif name:find("play") or name:find("game") then score=6
-                else score=1 end
-                candidates[#candidates+1]={ref=c, score=score, name=c:GetFullName()}
-            end
-            pcall(function() scan(c,d+1) end)
-        end
-    end
-    pcall(function() scan(RS,0) end)
-    pcall(function() scan(game.Workspace,0) end)
-    -- Ordena por score
-    table.sort(candidates,function(a,b) return a.score>b.score end)
-    return candidates
-end
-
--- Prueba una palabra en un RemoteFunction y detecta si la acepta
--- Retorna: "valid" | "invalid" | "unknown"
-local function probeWord(rf, word)
-    local result="unknown"
-    local ok, ret=pcall(function()
-        return rf:InvokeServer(word)
-    end)
-    if not ok then return "error" end
-    if ret==nil then return "unknown" end
-    -- Interpreta la respuesta
-    local rs=tostring(ret):lower()
-    if ret==true or rs=="true" or rs=="valid" or rs=="ok" or rs=="1" or rs=="accepted" then
-        result="valid"
-    elseif ret==false or rs=="false" or rs=="invalid" or rs=="no" or rs=="0" or rs=="rejected" then
-        result="invalid"
-    elseif type(ret)=="number" then
-        result=(ret>0) and "valid" or "invalid"
-    elseif type(ret)=="table" then
-        -- Algunos juegos retornan tablas con campo success/valid
-        if ret.valid==true or ret.success==true or ret.accepted==true then result="valid"
-        elseif ret.valid==false or ret.success==false then result="invalid"
-        else result="unknown" end
-    end
-    return result
-end
-
--- También prueba via RemoteEvent (fire and observe)
-local function probeWordEvent(re, word)
-    -- Mandamos la palabra y esperamos la respuesta de vuelta
-    local received=nil
-    local conn=re.OnClientEvent:Connect(function(...)
-        local args={...}
-        for _,a in ipairs(args) do
-            local s=tostring(a):lower()
-            if s=="true" or s=="valid" or s=="ok" or s=="accepted" then received="valid"
-            elseif s=="false" or s=="invalid" or s=="rejected" then received="invalid"
-            elseif type(a)==type(true) then received=a and "valid" or "invalid" end
+    track.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
+            dragging=true; updateSlider(i.Position.X)
         end
     end)
-    pcall(function() re:FireServer(word) end)
-    local t=0
-    while received==nil and t<0.5 do task.wait(0.05); t=t+0.05 end
-    pcall(function() conn:Disconnect() end)
-    return received or "unknown"
+    track.InputEnded:Connect(function() dragging=false end)
+    UIS.InputChanged:Connect(function(i)
+        if not dragging then return end
+        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
+            updateSlider(i.Position.X)
+        end
+    end)
+    return fr, valLbl
 end
 
--- Loop de probe automático
-local function runProbe(remote, isFunction)
-    probeActive=true
-    probeTotal=#CANDIDATES
-    probeCount=0
-    local validCount=0
+local function makeCmdBtn(parent, icon, label, onRun, color, order)
+    local fr=Instance.new("Frame"); fr.Size=UDim2.new(1,0,0,34)
+    fr.BackgroundColor3=color or C.GLASS2; fr.BackgroundTransparency=0.15
+    fr.BorderSizePixel=0; fr.LayoutOrder=order or 99; fr.Parent=parent; R(fr,7)
+    local il=LBL(fr,icon.." "..label,11,C.TEXT,Enum.Font.GothamBold)
+    il.Size=UDim2.new(1,-46,1,0); il.Position=UDim2.new(0,8,0,0)
+    local rb=BTN(fr,"▶",UDim2.new(0,32,0,24),C.A1,C.TEXT,12); rb.Position=UDim2.new(1,-36,0.5,-12)
+    local function run() local r=onRun(); if r then addMsg("sys",r,false,true); setTab(1) end end
+    rb.MouseButton1Click:Connect(run); rb.TouchTap:Connect(run)
+    return fr
+end
 
-    ProbeInfo.Text="Probando "..tostring(probeTotal).." palabras candidatas..."
-    ProbeTag.Text="🔵 Probando..."
-    ProbeTag.TextColor3=C.A1
+local function buildCmdPanel()
+    for _,c in ipairs(CmdScroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
 
-    for i, word in ipairs(CANDIDATES) do
-        if not Main or not Main.Parent then break end
-        local n=norm(word)
-        -- No reprobar las ya conocidas
-        if not validSet[n] and not rejSet[n] then
-            local result
-            if isFunction then
-                result=probeWord(remote, word)
-            else
-                result=probeWordEvent(remote, word)
-            end
+    local order=0
+    local function o() order=order+1; return order end
 
-            if result=="valid" then
-                addValid(word); validCount=validCount+1
-                updatePreInfo()
-                if curTab==2 then renderMain() end
-            elseif result=="invalid" then
-                addRej(word)
-            end
-            -- "unknown" o "error" no hacemos nada, intentaremos de nuevo si hace falta
+    -- CATEGORÍA: MOVIMIENTO
+    local cat1=Instance.new("Frame"); cat1.Size=UDim2.new(1,0,0,16); cat1.BackgroundTransparency=1; cat1.LayoutOrder=o(); cat1.Parent=CmdScroll
+    LBL(cat1,"✈️  MOVIMIENTO",8,C.A3,Enum.Font.GothamBold).Size=UDim2.new(1,0,1,0)
+
+    -- Fly toggle + slider
+    local flyFr=Instance.new("Frame"); flyFr.Size=UDim2.new(1,0,0,78)
+    flyFr.BackgroundColor3=Color3.fromRGB(14,26,60); flyFr.BackgroundTransparency=0.1
+    flyFr.BorderSizePixel=0; flyFr.LayoutOrder=o(); flyFr.Parent=CmdScroll; R(flyFr,8)
+
+    local flyRow=Instance.new("Frame"); flyRow.Size=UDim2.new(1,0,0,32); flyRow.BackgroundTransparency=1; flyRow.Parent=flyFr
+    LBL(flyRow,"✈️  Fly",12,C.A1,Enum.Font.GothamBold).Size=UDim2.new(0.5,0,1,0); (function() local l=flyRow:GetChildren()[1]; l.Position=UDim2.new(0,8,0,0) end)()
+    local flyToggle=BTN(flyRow,"▶ ON",UDim2.new(0,52,0,24),C.GREEN,C.TEXT,10); flyToggle.Position=UDim2.new(1,-58,0.5,-12)
+    local flySpeedLbl=LBL(flyRow,"",9,C.TEXTD,Enum.Font.Gotham,Enum.TextXAlignment.Right)
+    flySpeedLbl.Size=UDim2.new(0.35,0,0,14); flySpeedLbl.Position=UDim2.new(0.45,0,0,0)
+    flySpeedLbl.TextYAlignment=Enum.TextYAlignment.Center
+
+    -- Slider de velocidad de fly
+    local slFr,slVal=makeSlider(flyFr,"Velocidad (0–300)",0,300,60,C.A1,function(v)
+        flySpeed=v
+        if flyOn then CMD.fly(v) end  -- actualiza en tiempo real
+    end)
+    slFr.Position=UDim2.new(0,0,0,32); slFr.Parent=flyFr
+    slFr.BackgroundTransparency=1
+    -- Quita el frame extra del slider
+    slFr.Size=UDim2.new(1,0,0,44)
+
+    local function toggleFly()
+        if flyOn then
+            CMD.unfly(); flyOn=false
+            flyToggle.Text="▶ ON"; toggleStyle(flyToggle,false,C.GREEN,Color3.fromRGB(24,40,24))
+        else
+            CMD.fly(flySpeed); flyOn=true
+            flyToggle.Text="⏹ OFF"; toggleStyle(flyToggle,true,C.RED)
         end
+    end
+    flyToggle.MouseButton1Click:Connect(toggleFly); flyToggle.TouchTap:Connect(toggleFly)
 
-        probeCount=i
-        local pct=i/probeTotal
-        tw(ProbeBar,{Size=UDim2.new(pct,0,1,0)},0.1)
-        ProbeInfo.Text=tostring(i).."/"..tostring(probeTotal).." · ✅"..tostring(validCount).." · ⏳"
+    makeCmdBtn(CmdScroll,"👻","Noclip",function()
+        if noclipOn then return CMD.clip() else return CMD.noclip() end
+    end, Color3.fromRGB(30,14,50), o())
 
-        task.wait(PROBE_DELAY)
+    -- Speed slider
+    local ssFr,ssVal=makeSlider(CmdScroll,"⚡ Speed (0–200)",0,200,16,C.ORANGE,function(v)
+        speedVal=v; CMD.speed(v)
+    end)
+    ssFr.LayoutOrder=o(); ssFr.Parent=CmdScroll
+
+    -- Jump slider
+    local jsFr,jsVal=makeSlider(CmdScroll,"🦘 Jump Power (0–300)",0,300,50,C.YELLOW,function(v)
+        jumpVal=v; CMD.jump(v)
+    end)
+    jsFr.LayoutOrder=o(); jsFr.Parent=CmdScroll
+
+    -- Gravity slider
+    local gravFr,gravVal=makeSlider(CmdScroll,"🌍 Gravity (0–500)",0,500,196,C.A3,function(v)
+        CMD.gravity(v)
+    end)
+    gravFr.LayoutOrder=o(); gravFr.Parent=CmdScroll
+
+    -- CATEGORÍA: COMBATE
+    local cat2=Instance.new("Frame"); cat2.Size=UDim2.new(1,0,0,16); cat2.BackgroundTransparency=1; cat2.LayoutOrder=o(); cat2.Parent=CmdScroll
+    LBL(cat2,"🛡️  COMBATE & ESTADO",8,C.ORANGE,Enum.Font.GothamBold).Size=UDim2.new(1,0,1,0)
+
+    makeCmdBtn(CmdScroll,"🛡️","God Mode",function()
+        if godOn then godOn=false; return CMD.ungod() else return CMD.god() end
+    end, Color3.fromRGB(14,36,22), o())
+
+    makeCmdBtn(CmdScroll,"💀","Reset",CMD.reset, Color3.fromRGB(40,10,10), o())
+    makeCmdBtn(CmdScroll,"🔄","Spin",CMD.spin, Color3.fromRGB(24,20,50), o())
+
+    -- CATEGORÍA: APARIENCIA
+    local cat3=Instance.new("Frame"); cat3.Size=UDim2.new(1,0,0,16); cat3.BackgroundTransparency=1; cat3.LayoutOrder=o(); cat3.Parent=CmdScroll
+    LBL(cat3,"👁️  APARIENCIA",8,C.A1,Enum.Font.GothamBold).Size=UDim2.new(1,0,1,0)
+
+    makeCmdBtn(CmdScroll,"👁️","Invisible",function()
+        return CMD.invisible()
+    end, Color3.fromRGB(18,18,40), o())
+    makeCmdBtn(CmdScroll,"👀","Visible",CMD.visible, Color3.fromRGB(18,32,18), o())
+    makeCmdBtn(CmdScroll,"✨","Partículas",CMD.particles, Color3.fromRGB(22,18,42), o())
+
+    -- CATEGORÍA: MUNDO
+    local cat4=Instance.new("Frame"); cat4.Size=UDim2.new(1,0,0,16); cat4.BackgroundTransparency=1; cat4.LayoutOrder=o(); cat4.Parent=CmdScroll
+    LBL(cat4,"🌍  MUNDO",8,C.GREEN,Enum.Font.GothamBold).Size=UDim2.new(1,0,1,0)
+
+    -- FOV slider
+    local fovFr,fovVal=makeSlider(CmdScroll,"🎥 FOV (30–120)",30,120,70,C.GREEN,function(v)
+        CMD.fov(v)
+    end)
+    fovFr.LayoutOrder=o(); fovFr.Parent=CmdScroll
+
+    -- Time slider
+    local timeFr,timeVal=makeSlider(CmdScroll,"🕐 Hora (0–23)",0,23,14,C.YELLOW,function(v)
+        CMD.time(v)
+    end)
+    timeFr.LayoutOrder=o(); timeFr.Parent=CmdScroll
+
+    makeCmdBtn(CmdScroll,"📷","Arreglar cámara",CMD.fixcam, Color3.fromRGB(20,20,40), o())
+    makeCmdBtn(CmdScroll,"👥","Ver jugadores",CMD.explore, Color3.fromRGB(16,28,50), o())
+
+    -- CATEGORÍA: FLIGHT (lanzar)
+    local cat5=Instance.new("Frame"); cat5.Size=UDim2.new(1,0,0,16); cat5.BackgroundTransparency=1; cat5.LayoutOrder=o(); cat5.Parent=CmdScroll
+    LBL(cat5,"🚀  FLIGHT (lanza jugadores)",8,C.RED,Enum.Font.GothamBold).Size=UDim2.new(1,0,1,0)
+
+    makeCmdBtn(CmdScroll,"🚀","Flight a TODOS",function()
+        return CMD.flight("all",150)
+    end, Color3.fromRGB(40,12,12), o())
+    makeCmdBtn(CmdScroll,"🌀","Freeze todos",function()
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p~=LP and p.Character then CMD.freeze(p.Name) end
+        end; return "🧊 Todos congelados"
+    end, Color3.fromRGB(10,20,40), o())
+
+    -- Calcula canvas
+    task.wait(); local h=0
+    for _,c in ipairs(CmdScroll:GetChildren()) do if c:IsA("Frame") then h=h+c.AbsoluteSize.Y+4 end end
+    CmdScroll.CanvasSize=UDim2.new(0,0,0,h+10)
+end
+
+-- ============================================================
+--  PANEL POSICIONES
+-- ============================================================
+local posConns={}
+local function renderPos()
+    for _,c in ipairs(PosScroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+    for _,c in ipairs(posConns) do pcall(function() c:Disconnect() end) end; posConns={}
+    local list={}; for k,v in pairs(savedPos) do list[#list+1]=v end
+    table.sort(list,function(a,b) return a.name<b.name end)
+    PosEmpty.Visible=(#list==0)
+    for i,v in ipairs(list) do
+        local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,40)
+        row.BackgroundColor3=C.GLASS2; row.BackgroundTransparency=0.1; row.BorderSizePixel=0
+        row.LayoutOrder=i; row.Parent=PosScroll; R(row,7); S(row,C.BORDER,1)
+        local nl=LBL(row,"📌 "..v.name,11,C.A1,Enum.Font.GothamBold); nl.Size=UDim2.new(1,-80,0,16); nl.Position=UDim2.new(0,7,0,2)
+        local cl=LBL(row,"("..v.x..","..v.y..","..v.z..")",8,C.TEXTD,Enum.Font.Gotham); cl.Size=UDim2.new(1,-80,0,14); cl.Position=UDim2.new(0,7,0,20)
+        local tb=BTN(row,"📍",UDim2.new(0,28,0,28),Color3.fromRGB(12,26,55),C.A1,12); tb.Position=UDim2.new(1,-62,0.5,-14)
+        local db=BTN(row,"🗑",UDim2.new(0,28,0,28),Color3.fromRGB(38,10,10),C.RED,11); db.Position=UDim2.new(1,-30,0.5,-14)
+        local function doTP() local r=CMD.tppos(v.name); addMsg("sys",r,false,true); setTab(1) end
+        local function doDel() savedPos[v.name:lower()]=nil; renderPos() end
+        posConns[#posConns+1]=tb.MouseButton1Click:Connect(doTP); posConns[#posConns+1]=tb.TouchTap:Connect(doTP)
+        posConns[#posConns+1]=db.MouseButton1Click:Connect(doDel); posConns[#posConns+1]=db.TouchTap:Connect(doDel)
+    end
+    PosScroll.CanvasSize=UDim2.new(0,0,0,#list*44+10)
+end
+
+-- Guardar posición manual
+local askName=false
+SaveNow.MouseButton1Click:Connect(function()
+    askName=not askName; PosIF.Visible=askName
+    SaveNow.Text=askName and "❌ Cancelar" or "📌 Guardar posición actual"
+    if askName then pcall(function() PosNB:CaptureFocus() end) end
+end)
+SaveNow.TouchTap:Connect(function()
+    askName=not askName; PosIF.Visible=askName
+    SaveNow.Text=askName and "❌ Cancelar" or "📌 Guardar posición actual"
+end)
+local function doSavePos()
+    local name=(PosNB.Text or ""):match("^%s*(.-)%s*$") or ""
+    if #name==0 then return end
+    local r=CMD.savepos(name); addMsg("sys",r,false,true)
+    renderPos(); PosNB.Text=""; askName=false; PosIF.Visible=false
+    SaveNow.Text="📌 Guardar posición actual"
+end
+PosOK.MouseButton1Click:Connect(doSavePos); PosOK.TouchTap:Connect(doSavePos)
+PosNB.FocusLost:Connect(function(e) if e then doSavePos() end end)
+
+-- ============================================================
+--  ENVIAR MENSAJE CHAT
+-- ============================================================
+local aiLoading=false
+
+local function sendMsg()
+    if aiLoading then return end
+    local msg=(MBox.Text or ""):match("^%s*(.-)%s*$") or ""
+    if #msg=="" then return end
+    MBox.Text=""
+    addMsg(LP.Name, msg, true, false)
+
+    -- 1. Intenta comando directo
+    local directCmd=tryQuick(msg)
+    if directCmd then
+        local r=runCmd(directCmd)
+        if r then addMsg("ia",r,false,false) end
+        renderPos()
+        return
     end
 
-    probeActive=false
-    ProbeTag.Text="✅ Probe listo · "..tostring(validCount).." válidas"
-    ProbeTag.TextColor3=C.GREEN
-    ProbeInfo.Text="Diccionario: "..tostring(#validArr).." palabras aprendidas"
-    tw(ProbeBar,{Size=UDim2.new(1,0,1,0)},0.3)
-    updatePreInfo()
-    renderMain()
+    -- 2. Llama a la IA
+    aiLoading=true
+    SendBtn.Text="⏳"; TW(SendBtn,{BackgroundColor3=C.TEXTM},0.1)
+    local think=addMsg("ia","✦ Pensando...",false,false)
+    callAI(msg, function(resp)
+        aiLoading=false; SendBtn.Text="➤"; TW(SendBtn,{BackgroundColor3=C.A1},0.1)
+        if think and think.Parent then think.Text=resp end
+        renderPos()
+    end)
 end
+SendBtn.MouseButton1Click:Connect(sendMsg); SendBtn.TouchTap:Connect(sendMsg)
+MBox.FocusLost:Connect(function(e) if e then sendMsg() end end)
 
 -- ============================================================
---  ESCANEO GUI — detecta prefijo y palabras usadas visibles
--- ============================================================
-local guiSeen={}
-
-local function scanGUI()
-    local pg=LP:FindFirstChild("PlayerGui"); if not pg then return end
-    local function walk(inst,d)
-        if d>9 then return end
-        local cls=inst.ClassName
-        if cls=="TextLabel" or cls=="TextBox" or cls=="TextButton" then
-            local txt=(inst.Text or ""):match("^%s*(.-)%s*$") or ""
-            if txt~="" and not guiSeen[txt] then
-                guiSeen[txt]=true
-                if looksPre(txt) then
-                    local pn=norm(txt)
-                    if pn~=currentPre then
-                        currentPre=pn; PreWord.Text=txt:upper()
-                        updatePreInfo(); if curTab==1 then renderMain() end
-                    end
-                elseif looksWord(txt) and #txt>=3 then
-                    local n=norm(txt); local wasNew=not validSet[n]
-                    addValid(n); markUsed(n)
-                    if wasNew then updatePreInfo(); if curTab==1 or curTab==2 then renderMain() end end
-                end
-            end
-        end
-        local ok,ch=pcall(function() return inst:GetChildren() end); if not ok then return end
-        for _,c in ipairs(ch) do pcall(function() walk(c,d+1) end) end
-    end
-    pcall(function() walk(pg,0) end)
-end
-
--- ============================================================
---  ANIMACIÓN ENTRADA
--- ============================================================
-tw(Main,{Size=UDim2.new(0,W0,0,H0),Position=UDim2.new(0.5,-W0/2,0.5,-H0/2)},
-    0.28,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
-
--- ============================================================
---  INICIO
+--  ARRANQUE
 -- ============================================================
 setTab(1)
+buildCmdPanel()
+renderPos()
+
+TW(Main,{Size=UDim2.new(0,W,0,H),Position=UDim2.new(0.5,-W/2,0.5,-H/2)},
+    0.28,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
 
 task.spawn(function()
-    task.wait(1.2)  -- espera que cargue el juego
-
-    -- 1. Hook FireServer (metamethod)
-    local fsOk=hookFireServer()
-
-    -- 2. Hookea todos los remotes existentes
-    hookAll(RS,0); hookAll(game.Workspace,0)
-    pcall(function() hookAll(LP:WaitForChild("PlayerGui",3),0) end)
-
-    -- Observa nuevos remotes
-    pcall(function()
-        RS.DescendantAdded:Connect(function(d)
-            if d.ClassName=="RemoteEvent" or d.ClassName=="RemoteFunction" then
-                task.wait(0.1); hookRemote(d,d:GetFullName())
-            end
-        end)
-    end)
-
-    local hooked=0; for _ in pairs(hookedSet) do hooked=hooked+1 end
-    InfoLbl.Text=tostring(hooked).." remotes · "..(fsOk and "FireServer ✅" or "modo GUI")
-
-    -- 3. Busca RemoteFunction de validación y corre probe
-    task.wait(0.5)
-    local rfCandidates=findValidationRemote()
-
-    if #rfCandidates>0 then
-        -- Intenta el de mayor score primero
-        local found=false
-        for _,c in ipairs(rfCandidates) do
-            ProbeInfo.Text="Probando remote: "..c.name
-            -- Prueba con una palabra conocida para ver si responde
-            local testResult=probeWord(c.ref,"casa")
-            if testResult=="valid" or testResult=="invalid" then
-                -- Este remote responde lógicamente = es el de validación
-                ProbeTag.Text="🟢 Remote: "..c.ref.Name
-                ProbeTag.TextColor3=C.GREEN
-                probeRemote=c.ref; probeMode="function"; found=true
-                task.wait(0.3)
-                runProbe(c.ref,true)
-                break
-            end
-        end
-        if not found then
-            -- Intenta como RemoteEvent
-            ProbeInfo.Text="Buscando por RemoteEvent..."
-            -- busca remotes y prueba el más prometedor
-            local function scanRE(inst,d)
-                if d>5 then return end
-                local ok,ch=pcall(function() return inst:GetChildren() end); if not ok then return end
-                for _,c in ipairs(ch) do
-                    if c.ClassName=="RemoteEvent" and not found then
-                        local name=c.Name:lower()
-                        if name:find("word") or name:find("play") or name:find("valid") or name:find("submit") then
-                            local r=probeWordEvent(c,"casa")
-                            if r=="valid" or r=="invalid" then
-                                probeRemote=c; probeMode="event"; found=true
-                                ProbeTag.Text="🟢 Event: "..c.Name; ProbeTag.TextColor3=C.GREEN
-                                task.wait(0.3); runProbe(c,false)
-                            end
-                        end
-                    end
-                    pcall(function() scanRE(c,d+1) end)
-                end
-            end
-            pcall(function() scanRE(RS,0) end)
-            if not found then
-                ProbeTag.Text="⚠ Sin remote de validación"; ProbeTag.TextColor3=C.ORANGE
-                ProbeInfo.Text="El juego puede validar server-side sin remote público · usando GUI+hooks"
-            end
-        end
-    else
-        ProbeTag.Text="⚠ Sin RemoteFunction"; ProbeTag.TextColor3=C.ORANGE
-        ProbeInfo.Text="Usando captura por GUI e interceptación de red"
-    end
-
-    -- 4. Loop de escaneo GUI
-    local tick=0
-    while Main and Main.Parent do
-        pcall(scanGUI)
-        tick=tick+1
-        if tick>=10 then guiSeen={}; tick=0 end
-        task.wait(1)
-    end
+    loadGameCtx()
+    HGame.Text=(gameInfo.name~="" and gameInfo.name or "Roblox").." · "..gameInfo.players.."p"
+    task.wait(0.4)
+    addMsg("ia",
+        "¡Hola! Soy tu asistente IY 🤖\n\n"..
+        "Juego: "..(gameInfo.name~="" and gameInfo.name or "detectando...").." · "..gameInfo.players.." jugadores\n\n"..
+        "Sin API Key los comandos básicos funcionan igual:\n"..
+        "• \"activa el fly\" / \"vuelo\"\n"..
+        "• \"guarda como camino1\"\n"..
+        "• \"ve a camino1\"\n"..
+        "• \"noclip\" / \"god\" / \"invisible\"\n\n"..
+        "Con API Key (⚙) la IA entiende cualquier frase y ejecuta comandos complejos.",
+        false,false)
 end)
