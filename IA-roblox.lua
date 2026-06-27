@@ -1518,6 +1518,17 @@ end
 -- ==============================================================================
 
 local function CreateLoginScreen(onSuccess)
+    local isMobile = IsOnMobile
+    local panelScale = isMobile and 0.96 or 0.72
+    local panelHeight = isMobile and 470 or 560
+    local titleSize = isMobile and 20 or 26
+    local subtitleSize = isMobile and 10 or 12
+    local logoSize = isMobile and 64 or 78
+    local buttonY = isMobile and 312 or 330
+    local getKeyY = isMobile and 368 or 402
+    local hintY = isMobile and 414 or 452
+    local footerY = panelHeight - 18
+
     local Login = MakeFrame({
         Name                   = "LoginScreen",
         Size                   = UDim2.fromScale(1, 1),
@@ -1530,8 +1541,8 @@ local function CreateLoginScreen(onSuccess)
     -- Panel glass principal
     local Panel = MakeFrame({
         Name                   = "LoginPanel",
-        Size                   = UDim2.new(0.90, 0, 0, 600),
-        Position               = UDim2.new(0.05, 0, 0.5, -300),
+        Size                   = UDim2.new(panelScale, 0, 0, panelHeight),
+        Position               = UDim2.new((1 - panelScale) / 2, 0, 0.5, -panelHeight / 2),
         BackgroundColor3       = C.GLASS_MED,
         BackgroundTransparency = 0.35,
         ZIndex                 = 92,
@@ -1556,7 +1567,7 @@ local function CreateLoginScreen(onSuccess)
         BackgroundTransparency = 1,
         Text = "Q",
         Font = Enum.Font.GothamBold,
-        TextSize = 44,
+        TextSize = isMobile and 38 or 44,
         TextColor3 = C.ACCENT_1,
         ZIndex = 95,
     }, LogoRing)
@@ -1573,7 +1584,7 @@ local function CreateLoginScreen(onSuccess)
         BackgroundTransparency = 1,
         Text = "QUANTUM OS",
         Font = Enum.Font.GothamBold,
-        TextSize = 26,
+        TextSize = titleSize,
         TextColor3 = C.TEXT_WHITE,
         ZIndex = 94,
     }, Panel)
@@ -1584,7 +1595,7 @@ local function CreateLoginScreen(onSuccess)
         BackgroundTransparency = 1,
         Text = "Multi-Agent AI  |  Delta Edition  |  v4.1",
         Font = Enum.Font.GothamSemibold,
-        TextSize = 12,
+        TextSize = subtitleSize,
         TextColor3 = C.ACCENT_1,
         ZIndex = 94,
     }, Panel)
@@ -1592,7 +1603,7 @@ local function CreateLoginScreen(onSuccess)
     -- Badges de agentes
     local BadgeRow = MakeFrame({
         Size = UDim2.new(1, -40, 0, 24),
-        Position = UDim2.new(0, 20, 0, 175),
+        Position = UDim2.new(0, 20, 0, isMobile and 160 or 175),
         BackgroundTransparency = 1,
         ZIndex = 94,
     }, Panel)
@@ -1642,7 +1653,7 @@ local function CreateLoginScreen(onSuccess)
 
     -- TextBox API Key glass
     local KeyBox = MakeBox({
-        Size = UDim2.new(1, -40, 0, 48),
+        Size = UDim2.new(1, -40, 0, isMobile and 44 or 48),
         Position = UDim2.new(0, 20, 0, 244),
         BackgroundColor3 = C.GLASS_DARK,
         BackgroundTransparency = 0.35,
@@ -1665,7 +1676,7 @@ local function CreateLoginScreen(onSuccess)
     -- Status
     local StatusLabel = MakeLabel({
         Size = UDim2.new(1, -40, 0, 22),
-        Position = UDim2.new(0, 20, 0, 300),
+        Position = UDim2.new(0, 20, 0, 296),
         BackgroundTransparency = 1,
         Text = "",
         Font = Enum.Font.Gotham,
@@ -1678,7 +1689,7 @@ local function CreateLoginScreen(onSuccess)
     -- Spinner
     local Spinner = MakeLabel({
         Size = UDim2.new(0, 30, 0, 30),
-        Position = UDim2.new(0.5, -15, 0, 312),
+        Position = UDim2.new(0.5, -15, 0, 304),
         BackgroundTransparency = 1,
         Text = "o",
         Font = Enum.Font.GothamBold,
@@ -1691,7 +1702,7 @@ local function CreateLoginScreen(onSuccess)
     -- Boton VERIFICAR glass
     local LoginBtn = MakeButton({
         Size = UDim2.new(1, -40, 0, 48),
-        Position = UDim2.new(0, 20, 0, 330),
+        Position = UDim2.new(0, 20, 0, buttonY),
         BackgroundColor3 = C.ACCENT_1,
         BackgroundTransparency = 0.15,
         BorderSizePixel = 0,
@@ -1705,16 +1716,16 @@ local function CreateLoginScreen(onSuccess)
     Stroke(1, C.ACCENT_1, 0.2, LoginBtn)
 
     LoginBtn.MouseEnter:Connect(function()
-        Tween(LoginBtn, TI_FAST, {BackgroundTransparency = 0, Size = UDim2.new(1, -30, 0, 48), Position = UDim2.new(0, 15, 0, 330)})
+        Tween(LoginBtn, TI_FAST, {BackgroundTransparency = 0, Size = UDim2.new(1, -30, 0, 48), Position = UDim2.new(0, 15, 0, buttonY)})
     end)
     LoginBtn.MouseLeave:Connect(function()
-        Tween(LoginBtn, TI_FAST, {BackgroundTransparency = 0.15, Size = UDim2.new(1, -40, 0, 48), Position = UDim2.new(0, 20, 0, 330)})
+        Tween(LoginBtn, TI_FAST, {BackgroundTransparency = 0.15, Size = UDim2.new(1, -40, 0, 48), Position = UDim2.new(0, 20, 0, buttonY)})
     end)
 
     -- Separador 2
     MakeFrame({
         Size = UDim2.new(0.7, 0, 0, 1),
-        Position = UDim2.new(0.15, 0, 0, 394),
+        Position = UDim2.new(0.15, 0, 0, getKeyY - 18),
         BackgroundColor3 = C.GLASS_BORDER,
         BackgroundTransparency = 0.5,
         ZIndex = 94,
@@ -1723,7 +1734,7 @@ local function CreateLoginScreen(onSuccess)
     -- Boton Obtener Key
     local GetKeyBtn = MakeButton({
         Size = UDim2.new(1, -40, 0, 40),
-        Position = UDim2.new(0, 20, 0, 402),
+        Position = UDim2.new(0, 20, 0, getKeyY),
         BackgroundColor3 = C.GLASS_LIGHT,
         BackgroundTransparency = 0.5,
         BorderSizePixel = 0,
@@ -1746,7 +1757,7 @@ local function CreateLoginScreen(onSuccess)
     -- Hint
     MakeLabel({
         Size = UDim2.new(1, -40, 0, 14),
-        Position = UDim2.new(0, 20, 0, 452),
+        Position = UDim2.new(0, 20, 0, hintY),
         BackgroundTransparency = 1,
         Text = "[i] Tu key solo se usa para llamadas de IA - No se almacena externamente",
         Font = Enum.Font.Gotham,
@@ -1758,7 +1769,7 @@ local function CreateLoginScreen(onSuccess)
 
     MakeLabel({
         Size = UDim2.new(1, 0, 0, 14),
-        Position = UDim2.new(0, 0, 0, 578),
+        Position = UDim2.new(0, 0, 0, footerY),
         BackgroundTransparency = 1,
         Text = "LXNDXN Quantum OS  |  Delta Edition  |  v4.1  |  IY Engine",
         Font = Enum.Font.Gotham,
@@ -2039,6 +2050,121 @@ local function CreateSliderWidget(parent, label, minV, maxV, defV, suffix, onCha
     return Row
 end
 
+local function RevealMainWindow()
+    if MainWindow then
+        MainWindow.Visible = true
+        local size = MainWindow.Size
+        MainWindow.Position = UDim2.new((1 - size.X.Scale) / 2, 0, (1 - size.Y.Scale) / 2, 0)
+    end
+    if ENV.QOS_OracleFloat then
+        ENV.QOS_OracleFloat.Visible = false
+    end
+end
+
+local function CreateFloatingLauncher()
+    if ENV.QOS_OracleFloat then pcall(function() ENV.QOS_OracleFloat:Destroy() end) end
+    local FloatRoot = MakeFrame({
+        Name = "QuantumFloatLauncher",
+        Size = UDim2.new(0, 80, 0, 80),
+        Position = UDim2.new(1, -92, 1, -112),
+        BackgroundTransparency = 1,
+        ZIndex = 200,
+    }, ScreenGui)
+
+    local MainBubble = MakeButton({
+        Name = "FloatButton",
+        Size = UDim2.new(0, 60, 0, 60),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = C.ACCENT_1,
+        BackgroundTransparency = 0.15,
+        Text = "Q",
+        Font = Enum.Font.GothamBold,
+        TextSize = 24,
+        TextColor3 = C.TEXT_WHITE,
+        ZIndex = 201,
+    }, FloatRoot)
+    Corner(30, MainBubble)
+    Stroke(2, C.GLASS_BORDER, 0.2, MainBubble)
+
+    local MiniPanel = MakeFrame({
+        Name = "FloatMiniPanel",
+        Size = UDim2.new(0, 240, 0, 44),
+        Position = UDim2.new(0, -250, 0, 8),
+        BackgroundTransparency = 1,
+        ZIndex = 199,
+    }, FloatRoot)
+
+    local floatOptions = {
+        {icon = "*", color = C.ACCENT_1, label = "Oracle", action = function()
+            RevealMainWindow()
+            if SidebarButtons["QUANTUM_ORACLE"] then SidebarButtons["QUANTUM_ORACLE"]:MouseButton1Click() end
+        end},
+        {icon = ">", color = C.TEXT_WHITE, label = "Comandos", action = function()
+            RevealMainWindow()
+            if SidebarButtons["CMD_BAR"] then SidebarButtons["CMD_BAR"]:MouseButton1Click() end
+        end},
+        {icon = "S", color = C.ACCENT_2, label = "Ajustes", action = function()
+            RevealMainWindow()
+            if SidebarButtons["SYSTEM_SETTINGS"] then SidebarButtons["SYSTEM_SETTINGS"]:MouseButton1Click() end
+        end},
+        {icon = "#", color = C.TEXT_GREEN, label = "Inicio", action = function()
+            RevealMainWindow()
+            if SidebarButtons["START"] then SidebarButtons["START"]:MouseButton1Click() end
+        end},
+        {icon = "X", color = C.TEXT_RED, label = "Cerrar", action = function()
+            if MainWindow then MainWindow.Visible = false end
+            if ENV.QOS_OracleFloat then ENV.QOS_OracleFloat.Visible = true end
+        end},
+    }
+
+    local miniButtons = {}
+    for index, opt in ipairs(floatOptions) do
+        local btn = MakeButton({
+            Name = "FloatOption" .. index,
+            Size = UDim2.new(0, 44, 0, 44),
+            Position = UDim2.new(0, (index - 1) * 52, 0, 0),
+            BackgroundColor3 = opt.color,
+            BackgroundTransparency = 0.15,
+            Text = opt.icon,
+            Font = Enum.Font.GothamBold,
+            TextSize = 20,
+            TextColor3 = C.TEXT_WHITE,
+            Visible = false,
+            ZIndex = 200,
+        }, MiniPanel)
+        Corner(22, btn)
+        Stroke(1, C.GLASS_BORDER, 0.2, btn)
+        btn.MouseButton1Click:Connect(function()
+            opt.action()
+            for _, b in ipairs(miniButtons) do
+                b.Visible = false
+            end
+        end)
+        miniButtons[#miniButtons + 1] = btn
+    end
+
+    local expanded = false
+    MainBubble.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        for i, btn in ipairs(miniButtons) do
+            btn.Visible = expanded
+            Tween(btn, TI_FAST, {
+                Position = expanded and UDim2.new(0, (i - 1) * 52, 0, 0) or UDim2.new(0, 0, 0, 0),
+                BackgroundTransparency = expanded and 0.15 or 1,
+            })
+        end
+    end)
+    MainBubble.MouseEnter:Connect(function()
+        Tween(MainBubble, TI_FAST, {BackgroundTransparency = 0})
+    end)
+    MainBubble.MouseLeave:Connect(function()
+        Tween(MainBubble, TI_FAST, {BackgroundTransparency = 0.15})
+    end)
+
+    FloatRoot.Visible = false
+    ENV.QOS_OracleFloat = FloatRoot
+end
+
 -- ==============================================================================
 -- SECCION 12 -- VENTANA PRINCIPAL + SIDEBAR
 -- ==============================================================================
@@ -2047,11 +2173,13 @@ local function CreateMainWindow()
     local isMobile = IsOnMobile
     local headerH = isMobile and 68 or 52
     local sidebarW = isMobile and 74 or 198
+    local baseWidth = isMobile and 0.86 or 0.69
+    local baseHeight = isMobile and 0.70 or 0.62
 
     MainWindow = MakeFrame({
         Name = "MainWindow",
-        Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(baseWidth, 0, baseHeight, 0),
+        Position = UDim2.new((1 - baseWidth) / 2, 0, (1 - baseHeight) / 2, 0),
         BackgroundTransparency = 1,
         ZIndex = 10,
     }, ScreenGui)
@@ -2164,9 +2292,8 @@ local function CreateMainWindow()
     end)
 
     CloseBtn.MouseButton1Click:Connect(function()
-        Tween(MainWindow, TI_MED, {Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0.5, 0, 0.5, 0)})
-        task.wait(0.35)
-        pcall(function() ScreenGui:Destroy() end)
+        if MainWindow then MainWindow.Visible = false end
+        if ENV.QOS_OracleFloat then ENV.QOS_OracleFloat.Visible = true end
     end)
 
     -- SIDEBAR glass
@@ -2343,6 +2470,45 @@ local function CreateMainWindow()
         BackgroundTransparency = GT.PANEL,
         ZIndex = 11,
     }, MainWindow)
+
+    local ResizeBar = MakeFrame({
+        Name = "ResizeBar",
+        Size = UDim2.new(1, 0, 0, 8),
+        Position = UDim2.new(0, 0, 1, -8),
+        BackgroundColor3 = C.GLASS_LIGHT,
+        BackgroundTransparency = 0.75,
+        ZIndex = 14,
+    }, MainWindow)
+    Corner(4, ResizeBar)
+    local resizing = false
+    local startPos
+    local startSize
+    local function UpdateResize(input)
+        if not resizing or not workspace.CurrentCamera then return end
+        local delta = input.Position - startPos
+        local viewport = workspace.CurrentCamera.ViewportSize
+        local newW = math.clamp(startSize.X.Scale + delta.X / viewport.X, isMobile and 0.72 or 0.65, 1)
+        local newH = math.clamp(startSize.Y.Scale + delta.Y / viewport.Y, isMobile and 0.58 or 0.55, 1)
+        MainWindow.Size = UDim2.new(newW, 0, newH, 0)
+        MainWindow.Position = UDim2.new((1 - newW) / 2, 0, (1 - newH) / 2, 0)
+    end
+    ResizeBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            resizing = true
+            startPos = input.Position
+            startSize = MainWindow.Size
+        end
+    end)
+    TrackConn(UserInputService.InputChanged:Connect(function(input)
+        if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            UpdateResize(input)
+        end
+    end))
+    TrackConn(UserInputService.InputEnded:Connect(function(input)
+        if resizing and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            resizing = false
+        end
+    end))
 
     -- Animacion de entrada
     Tween(MainWindow, TI_BOUNCE, {
@@ -3425,6 +3591,7 @@ end
 
 local function StartMainOS()
     CreateMainWindow()
+    CreateFloatingLauncher()
     SetupKeybinds()
     SetupChatListener()
 
