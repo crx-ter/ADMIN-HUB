@@ -1174,8 +1174,40 @@ AI.SYSTEM_PROMPTS = {
     CREATIVE_AGENT = "Eres un asistente creativo para Roblox. Responde en espanol con entusiasmo y creatividad, maximo 110 palabras.",
     FAST_AGENT     = "Eres el asistente rapido de Quantum OS para Roblox '" .. GAME_NAME .. "'. Responde breve y amigable en espanol, maximo 70 palabras.",
 }
+AI.FREE_MODELS = {
+    "openai/gpt-oss-20b:free",
+    "meta-llama/llama-3.2-3b-instruct:free",
+    "qwen/qwen3-coder:free",
+    "deepseek/deepseek-v4-flash:free",
+    "openai/gpt-oss-120b:free",
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "poolside/laguna-m.1:free",
+    "z-ai/glm-4.5-air:free",
+    "minimax/minimax-m2.5:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "arcee-ai/trinity-large-thinking:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+    "liquid/lfm-2.5-1.2b-thinking:free",
+    "liquid/lfm-2.5-1.2b-instruct:free",
+    "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+    "nousresearch/hermes-3-llama-3.1-405b:free",
+}
 
-local function OR_Call(model, sysPrompt, userMsg, maxTok)
+local function ExtractResponseText(content)
+    if type(content) == "string" then return content end
+    if type(content) == "table" then
+        if type(content.text) == "string" then return content.text end
+        if type(content[1]) == "string" then return table.concat(content, "\n") end
+        if type(content[1]) == "table" and type(content[1].text) == "string" then return content[1].text end
+    end
+    return nil
+end
+
+local function OR_Call(model, sysPrompt, userMsg, maxTok, modelPool)
     maxTok = maxTok or 300
     local key = ENV.QOS_OpenRouterKey
     if not key or key == "" then return nil, "Sin API Key" end
@@ -1183,37 +1215,70 @@ local function OR_Call(model, sysPrompt, userMsg, maxTok)
     local reqFn = httprequest_fn or request or http_request
     if not reqFn then return nil, "Sin HttpRequest en executor" end
 
-    local ok, result = pcall(function()
-        local body = HttpService:JSONEncode({
-            model      = model,
-            max_tokens = maxTok,
-            messages   = {
-                {role = "system", content = sysPrompt},
-                {role = "user",   content = userMsg},
-            },
-        })
-        local resp = reqFn({
-            Url    = "https://openrouter.ai/api/v1/chat/completions",
-            Method = "POST",
-            Headers = {
-                ["Authorization"] = "Bearer " .. key,
-                ["Content-Type"]  = "application/json",
-                ["HTTP-Referer"]  = "https://quantumos-delta.rblx",
-                ["X-Title"]       = "Quantum OS v4.1",
-            },
-            Body = body,
-        })
-        if not resp then return nil, "Sin respuesta" end
-        if resp.StatusCode ~= 200 then
-            return nil, "HTTP " .. tostring(resp.StatusCode)
+    local candidates = {}
+    if type(modelPool) == "table" and #modelPool > 0 then
+        candidates = modelPool
+    else
+        candidates = {model}
+    end
+
+    local lastErr = "Sin respuesta"
+    for _, candidateModel in ipairs(candidates) do
+        local ok, result, err = pcall(function()
+            local body = HttpService:JSONEncode({
+                model      = candidateModel,
+                max_tokens = maxTok,
+                stream     = false,
+                messages   = {
+                    {role = "system", content = sysPrompt},
+                    {role = "user",   content = userMsg},
+                },
+            })
+            local resp = reqFn({
+                Url    = "https://openrouter.ai/api/v1/chat/completions",
+                Method = "POST",
+                Headers = {
+                    ["Authorization"] = "Bearer " .. key,
+                    ["Content-Type"]  = "application/json",
+                    ["HTTP-Referer"]  = "https://quantumos-delta.rblx",
+                    ["X-Title"]       = "Quantum OS v4.1",
+                },
+                Body = body,
+            })
+            if not resp then return nil, "Sin respuesta" end
+            if resp.StatusCode ~= 200 then
+                return nil, "HTTP " .. tostring(resp.StatusCode)
+            end
+            local data = HttpService:JSONDecode(resp.Body)
+            if data and data.choices and data.choices[1] then
+                local raw = data.choices[1].message and data.choices[1].message.content
+                local text = ExtractResponseText(raw)
+                if text ~= nil then
+                    return text, nil
+                end
+                return nil, "Sin contenido"
+            end
+            if data and data.error then
+                return nil, tostring(data.error.message or data.error)
+            end
+            return nil, "Sin contenido"
+        end)
+
+        if ok and type(result) == "string" then
+            local cleaned = result:gsub("^%s+", ""):gsub("%s+$", "")
+            if cleaned ~= "" then
+                return cleaned, nil
+            end
         end
-        local data = HttpService:JSONDecode(resp.Body)
-        if data and data.choices and data.choices[1] then
-            return data.choices[1].message and data.choices[1].message.content
+
+        if err then
+            lastErr = tostring(err)
+        elseif result then
+            lastErr = tostring(result)
         end
-        return nil, "Sin contenido"
-    end)
-    if ok then return result, nil else return nil, tostring(result) end
+    end
+
+    return nil, lastErr
 end
 
 local function VerifyAPIKey(key, callback)
@@ -1224,10 +1289,12 @@ local function VerifyAPIKey(key, callback)
             AI.AGENTS.FAST_AGENT,
             "Eres un verificador de conexion. Responde SOLO la palabra: OK",
             "Verificacion de conexion. Responde: OK",
-            15
+            20,
+            AI.FREE_MODELS
         )
-        if resp and #resp > 0 then
-            callback(true, resp)
+        local normalized = tostring(resp or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if normalized ~= "" and normalized:lower():find("ok", 1, true) then
+            callback(true, normalized)
         else
             ENV.QOS_OpenRouterKey = old
             callback(false, err or "Sin respuesta del servidor")
@@ -1277,9 +1344,11 @@ local function CreateBootScreen()
     Gradient(Color3.fromRGB(6, 12, 20), Color3.fromRGB(14, 24, 40), 135, Boot)
 
     -- Panel glass central
+    local panelW = IsOnMobile and 320 or 360
+    local panelH = IsOnMobile and 440 or 420
     local Center = MakeFrame({
-        Size                   = UDim2.new(0, 360, 0, 420),
-        Position               = UDim2.new(0.5, -180, 0.5, -210),
+        Size                   = UDim2.new(0, panelW, 0, panelH),
+        Position               = UDim2.new(0.5, -panelW / 2, 0.5, -panelH / 2),
         BackgroundColor3       = C.GLASS_MED,
         BackgroundTransparency = 0.40,
         ZIndex                 = 101,
@@ -1796,31 +1865,32 @@ local function SetActiveTab(name)
 end
 
 local function SectionHeader(parent, title, subtitle)
+    local compact = IsOnMobile
     local H = MakeFrame({
-        Size             = UDim2.new(1, 0, 0, 62),
+        Size             = UDim2.new(1, 0, 0, compact and 54 or 62),
         BackgroundColor3 = C.GLASS_MED,
         BackgroundTransparency = 0.45,
         ZIndex           = 20,
     }, parent)
     Stroke(1, C.GLASS_BORDER, 0.4, H)
     MakeLabel({
-        Size = UDim2.new(1, -20, 0, 26),
-        Position = UDim2.new(0, 14, 0, 8),
+        Size = UDim2.new(1, -20, 0, compact and 20 or 26),
+        Position = UDim2.new(0, 14, 0, compact and 6 or 8),
         BackgroundTransparency = 1,
         Text = title,
         Font = Enum.Font.GothamBold,
-        TextSize = 15,
+        TextSize = compact and 13 or 15,
         TextColor3 = C.TEXT_WHITE,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 21,
     }, H)
     MakeLabel({
-        Size = UDim2.new(1, -20, 0, 18),
-        Position = UDim2.new(0, 14, 0, 36),
+        Size = UDim2.new(1, -20, 0, compact and 14 or 18),
+        Position = UDim2.new(0, 14, 0, compact and 28 or 36),
         BackgroundTransparency = 1,
         Text = subtitle,
         Font = Enum.Font.Gotham,
-        TextSize = 11,
+        TextSize = compact and 9 or 11,
         TextColor3 = C.TEXT_MUTED,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 21,
@@ -1974,6 +2044,10 @@ end
 -- ==============================================================================
 
 local function CreateMainWindow()
+    local isMobile = IsOnMobile
+    local headerH = isMobile and 68 or 52
+    local sidebarW = isMobile and 74 or 198
+
     MainWindow = MakeFrame({
         Name = "MainWindow",
         Size = UDim2.new(0, 0, 0, 0),
@@ -1985,7 +2059,7 @@ local function CreateMainWindow()
     -- HEADER glass
     local Header = MakeFrame({
         Name = "Header",
-        Size = UDim2.new(1, 0, 0, 52),
+        Size = UDim2.new(1, 0, 0, headerH),
         BackgroundColor3 = C.HEADER_BG,
         BackgroundTransparency = GT.HEADER,
         ZIndex = 12,
@@ -1995,13 +2069,13 @@ local function CreateMainWindow()
 
     -- Logo Q en header
     local HLogo = MakeLabel({
-        Size = UDim2.new(0, 34, 0, 34),
-        Position = UDim2.new(0, 12, 0.5, -17),
+        Size = UDim2.new(0, isMobile and 30 or 34, 0, isMobile and 30 or 34),
+        Position = UDim2.new(0, 12, 0.5, -(isMobile and 15 or 17)),
         BackgroundColor3 = C.GLASS_LIGHT,
         BackgroundTransparency = 0.5,
         Text = "Q",
         Font = Enum.Font.GothamBold,
-        TextSize = 26,
+        TextSize = isMobile and 22 or 26,
         TextColor3 = C.ACCENT_1,
         ZIndex = 13,
     }, Header)
@@ -2038,13 +2112,13 @@ local function CreateMainWindow()
 
     -- Badge del juego
     local GameBadge = MakeLabel({
-        Size = UDim2.new(0, 200, 0, 26),
-        Position = UDim2.new(0.5, -100, 0.5, -13),
+        Size = UDim2.new(0, isMobile and 140 or 200, 0, 26),
+        Position = UDim2.new(0.5, isMobile and -70 or -100, 0.5, -13),
         BackgroundColor3 = C.GLASS_LIGHT,
         BackgroundTransparency = 0.50,
-        Text = GAME_NAME:sub(1, 20),
+        Text = GAME_NAME:sub(1, isMobile and 14 or 20),
         Font = Enum.Font.Gotham,
-        TextSize = 11,
+        TextSize = isMobile and 10 or 11,
         TextColor3 = C.TEXT_SOFT,
         ZIndex = 13,
     }, Header)
@@ -2053,8 +2127,8 @@ local function CreateMainWindow()
 
     -- Botones de sistema
     local SysF = MakeFrame({
-        Size = UDim2.new(0, 80, 0, 36),
-        Position = UDim2.new(1, -90, 0.5, -18),
+        Size = UDim2.new(0, isMobile and 56 or 80, 0, 36),
+        Position = UDim2.new(1, isMobile and -64 or -90, 0.5, -18),
         BackgroundTransparency = 1,
         ZIndex = 13,
     }, Header)
@@ -2098,8 +2172,8 @@ local function CreateMainWindow()
     -- SIDEBAR glass
     Sidebar = MakeFrame({
         Name = "Sidebar",
-        Size = UDim2.new(0, 198, 1, -52),
-        Position = UDim2.new(0, 0, 0, 52),
+        Size = UDim2.new(0, sidebarW, 1, -headerH),
+        Position = UDim2.new(0, 0, 0, headerH),
         BackgroundColor3 = C.SIDEBAR_BG,
         BackgroundTransparency = GT.SIDEBAR,
         ZIndex = 11,
@@ -2108,8 +2182,8 @@ local function CreateMainWindow()
 
     -- Perfil de usuario
     local SbP = MakeFrame({
-        Size = UDim2.new(1, -16, 0, 68),
-        Position = UDim2.new(0, 8, 0, 8),
+        Size = UDim2.new(1, -12, 0, isMobile and 56 or 68),
+        Position = UDim2.new(0, 6, 0, 8),
         BackgroundColor3 = C.GLASS_LIGHT,
         BackgroundTransparency = 0.45,
         ZIndex = 12,
@@ -2118,13 +2192,13 @@ local function CreateMainWindow()
     Stroke(1, C.ACCENT_1, 0.5, SbP)
 
     local Av = MakeLabel({
-        Size = UDim2.new(0, 42, 0, 42),
-        Position = UDim2.new(0, 10, 0.5, -21),
+        Size = UDim2.new(0, isMobile and 34 or 42, 0, isMobile and 34 or 42),
+        Position = UDim2.new(0, isMobile and 10 or 10, 0.5, -(isMobile and 17 or 21)),
         BackgroundColor3 = C.GLASS_ULTRA,
         BackgroundTransparency = 0.35,
-        Text = string.upper(string.sub(DISPLAY_NAME, 1, 2)),
+        Text = string.upper(string.sub(DISPLAY_NAME, 1, isMobile and 1 or 2)),
         Font = Enum.Font.GothamBold,
-        TextSize = 16,
+        TextSize = isMobile and 14 or 16,
         TextColor3 = C.ACCENT_1,
         ZIndex = 13,
     }, SbP)
@@ -2135,7 +2209,7 @@ local function CreateMainWindow()
         Size = UDim2.new(1, -60, 0, 18),
         Position = UDim2.new(0, 58, 0, 10),
         BackgroundTransparency = 1,
-        Text = DISPLAY_NAME,
+        Text = isMobile and string.sub(DISPLAY_NAME, 1, 8) or DISPLAY_NAME,
         Font = Enum.Font.GothamBold,
         TextSize = 12,
         TextColor3 = C.TEXT_WHITE,
@@ -2147,7 +2221,7 @@ local function CreateMainWindow()
         Size = UDim2.new(1, -60, 0, 13),
         Position = UDim2.new(0, 58, 0, 30),
         BackgroundTransparency = 1,
-        Text = "@" .. USERNAME,
+        Text = isMobile and "AI" or "@" .. USERNAME,
         Font = Enum.Font.Gotham,
         TextSize = 10,
         TextColor3 = C.ACCENT_1,
@@ -2155,11 +2229,11 @@ local function CreateMainWindow()
         ZIndex = 13,
     }, SbP)
     local OnB = MakeLabel({
-        Size = UDim2.new(0, 64, 0, 12),
-        Position = UDim2.new(0, 58, 0, 46),
+        Size = UDim2.new(0, isMobile and 54 or 64, 0, 12),
+        Position = UDim2.new(0, 58, 0, isMobile and 44 or 46),
         BackgroundColor3 = C.GLASS_LIGHT,
         BackgroundTransparency = 0.5,
-        Text = "* AI Online",
+        Text = isMobile and "* online" or "* AI Online",
         Font = Enum.Font.Gotham,
         TextSize = 9,
         TextColor3 = C.TEXT_GREEN,
@@ -2169,8 +2243,8 @@ local function CreateMainWindow()
 
     -- Tabs Sidebar
     local SbScroll = MakeScroll({
-        Size = UDim2.new(1, 0, 1, -88),
-        Position = UDim2.new(0, 0, 0, 86),
+        Size = UDim2.new(1, 0, 1, isMobile and -72 or -88),
+        Position = UDim2.new(0, 0, 0, isMobile and 70 or 86),
         BackgroundTransparency = 1,
         ScrollBarThickness = 0,
         ZIndex = 12,
@@ -2199,7 +2273,7 @@ local function CreateMainWindow()
     for _, tab in ipairs(TABS) do
         local Btn = MakeButton({
             Name = tab.name,
-            Size = UDim2.new(1, -12, 0, 38),
+            Size = UDim2.new(1, isMobile and -8 or -12, 0, isMobile and 34 or 38),
             BackgroundColor3 = C.GLASS_DARK,
             BackgroundTransparency = 1,
             Text = "",
@@ -2220,26 +2294,28 @@ local function CreateMainWindow()
         Corner(2, Ind)
 
         MakeLabel({
-            Size = UDim2.new(0, 22, 1, 0),
-            Position = UDim2.new(0, 8, 0, 0),
+            Size = UDim2.new(0, isMobile and 18 or 22, 1, 0),
+            Position = UDim2.new(0, isMobile and 8 or 8, 0, 0),
             BackgroundTransparency = 1,
             Text = tab.icon,
             Font = Enum.Font.GothamBold,
-            TextSize = 13,
+            TextSize = isMobile and 12 or 13,
             TextColor3 = C.TEXT_MUTED,
             ZIndex = 14,
         }, Btn)
-        MakeLabel({
-            Size = UDim2.new(1, -38, 1, 0),
-            Position = UDim2.new(0, 34, 0, 0),
-            BackgroundTransparency = 1,
-            Text = tab.label,
-            Font = Enum.Font.GothamSemibold,
-            TextSize = 11,
-            TextColor3 = C.TEXT_MUTED,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 14,
-        }, Btn)
+        if not isMobile then
+            MakeLabel({
+                Size = UDim2.new(1, -38, 1, 0),
+                Position = UDim2.new(0, 34, 0, 0),
+                BackgroundTransparency = 1,
+                Text = tab.label,
+                Font = Enum.Font.GothamSemibold,
+                TextSize = 11,
+                TextColor3 = C.TEXT_MUTED,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 14,
+            }, Btn)
+        end
 
         SidebarButtons[tab.name] = Btn
         Btn.MouseButton1Click:Connect(function()
@@ -2261,8 +2337,8 @@ local function CreateMainWindow()
     -- CONTENT AREA glass
     ContentArea = MakeFrame({
         Name = "ContentArea",
-        Size = UDim2.new(1, -198, 1, -52),
-        Position = UDim2.new(0, 198, 0, 52),
+        Size = UDim2.new(1, -sidebarW, 1, -headerH),
+        Position = UDim2.new(0, sidebarW, 0, headerH),
         BackgroundColor3 = C.CONTENT_BG,
         BackgroundTransparency = GT.PANEL,
         ZIndex = 11,
