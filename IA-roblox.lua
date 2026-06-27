@@ -1,1249 +1,3231 @@
--- ============================================================
---  SERVICIOS
--- ============================================================
+-- ==============================================================================
+-- SECCION 1 -- ENVIRONMENT BOOTSTRAP (compatible con Delta)
+-- ==============================================================================
 
-local Players  = game:GetService("Players")
-local TweenSvc = game:GetService("TweenService")
-local UIS      = game:GetService("UserInputService")
-local RS       = game:GetService("ReplicatedStorage")
-local RunSvc   = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
-local LP       = Players.LocalPlayer
+-- Helpers de compatibilidad estilo Infinite Yield
+local function missing(t, f, fallback)
+    if type(f) == t then return f end
+    return fallback
+end
 
--- ============================================================
---  HTTP — Delta/KRNL/Synapse/Fluxus
--- ============================================================
-local function httpReq(opts)
-    for _, fn in ipairs({
-        function() return type(request)=="function" and request(opts) end,
-        function() return syn and syn.request and syn.request(opts) end,
-        function() return http and http.request and http.request(opts) end,
-        function() return fluxus and fluxus.request and fluxus.request(opts) end,
-        function() return type(http_request)=="function" and http_request(opts) end,
-    }) do
-        local ok,r = pcall(fn); if ok and r and r.Body then return r end
+-- Funciones de executor con fallbacks seguros
+local cloneref_fn    = missing("function", cloneref, function(...) return ... end)
+local everyClipboard = missing("function", setclipboard or toclipboard or set_clipboard)
+local httprequest_fn = missing("function", request or http_request or (syn and syn.request))
+local queueteleport  = missing("function", queue_on_teleport or (syn and syn.queue_on_teleport))
+local sethidden_fn   = missing("function", sethiddenproperty or set_hidden_property)
+local gethidden_fn   = missing("function", gethiddenproperty or get_hidden_property)
+
+local ENV = getgenv and getgenv() or _G
+if not ENV then ENV = {} end
+
+-- Limpieza de instancias anteriores
+if ENV.QOS_Instance    then pcall(function() ENV.QOS_Instance:Destroy()    end) end
+if ENV.QOS_OracleFloat then pcall(function() ENV.QOS_OracleFloat:Destroy() end) end
+if ENV.QOS_Connections then
+    for _, c in pairs(ENV.QOS_Connections) do pcall(function() c:Disconnect() end) end
+end
+
+ENV.QOS_Connections   = {}
+ENV.QOS_ActiveTab     = nil
+ENV.QOS_Unlocked      = false
+ENV.QOS_OpenRouterKey = nil
+ENV.QOS_DeviceMode    = nil
+ENV.QOS_CommandHistory = {}
+ENV.QOS_Aliases        = {}
+ENV.QOS_Toggles        = {}
+ENV.QOS_Prefix         = ";"
+
+-- ==============================================================================
+-- SECCION 2 -- SERVICIOS Y REFERENCIAS
+-- ==============================================================================
+
+-- Cache de servicios estilo Infinite Yield
+local Services = setmetatable({}, {
+    __index = function(self, name)
+        local ok, svc = pcall(function()
+            return cloneref_fn(game:GetService(name))
+        end)
+        if ok then rawset(self, name, svc); return svc
+        else error("Invalid Service: " .. tostring(name)) end
     end
-    if opts.Method=="GET" then
-        local ok,b=pcall(function() return game:GetService("HttpService"):GetAsync(opts.Url,true) end)
-        if ok and b then return {Body=b,StatusCode=200} end
+})
+
+local Players          = Services.Players
+local TweenService     = Services.TweenService
+local RunService       = Services.RunService
+local UserInputService = Services.UserInputService
+local HttpService      = Services.HttpService
+local MarketplaceService = Services.MarketplaceService
+local TeleportService  = Services.TeleportService
+local SoundService     = Services.SoundService
+local Lighting         = Services.Lighting
+local StarterGui       = Services.StarterGui
+
+local LocalPlayer  = Players.LocalPlayer
+local PlayerGui    = cloneref_fn(LocalPlayer:WaitForChild("PlayerGui"))
+local IYMouse      = cloneref_fn(LocalPlayer:GetMouse())
+local PlaceId      = game.PlaceId
+local JobId        = game.JobId
+
+-- Deteccion de mobile al estilo Infinite Yield
+local IsOnMobile = false
+xpcall(function()
+    IsOnMobile = table.find({Enum.Platform.Android, Enum.Platform.IOS}, UserInputService:GetPlatform()) ~= nil
+end, function()
+    IsOnMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end)
+
+local DISPLAY_NAME = LocalPlayer.DisplayName
+local USERNAME     = LocalPlayer.Name
+local GAME_NAME    = game.Name or "Roblox"
+
+-- Deteccion del nombre del juego con MarketplaceService
+pcall(function()
+    local info = MarketplaceService:GetProductInfo(PlaceId)
+    if info and info.Name then GAME_NAME = info.Name end
+end)
+
+-- ==============================================================================
+-- SECCION 3 -- PALETA DE COLORES Y TWEEN INFO
+-- ==============================================================================
+
+local C = {
+    PURPLE_NEON = Color3.fromRGB(160, 32, 240),
+    PURPLE_DIM  = Color3.fromRGB( 90, 15, 140),
+    PURPLE_GLOW = Color3.fromRGB(200,100, 255),
+    CYAN_NEON   = Color3.fromRGB(  0, 220, 255),
+    CYAN_DIM    = Color3.fromRGB(  0, 140, 180),
+    PINK_NEON   = Color3.fromRGB(255,  60, 160),
+    GOLD_NEON   = Color3.fromRGB(255, 195,  50),
+    GREEN_NEON  = Color3.fromRGB(  0, 220, 130),
+
+    BG_DEEP     = Color3.fromRGB(  4,   4,  14),
+    BG_PANEL    = Color3.fromRGB( 10,  10,  26),
+    BG_CARD     = Color3.fromRGB( 16,  16,  40),
+    BG_SIDEBAR  = Color3.fromRGB(  6,   6,  18),
+    BG_GLASS    = Color3.fromRGB( 22,  18,  48),
+    BG_HEADER   = Color3.fromRGB( 12,   8,  30),
+
+    TEXT_WHITE  = Color3.fromRGB(230, 230, 255),
+    TEXT_SOFT   = Color3.fromRGB(160, 155, 200),
+    TEXT_MUTED  = Color3.fromRGB( 90,  85, 130),
+    TEXT_GREEN  = Color3.fromRGB(  0, 220, 130),
+    TEXT_RED    = Color3.fromRGB(255,  70,  70),
+    TEXT_YELLOW = Color3.fromRGB(255, 210,  60),
+
+    BORDER        = Color3.fromRGB( 60,  45, 110),
+    BORDER_BRIGHT = Color3.fromRGB(120,  60, 200),
+    TOGGLE_ON     = Color3.fromRGB(  0, 190, 120),
+    TOGGLE_OFF    = Color3.fromRGB( 50,  45,  75),
+    SLIDER_BG     = Color3.fromRGB( 28,  22,  60),
+    SLIDER_FILL   = Color3.fromRGB(160,  32, 240),
+    CMDBAR_BG     = Color3.fromRGB(  8,   6,  22),
+}
+
+local TI_FAST   = TweenInfo.new(0.15, Enum.EasingStyle.Quad,  Enum.EasingDirection.Out)
+local TI_MED    = TweenInfo.new(0.30, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+local TI_SLOW   = TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local TI_BOUNCE = TweenInfo.new(0.45, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+local TI_SINE   = TweenInfo.new(1.20, Enum.EasingStyle.Sine,  Enum.EasingDirection.InOut)
+local TI_SPIN   = TweenInfo.new(0.8,  Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
+
+-- ==============================================================================
+-- SECCION 4 -- UTILIDADES UI
+-- ==============================================================================
+
+local function Make(class, props, parent)
+    local ok, inst = pcall(Instance.new, class)
+    if not ok then return nil end
+    for k, v in pairs(props or {}) do pcall(function() inst[k] = v end) end
+    if parent then inst.Parent = parent end
+    return inst
+end
+
+local function MakeFrame(p,par)   return Make("Frame",          p, par) end
+local function MakeLabel(p,par)   return Make("TextLabel",      p, par) end
+local function MakeButton(p,par)  return Make("TextButton",     p, par) end
+local function MakeBox(p,par)     return Make("TextBox",        p, par) end
+local function MakeScroll(p,par)  return Make("ScrollingFrame", p, par) end
+local function MakeImage(p,par)   return Make("ImageLabel",     p, par) end
+
+local function Tween(inst, info, props)
+    if not inst or not inst.Parent then return end
+    TweenService:Create(inst, info, props):Play()
+end
+
+local function Corner(r, parent)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r)
+    c.Parent = parent
+    return c
+end
+
+local function Stroke(thickness, color, parent)
+    local s = Instance.new("UIStroke")
+    s.Thickness = thickness
+    s.Color = color or C.BORDER
+    s.Parent = parent
+    return s
+end
+
+local function Padding(t, r, b, l, parent)
+    local p = Instance.new("UIPadding")
+    p.PaddingTop    = UDim.new(0, t or 0)
+    p.PaddingRight  = UDim.new(0, r or 0)
+    p.PaddingBottom = UDim.new(0, b or 0)
+    p.PaddingLeft   = UDim.new(0, l or 0)
+    p.Parent = parent
+    return p
+end
+
+local function ListLayout(props, parent)
+    local l = Instance.new("UIListLayout")
+    for k, v in pairs(props or {}) do pcall(function() l[k] = v end) end
+    l.Parent = parent
+    return l
+end
+
+local function GridLayout(props, parent)
+    local g = Instance.new("UIGridLayout")
+    for k, v in pairs(props or {}) do pcall(function() g[k] = v end) end
+    g.Parent = parent
+    return g
+end
+
+local function TrackConn(conn)
+    table.insert(ENV.QOS_Connections, conn)
+    return conn
+end
+
+local function Gradient(c0, c1, rot, parent)
+    local g = Instance.new("UIGradient")
+    g.Color    = ColorSequence.new(c0, c1)
+    g.Rotation = rot or 90
+    g.Parent   = parent
+    return g
+end
+
+local function HoverGlow(btn, normalColor, hoverColor)
+    btn.MouseEnter:Connect(function()  Tween(btn, TI_FAST, {BackgroundColor3 = hoverColor}) end)
+    btn.MouseLeave:Connect(function()  Tween(btn, TI_FAST, {BackgroundColor3 = normalColor}) end)
+end
+
+local function PulseStroke(stroke, c1, c2)
+    task.spawn(function()
+        local dir = true
+        while stroke and stroke.Parent do
+            Tween(stroke, TI_SINE, {Color = dir and c2 or c1})
+            task.wait(1.2)
+            dir = not dir
+        end
+    end)
+end
+
+local function Typewriter(label, text, speed)
+    speed = speed or 0.035
+    label.Text = ""
+    task.spawn(function()
+        for i = 1, #text do
+            if not label or not label.Parent then break end
+            label.Text = string.sub(text, 1, i)
+            task.wait(speed)
+        end
+    end)
+end
+
+local function AnimateSize(frame, target, info)
+    Tween(frame, info or TI_BOUNCE, {Size = target})
+end
+
+local function SineFloat(frame, amplitude, period)
+    task.spawn(function()
+        local t = 0
+        while frame and frame.Parent do
+            t = t + task.wait(0.016)
+            local offset = math.sin(t * (2 * math.pi / period)) * amplitude
+            pcall(function()
+                frame.Position = UDim2.new(
+                    frame.Position.X.Scale, frame.Position.X.Offset,
+                    frame.Position.Y.Scale, frame.Position.Y.Offset + offset
+                )
+            end)
+        end
+    end)
+end
+
+-- Particulas estilo QOS
+local function SpawnParticles(parent, count, zIndex)
+    count = count or 12
+    for i = 1, count do
+        local sz = math.random(2, 5)
+        local colors = {C.PURPLE_NEON, C.CYAN_NEON, C.PINK_NEON, C.PURPLE_GLOW}
+        local px = MakeFrame({
+            Size = UDim2.new(0, sz, 0, sz),
+            Position = UDim2.new(math.random() * 0.96, 0, math.random() * 0.96, 0),
+            BackgroundColor3 = colors[i % #colors + 1],
+            BackgroundTransparency = 0.4,
+            ZIndex = zIndex or 3,
+        }, parent)
+        if px then
+            Corner(sz, px)
+            task.spawn(function()
+                while px and px.Parent do
+                    local newX = math.random() * 0.96
+                    local newY = math.random() * 0.96
+                    local newT = 0.1 + math.random() * 0.75
+                    Tween(px, TweenInfo.new(3 + math.random() * 4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                        Position = UDim2.new(newX, 0, newY, 0),
+                        BackgroundTransparency = newT,
+                    })
+                    task.wait(3 + math.random() * 4)
+                end
+            end)
+        end
+    end
+end
+
+-- ==============================================================================
+-- SECCION 5 -- RAIZ DEL GUI
+-- ==============================================================================
+
+local ScreenGui = Make("ScreenGui", {
+    Name = "QuantumOS_v40",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    DisplayOrder = 999,
+}, PlayerGui)
+ENV.QOS_Instance = ScreenGui
+
+local BG = MakeFrame({
+    Name = "Background",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = C.BG_DEEP,
+    BorderSizePixel = 0,
+    ZIndex = 1,
+}, ScreenGui)
+
+SpawnParticles(BG, 18, 3)
+
+-- ==============================================================================
+-- SECCION 6 -- SISTEMA DE COMANDOS (Logica Infinite Yield)
+-- Comandos al estilo IY: prefijo + nombre + argumentos separados por espacio
+-- ==============================================================================
+
+local Commands = {}
+local CommandAliases = {}
+
+local function GetCharacter()
+    return LocalPlayer.Character
+end
+
+local function GetHumanoid()
+    local char = GetCharacter()
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function GetRootPart()
+    local char = GetCharacter()
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+end
+
+local function GetPlayerFromArg(arg)
+    if not arg then return nil end
+    arg = arg:lower()
+    if arg == "me" then return LocalPlayer end
+    if arg == "all" then return Players:GetPlayers() end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Name:lower():find(arg, 1, true) or p.DisplayName:lower():find(arg, 1, true) then
+            return p
+        end
     end
     return nil
 end
 
-local function httpPost(url,hdrs,body)
-    local r=httpReq({Url=url,Method="POST",Headers=hdrs,Body=body})
-    if r then return r.Body,r.StatusCode or 200 end
-    return nil,0
-end
-
--- ============================================================
---  JSON
--- ============================================================
-local function jEnc(v)
-    local t=type(v)
-    if t=="string" then
-        return '"'..(v:gsub('\\','\\\\'):gsub('"','\\"'):gsub('\n','\\n'):gsub('\r','\\r'):gsub('\t','\\t'))..'"'
-    elseif t=="number"  then return tostring(v)
-    elseif t=="boolean" then return v and"true"or"false"
-    elseif t=="table" then
-        if #v>0 then local p={}; for _,x in ipairs(v) do p[#p+1]=jEnc(x) end; return "["..table.concat(p,",").."]"
-        else local p={}; for k,x in pairs(v) do p[#p+1]='"'..k..'":'..jEnc(x) end; return "{"..table.concat(p,",").."}" end
+-- Registro de comandos estilo Infinite Yield
+local function AddCommand(names, description, args, func)
+    local primary = names[1]
+    local cmd = {
+        names       = names,
+        description = description,
+        args        = args or {},
+        func        = func,
+        primary     = primary,
+    }
+    Commands[primary] = cmd
+    for i = 2, #names do
+        CommandAliases[names[i]] = primary
     end
-    return "null"
 end
 
--- Parser robusto de respuesta OpenRouter
--- Maneja: content normal, content con escapes, errores del proveedor
-local function parseAI(raw)
-    if not raw or raw=="" then return nil,"empty" end
-    -- Intenta extraer content de choices[0].message.content
-    -- El truco: busca el patrón exacto que usa OpenRouter
-    local ok, obj = pcall(function()
-        -- Busca "content" seguido de su valor (puede tener cualquier cosa)
-        -- Primero intenta el patrón más preciso
-        local s = raw:match('"content"%s*:%s*"(.-)"%s*[,}]')
-        if s then
-            return s:gsub('\\"','"'):gsub('\\n','\n'):gsub('\\t','\t'):gsub('\\\\','\\')
+-- Notificacion de ayuda (declarada antes de comandos)
+local PushNotification -- forward declaration
+
+-- ==============================================================================
+-- COMANDOS (inspirados en Infinite Yield)
+-- ==============================================================================
+
+-- MOVIMIENTO
+AddCommand({"fly", "fl"}, "Activa vuelo libre", {"velocidad (opcional)"}, function(args)
+    local speed = tonumber(args[1]) or 50
+    local char  = GetCharacter()
+    local root  = GetRootPart()
+    if not char or not root then PushNotification("Error","No hay personaje","ERROR",3); return end
+
+    if ENV.QOS_FlyActive then
+        ENV.QOS_FlyActive = false
+        if ENV.QOS_FlyConn then pcall(function() ENV.QOS_FlyConn:Disconnect() end) end
+        local hum = GetHumanoid()
+        if hum then hum.PlatformStand = false end
+        PushNotification("Fly OFF","Vuelo desactivado","INFO",3)
+        return
+    end
+
+    ENV.QOS_FlyActive = true
+    local hum = GetHumanoid()
+    if hum then hum.PlatformStand = true end
+
+    local bodyVel  = Instance.new("BodyVelocity",  root)
+    local bodyGyro = Instance.new("BodyGyro",       root)
+    bodyVel.MaxForce  = Vector3.new(1e9, 1e9, 1e9)
+    bodyGyro.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+    bodyGyro.D = 100
+
+    ENV.QOS_FlyConn = RunService.Heartbeat:Connect(function()
+        if not ENV.QOS_FlyActive then
+            bodyVel:Destroy(); bodyGyro:Destroy(); return
         end
-        -- Si el content tiene newlines, busca diferente
-        s = raw:match('"content"%s*:%s*"([^"]*)"')
-        if s then return s:gsub('\\n','\n') end
-        return nil
+        local cam = workspace.CurrentCamera
+        local dir = Vector3.new()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0,1,0) end
+        bodyVel.Velocity = dir.Magnitude > 0 and dir.Unit * speed or Vector3.new()
+        bodyGyro.CFrame = cam.CFrame
     end)
-    if ok and obj and #obj>0 then return obj,nil end
-    
-    -- Detecta errores de OpenRouter
-    local errMsg = raw:match('"message"%s*:%s*"([^"]*)"')
-    if errMsg then
-        if errMsg:find("upstream") or errMsg:find("provider") then
-            return nil,"provider_error"  -- error del proveedor, no del script
-        end
-        if errMsg:find("rate") then return nil,"rate_limit" end
-        if errMsg:find("key") or errMsg:find("auth") then return nil,"auth_error" end
-        return nil,errMsg
-    end
-    return nil,"parse_error:"..raw:sub(1,80)
-end
+    TrackConn(ENV.QOS_FlyConn)
+    PushNotification("Fly ON","Vuelo activado - vel: " .. speed .. " | WASD+Space","SUCCESS",3)
+end)
 
--- ============================================================
---  PALETA MACIZA
--- ============================================================
-local C = {
-    -- Fondos con capas
-    BG0    = Color3.fromRGB(4,5,12),     -- fondo más oscuro
-    BG1    = Color3.fromRGB(8,10,22),    -- ventana
-    BG2    = Color3.fromRGB(12,15,30),   -- panel
-    BG3    = Color3.fromRGB(18,22,42),   -- card
-    BG4    = Color3.fromRGB(24,29,54),   -- card hover
-    -- Acentos
-    A1     = Color3.fromRGB(88,143,255),   -- azul principal
-    A2     = Color3.fromRGB(138,72,255),   -- violeta
-    A3     = Color3.fromRGB(46,214,255),   -- cyan
-    A4     = Color3.fromRGB(255,90,160),   -- pink
-    -- Estados
-    ON     = Color3.fromRGB(46,210,120),   -- verde ON
-    OFF    = Color3.fromRGB(32,36,58),     -- gris OFF
-    RED    = Color3.fromRGB(255,58,78),
-    ORANGE = Color3.fromRGB(255,152,42),
-    YELLOW = Color3.fromRGB(255,210,48),
-    -- Texto
-    T1     = Color3.fromRGB(235,238,255),  -- primario
-    T2     = Color3.fromRGB(140,148,195),  -- secundario
-    T3     = Color3.fromRGB(62,68,115),    -- muted
-    -- Bordes
-    B1     = Color3.fromRGB(52,62,128),    -- borde card
-    B2     = Color3.fromRGB(36,44,90),     -- borde suave
-    -- Scroll
-    SCR    = Color3.fromRGB(88,143,255),
-}
+AddCommand({"speed", "sp"}, "Cambia la velocidad de movimiento", {"velocidad"}, function(args)
+    local val = tonumber(args[1]) or 16
+    local hum = GetHumanoid()
+    if hum then hum.WalkSpeed = val end
+    PushNotification("Speed","WalkSpeed = " .. val,"SUCCESS",3)
+end)
 
--- ============================================================
---  UI HELPERS
--- ============================================================
-local function rnd(p,r) local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 8); c.Parent=p end
-local function str(p,col,th) local s=Instance.new("UIStroke"); s.Color=col; s.Thickness=th or 1; s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; s.Parent=p; return s end
-local function grad(p,c0,c1,rot)
-    local g=Instance.new("UIGradient"); g.Color=ColorSequence.new(c0,c1); g.Rotation=rot or 0; g.Parent=p
-end
-local function tw(o,pr,t,s,d) TweenSvc:Create(o,TweenInfo.new(t or 0.15,s or Enum.EasingStyle.Quad,d or Enum.EasingDirection.Out),pr):Play() end
-local function lbl(p,txt,sz,col,fnt,ax)
-    local l=Instance.new("TextLabel"); l.BackgroundTransparency=1; l.Text=txt or ""
-    l.TextSize=sz or 12; l.TextColor3=col or C.T1; l.Font=fnt or Enum.Font.GothamSemibold
-    l.TextXAlignment=ax or Enum.TextXAlignment.Left; l.TextYAlignment=Enum.TextYAlignment.Center
-    l.TextTruncate=Enum.TextTruncate.AtEnd; l.Parent=p; return l
-end
-local function frame(p,sz,pos,bg,tr)
-    local f=Instance.new("Frame"); f.Size=sz; if pos then f.Position=pos end
-    f.BackgroundColor3=bg or C.BG3; if tr then f.BackgroundTransparency=tr end
-    f.BorderSizePixel=0; f.Parent=p; return f
-end
+AddCommand({"jump", "jp"}, "Cambia la altura de salto", {"altura"}, function(args)
+    local val = tonumber(args[1]) or 50
+    local hum = GetHumanoid()
+    if hum then hum.JumpPower = val end
+    PushNotification("Jump","JumpPower = " .. val,"SUCCESS",3)
+end)
 
--- ============================================================
---  ESTADO DE COMANDOS
--- ============================================================
-local state = {
-    fly      = false, flySpeed = 60,
-    noclip   = false,
-    god      = false,
-    invis    = false,
-    freeze   = false,
-}
-local conns = { fly=nil, noclip=nil, god=nil }
-
--- Helpers personaje
-local function chr()  return LP.Character end
-local function root() local c=chr(); return c and c:FindFirstChild("HumanoidRootPart") end
-local function hum()  local c=chr(); return c and c:FindFirstChildOfClass("Humanoid") end
-
--- ============================================================
---  COMANDOS IY — implementación fiel
--- ============================================================
-local IY = {}
-
-function IY.fly(speed)
-    speed = math.clamp(tonumber(speed) or state.flySpeed, 0, 500)
-    state.fly = true; state.flySpeed = speed
-    local r=root(); if not r then return end
-    if conns.fly then conns.fly:Disconnect() end
-    for _,v in ipairs(r:GetChildren()) do
-        if v.Name=="IY_BV" or v.Name=="IY_BG" then v:Destroy() end
-    end
-    local h=hum(); if h then h.PlatformStand=true end
-    local bv=Instance.new("BodyVelocity"); bv.Name="IY_BV"; bv.Velocity=Vector3.zero
-    bv.MaxForce=Vector3.new(1e5,1e5,1e5); bv.Parent=r
-    local bg=Instance.new("BodyGyro"); bg.Name="IY_BG"; bg.MaxTorque=Vector3.new(4e5,4e5,4e5)
-    bg.P=2e4; bg.D=200; bg.CFrame=r.CFrame; bg.Parent=r
-    conns.fly=RunSvc.Heartbeat:Connect(function()
-        if not state.fly then conns.fly:Disconnect(); return end
-        local cam=workspace.CurrentCamera; local d=Vector3.zero
-        if UIS:IsKeyDown(Enum.KeyCode.W) then d=d+cam.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then d=d-cam.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then d=d-cam.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then d=d+cam.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.E) or UIS:IsKeyDown(Enum.KeyCode.Space) then d=d+Vector3.yAxis end
-        if UIS:IsKeyDown(Enum.KeyCode.Q) then d=d-Vector3.yAxis end
-        bv.Velocity=d.Magnitude>0 and d.Unit*state.flySpeed or Vector3.zero
-        bg.CFrame=cam.CFrame
-    end)
-end
-function IY.unfly()
-    state.fly=false
-    if conns.fly then conns.fly:Disconnect(); conns.fly=nil end
-    local r=root(); if r then
-        for _,v in ipairs(r:GetChildren()) do
-            if v.Name=="IY_BV" or v.Name=="IY_BG" then v:Destroy() end
-        end
-    end
-    local h=hum(); if h then h.PlatformStand=false end
-end
-function IY.setFlySpeed(v)
-    state.flySpeed=v
-    -- Actualiza en tiempo real si está volando
-    if state.fly then
-        local r=root(); if r then
-            local bv=r:FindFirstChild("IY_BV")
-            -- solo actualiza velocidad, el heartbeat la lee de state
-        end
-    end
-end
-
-function IY.noclip()
-    state.noclip=true
-    if conns.noclip then conns.noclip:Disconnect() end
-    conns.noclip=RunSvc.Stepped:Connect(function()
-        if not state.noclip then conns.noclip:Disconnect(); return end
-        local c=chr(); if not c then return end
-        for _,p in ipairs(c:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide=false end
-        end
-    end)
-end
-function IY.clip()
-    state.noclip=false
-    if conns.noclip then conns.noclip:Disconnect(); conns.noclip=nil end
-    local c=chr(); if c then
-        for _,p in ipairs(c:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=true end end
-    end
-end
-
-function IY.god()
-    state.god=true
-    if conns.god then conns.god:Disconnect() end
-    local h=hum(); if h then h.MaxHealth=math.huge; h.Health=math.huge end
-    conns.god=RunSvc.Heartbeat:Connect(function()
-        if not state.god then conns.god:Disconnect(); return end
-        local h2=hum(); if h2 then h2.Health=h2.MaxHealth end
-    end)
-end
-function IY.ungod()
-    state.god=false
-    if conns.god then conns.god:Disconnect(); conns.god=nil end
-    local h=hum(); if h then h.MaxHealth=100; h.Health=100 end
-end
-
-function IY.invisible()
-    state.invis=true
-    local c=chr(); if not c then return end
-    for _,p in ipairs(c:GetDescendants()) do
-        if p:IsA("BasePart") then pcall(function() p.Transparency=p.Name=="HumanoidRootPart" and 1 or 1 end)
-        elseif p:IsA("Decal") then pcall(function() p.Transparency=1 end) end
-    end
-end
-function IY.visible()
-    state.invis=false
-    local c=chr(); if not c then return end
-    for _,p in ipairs(c:GetDescendants()) do
-        if p:IsA("BasePart") then
-            pcall(function() p.Transparency=p.Name=="HumanoidRootPart" and 1 or 0 end)
-        elseif p:IsA("Decal") then pcall(function() p.Transparency=0 end) end
-    end
-end
-
-function IY.speed(v)   local h=hum(); if h then h.WalkSpeed=v end end
-function IY.jump(v)    local h=hum(); if h then h.JumpPower=v end end
-function IY.gravity(v) workspace.Gravity=v end
-function IY.fov(v)     workspace.CurrentCamera.FieldOfView=math.clamp(v,1,120) end
-function IY.time(v)    Lighting.TimeOfDay=("%02d:00:00"):format(math.clamp(v,0,23)) end
-function IY.reset()    local h=hum(); if h then h.Health=0 end end
-
-function IY.tp(x,y,z)
-    local r=root(); if not r then return end
-    r.CFrame=CFrame.new(tonumber(x) or 0,tonumber(y) or 0,tonumber(z) or 0)
-end
-function IY.goto_(name)
-    local r=root(); if not r then return end
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower():find(name:lower()) and p.Character then
-            local r2=p.Character:FindFirstChild("HumanoidRootPart")
-            if r2 then r.CFrame=r2.CFrame*CFrame.new(0,0,3); return end
-        end
-    end
-end
-function IY.bring(name)
-    local r=root(); if not r then return end
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP and p.Name:lower():find(name:lower()) and p.Character then
-            local r2=p.Character:FindFirstChild("HumanoidRootPart")
-            if r2 then r2.CFrame=r.CFrame*CFrame.new(0,0,2) end
-        end
-    end
-end
-function IY.flight(name,pow)
-    pow=tonumber(pow) or 120
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP and (name=="all" or p.Name:lower():find(name:lower())) and p.Character then
-            local r2=p.Character:FindFirstChild("HumanoidRootPart")
-            if r2 then
-                local bv=Instance.new("BodyVelocity")
-                bv.Velocity=Vector3.new(math.random(-pow,pow),pow*2.5,math.random(-pow,pow))
-                bv.MaxForce=Vector3.new(1e5,1e5,1e5); bv.Parent=r2
-                game:GetService("Debris"):AddItem(bv,0.25)
-            end
-        end
-    end
-end
-function IY.spin()
-    local r=root(); if not r then return end
-    task.spawn(function()
-        for i=1,180 do
-            if not r.Parent then break end
-            r.CFrame=r.CFrame*CFrame.fromEulerAnglesXYZ(0,math.rad(20),0)
-            task.wait(0.02)
-        end
-    end)
-end
-function IY.freeze(name)
-    local target = name=="me" and chr() or nil
-    if not target then
-        for _,p in ipairs(Players:GetPlayers()) do
-            if p.Name:lower():find(name:lower()) and p.Character then target=p.Character; break end
-        end
-    end
-    if target then
-        for _,p in ipairs(target:GetDescendants()) do
-            if p:IsA("BasePart") then pcall(function() p.Anchored=true end) end
-        end
-    end
-end
-function IY.unfreeze(name)
-    local target = name=="me" and chr() or nil
-    if not target then
-        for _,p in ipairs(Players:GetPlayers()) do
-            if p.Name:lower():find(name:lower()) and p.Character then target=p.Character; break end
-        end
-    end
-    if target then
-        for _,p in ipairs(target:GetDescendants()) do
-            if p:IsA("BasePart") then pcall(function() p.Anchored=false end) end
-        end
-    end
-end
-function IY.follow(name)
-    task.spawn(function()
-        for i=1,300 do
-            local r=root(); if not r then break end
-            for _,p in ipairs(Players:GetPlayers()) do
-                if p.Name:lower():find(name:lower()) and p.Character then
-                    local r2=p.Character:FindFirstChild("HumanoidRootPart")
-                    if r2 then r.CFrame=r2.CFrame*CFrame.new(0,0,3) end
+AddCommand({"noclip", "nc"}, "Activa/desactiva noclip", {}, function()
+    ENV.QOS_NoclipActive = not ENV.QOS_NoclipActive
+    if ENV.QOS_NoclipActive then
+        ENV.QOS_NoclipConn = RunService.Stepped:Connect(function()
+            local char = GetCharacter()
+            if char then
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
                 end
             end
-            task.wait(0.1)
-        end
-    end)
-end
-
--- Posiciones guardadas
-local savedPos={}
-function IY.savepos(name)
-    local r=root(); if not r then return end
-    local p=r.Position
-    savedPos[name:lower()]={name=name,x=math.floor(p.X),y=math.floor(p.Y),z=math.floor(p.Z)}
-end
-function IY.tppos(name)
-    local e=savedPos[name:lower()]
-    if not e then for k,v in pairs(savedPos) do if k:find(name:lower()) then e=v; break end end end
-    if not e then return false end
-    local r=root(); if r then r.CFrame=CFrame.new(e.x,e.y,e.z) end
-    return true, e.name
-end
-
--- Parser de comandos de texto
-local function runCmd(input)
-    if not input or input=="" then return end
-    local p={}; for w in input:gmatch("%S+") do p[#p+1]=w end
-    local c=(p[1] or ""):lower()
-    if c=="fly" then IY.fly(p[2])
-    elseif c=="unfly" or c=="nofly" then IY.unfly()
-    elseif c=="noclip" then IY.noclip()
-    elseif c=="clip" then IY.clip()
-    elseif c=="speed" or c=="ws" then IY.speed(tonumber(p[2]) or 50)
-    elseif c=="jump" or c=="jp" then IY.jump(tonumber(p[2]) or 80)
-    elseif c=="god" then IY.god()
-    elseif c=="ungod" then IY.ungod()
-    elseif c=="invisible" then IY.invisible()
-    elseif c=="visible" then IY.visible()
-    elseif c=="tp" then IY.tp(p[2],p[3],p[4])
-    elseif c=="goto" then IY.goto_(p[2] or "")
-    elseif c=="bring" then IY.bring(p[2] or "")
-    elseif c=="flight" then IY.flight(p[2] or "all",p[3])
-    elseif c=="gravity" or c=="grav" then IY.gravity(tonumber(p[2]) or 196)
-    elseif c=="fov" then IY.fov(tonumber(p[2]) or 70)
-    elseif c=="time" then IY.time(tonumber(p[2]) or 14)
-    elseif c=="spin" then IY.spin()
-    elseif c=="freeze" then IY.freeze(p[2] or "me")
-    elseif c=="unfreeze" then IY.unfreeze(p[2] or "me")
-    elseif c=="follow" then IY.follow(p[2] or "")
-    elseif c=="reset" then IY.reset()
-    elseif c=="savepos" then IY.savepos(p[2] or "pos")
-    elseif c=="tppos" then IY.tppos(p[2] or "")
-    end
-end
-
--- ============================================================
---  IA — OpenRouter con manejo correcto de errores
--- ============================================================
-local apiKey    = ""
-local aiHistory = {}
-local gameCtx   = {name="", placeId=tostring(game.PlaceId)}
-
-local function sysPrompt()
-    local pos={}; for k,v in pairs(savedPos) do pos[#pos+1]=v.name end
-    local plrs={}; for _,p in ipairs(Players:GetPlayers()) do plrs[#plrs+1]=p.Name end
-    return "Eres un asistente de Roblox con Infinite Yield. Juegas en: "..gameCtx.name.." (ID:"..gameCtx.placeId..")."..
-    " Jugadores: "..table.concat(plrs,",")..". Posiciones guardadas: "..( #pos>0 and table.concat(pos,",") or "ninguna")..
-    ".\nComandos disponibles (usa <CMD>cmd</CMD>): fly [vel], unfly, noclip, clip, god, ungod, invisible, visible, speed [n], jump [n], gravity [n], fov [n], time [0-23], tp [x y z], goto [player], bring [player], flight [player] [power], spin, freeze [me/player], unfreeze, follow [player], reset, savepos [name], tppos [name]."..
-    "\nPara guardar posición actual: <CMD>savepos NOMBRE</CMD>. Para ir a posición: <CMD>tppos NOMBRE</CMD>."..
-    "\nSi el juego es Conecta Palabras, da estrategias de prefijos. Responde en español, máx 2 oraciones + comandos."
-end
-
-local function callAI(msg, cb)
-    if #apiKey<8 then cb(nil,"no_key"); return end
-    local msgs={{role="system",content=sysPrompt()}}
-    local st=math.max(1,#aiHistory-5)
-    for i=st,#aiHistory do msgs[#msgs+1]=aiHistory[i] end
-    msgs[#msgs+1]={role="user",content=msg}
-    local payload=jEnc({model="meta-llama/llama-3.3-70b-instruct:free",max_tokens=300,temperature=0.3,messages=msgs})
-    local hdrs={["Content-Type"]="application/json",["Authorization"]="Bearer "..apiKey,
-        ["HTTP-Referer"]="https://www.roblox.com",["X-Title"]="IYAssistant"}
-    task.spawn(function()
-        local body,code=httpPost("https://openrouter.ai/api/v1/chat/completions",hdrs,payload)
-        if not body then cb(nil,"no_connection"); return end
-        local content,err=parseAI(body)
-        if not content then
-            -- Si es error del proveedor, reintenta con modelo diferente
-            if err=="provider_error" then
-                -- Reintenta con gpt-4o-mini
-                local payload2=jEnc({model="openai/gpt-4o-mini",max_tokens=200,temperature=0.3,messages=msgs})
-                local body2=httpPost("https://openrouter.ai/api/v1/chat/completions",hdrs,payload2)
-                if body2 then content,err=parseAI(body2) end
-            end
-            if not content then cb(nil,err or "unknown"); return end
-        end
-        -- Guarda historial
-        aiHistory[#aiHistory+1]={role="user",content=msg}
-        aiHistory[#aiHistory+1]={role="assistant",content=content}
-        if #aiHistory>12 then local nh={}; for i=#aiHistory-11,#aiHistory do nh[#nh+1]=aiHistory[i] end; aiHistory=nh end
-        cb(content,nil)
-    end)
-end
-
--- Extrae <CMD> del texto IA
-local function execAICmds(text)
-    local results={}
-    for cmd in text:gmatch("<CMD>(.-)</CMD>") do
-        local c=cmd:match("^%s*(.-)%s*$")
-        runCmd(c)
-        results[#results+1]=c
-    end
-    local clean=text:gsub("<CMD>.-</CMD>",""):match("^%s*(.-)%s*$") or ""
-    return clean, results
-end
-
--- Quick match sin IA
-local function quickMatch(msg)
-    local ml=msg:lower()
-    -- guardar posición
-    local sn=ml:match("guarda.+como%s+['\""]?([%w%s%-_]+)['\""]?$") or
-              ml:match("^guarda%s+['\""]?([%w%s%-_]+)['\""]?$")
-    if sn then IY.savepos(sn:match("^%s*(.-)%s*$")); return "savepos "..sn, "📌 Guardada: "..sn end
-    local tn=ml:match("(?:ve|ir|tp|teleport[aá]r?)%s+a%s+['\""]?([%w%s%-_]+)['\""]?$")
-    if not tn then tn=ml:match("ve%s+a%s+([%w%-_]+)") end
-    if not tn then tn=ml:match("ir%s+a%s+([%w%-_]+)") end
-    if tn then
-        tn=tn:match("^%s*(.-)%s*$")
-        local ok,name=IY.tppos(tn)
-        if ok then return "tppos "..tn, "📍 → "..name
-        else return nil,"❌ No existe: "..tn end
-    end
-    -- Comandos directos
-    local Q={
-        {"vuelo?%s*(%d*)","fly"},{"fly%s*(%d*)","fly"},{"volar%s*(%d*)","fly"},
-        {"aterrizar","unfly"},{"sin vuelo","unfly"},{"noclip","noclip"},
-        {"clip%f[^a-z]","clip"},{"atravesar paredes","noclip"},
-        {"modo? dios","god"},{"god%f[^a-z]","god"},{"god mode","god"},
-        {"quitar dios","ungod"},{"ungod","ungod"},
-        {"invisible","invisible"},{"visible%f[^a-z]","visible"},
-        {"spin","spin"},{"girar","spin"},{"reset","reset"},{"morir","reset"},
-        {"speed%s+(%d+)","speed %1"},{"velocidad%s+(%d+)","speed %1"},
-        {"jump%s+(%d+)","jump %1"},{"salto%s+(%d+)","jump %1"},
-        {"gravity%s+(%d+)","gravity %1"},{"gravedad%s+(%d+)","gravity %1"},
-        {"fov%s+(%d+)","fov %1"},{"hora%s+(%d+)","time %1"},{"time%s+(%d+)","time %1"},
-    }
-    for _,q in ipairs(Q) do
-        local cap=ml:match(q[1])
-        if cap~=nil then
-            local cmd=q[2]:gsub("%%1",type(cap)=="string" and cap or "")
-            if cmd:find("fly") and cap~=nil and tonumber(cap) then cmd="fly "..cap end
-            runCmd(cmd); return cmd, "⚡ "..cmd
-        end
-    end
-    return nil,nil
-end
-
--- ============================================================
---  LIMPIAR INSTANCIAS PREVIAS
--- ============================================================
-pcall(function() game:GetService("CoreGui"):FindFirstChild("IYA_GUI"):Destroy() end)
-pcall(function()
-    local pg=LP:FindFirstChild("PlayerGui")
-    if pg then local o=pg:FindFirstChild("IYA_GUI"); if o then o:Destroy() end end
-end)
-
-local SG=Instance.new("ScreenGui"); SG.Name="IYA_GUI"; SG.ResetOnSpawn=false
-SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SG.IgnoreGuiInset=true
-if not pcall(function() SG.Parent=game:GetService("CoreGui") end) then
-    SG.Parent=LP:WaitForChild("PlayerGui")
-end
-
--- ============================================================
---  VENTANA PRINCIPAL — 300×520, glassmorphism real
--- ============================================================
-local W,H=300,520
-
--- Sombra exterior
-local Shadow=Instance.new("Frame"); Shadow.Size=UDim2.new(0,W+20,0,H+20)
-Shadow.Position=UDim2.new(0.5,-(W+20)/2,0.5,-(H+20)/2+6)
-Shadow.BackgroundColor3=Color3.fromRGB(0,0,0); Shadow.BackgroundTransparency=0.55
-Shadow.BorderSizePixel=0; Shadow.ZIndex=0; Shadow.Parent=SG; rnd(Shadow,18)
-
-local Main=Instance.new("Frame"); Main.Name="Main"
-Main.Size=UDim2.new(0,W,0,0); Main.Position=UDim2.new(0.5,-W/2,0.5,0)
-Main.BackgroundColor3=C.BG1; Main.BackgroundTransparency=0.10
-Main.BorderSizePixel=0; Main.Active=true; Main.Draggable=true; Main.ClipsDescendants=true
-Main.ZIndex=1; Main.Parent=SG; rnd(Main,14)
-str(Main,C.B1,1.5)
-
--- Gradiente diagonal de fondo
-local BGrad=Instance.new("UIGradient")
-BGrad.Color=ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(10,13,28)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(6,7,16)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(10,8,24)),
-})
-BGrad.Rotation=145; BGrad.Parent=Main
-
--- Barra top degradada GRANDE
-local TopBar=Instance.new("Frame"); TopBar.Size=UDim2.new(1,0,0,3)
-TopBar.BackgroundColor3=C.A1; TopBar.BorderSizePixel=0; TopBar.ZIndex=10; TopBar.Parent=Main; rnd(TopBar,2)
-grad(TopBar, C.A3, C.A2, 0)
-
--- Línea brillante diagonal decorativa
-local Glow=Instance.new("Frame"); Glow.Size=UDim2.new(0.6,0,0,1)
-Glow.Position=UDim2.new(0,0,0,3); Glow.BackgroundColor3=C.A1
-Glow.BackgroundTransparency=0.7; Glow.BorderSizePixel=0; Glow.ZIndex=9; Glow.Parent=Main
-
--- ── BURBUJA ────────────────────────────────────────────────
-local Bub=Instance.new("TextButton"); Bub.Size=UDim2.new(0,0,0,0)
-Bub.BackgroundColor3=C.BG1; Bub.BorderSizePixel=0; Bub.Text=""
-Bub.AutoButtonColor=false; Bub.Visible=false; Bub.ZIndex=60; Bub.Parent=SG; rnd(Bub,24)
-str(Bub,C.A1,2)
--- Icono dentro de la burbuja
-local BubIcon=Instance.new("TextLabel"); BubIcon.Size=UDim2.new(1,0,1,0); BubIcon.BackgroundTransparency=1
-BubIcon.Text="🤖"; BubIcon.TextSize=22; BubIcon.Font=Enum.Font.Gotham
-BubIcon.TextXAlignment=Enum.TextXAlignment.Center; BubIcon.TextYAlignment=Enum.TextYAlignment.Center
-BubIcon.ZIndex=61; BubIcon.Parent=Bub
--- Gradiente burbuja
-local BubGrad=Instance.new("UIGradient")
-BubGrad.Color=ColorSequence.new(Color3.fromRGB(12,15,32),Color3.fromRGB(8,10,22))
-BubGrad.Rotation=135; BubGrad.Parent=Bub
-
-local bDrag=false; local bOff=Vector2.zero
-Bub.InputBegan:Connect(function(i)
-    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
-        bDrag=true; bOff=Vector2.new(i.Position.X-Bub.AbsolutePosition.X,i.Position.Y-Bub.AbsolutePosition.Y)
-    end
-end)
-Bub.InputEnded:Connect(function() bDrag=false end)
-UIS.InputChanged:Connect(function(i)
-    if not bDrag then return end
-    if i.UserInputType~=Enum.UserInputType.Touch and i.UserInputType~=Enum.UserInputType.MouseButton1 then return end
-    local vp=workspace.CurrentCamera.ViewportSize
-    Bub.Position=UDim2.new(0,math.clamp(i.Position.X-bOff.X,0,vp.X-48),0,math.clamp(i.Position.Y-bOff.Y,0,vp.Y-48))
-end)
-
-local function doMin()
-    tw(Shadow,{BackgroundTransparency=1},0.15)
-    tw(Main,{Size=UDim2.new(0,W,0,0)},0.18)
-    task.delay(0.2,function()
-        Main.Visible=false; Shadow.Visible=false
-        local vp=workspace.CurrentCamera.ViewportSize
-        Bub.Size=UDim2.new(0,0,0,0); Bub.Position=UDim2.new(0,vp.X-56,0,86); Bub.Visible=true
-        tw(Bub,{Size=UDim2.new(0,48,0,48)},0.26,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
-    end)
-end
-local function doRes()
-    Bub.Visible=false; Main.Visible=true; Shadow.Visible=true
-    Shadow.BackgroundTransparency=0.55
-    tw(Main,{Size=UDim2.new(0,W,0,H),Position=UDim2.new(0.5,-W/2,0.5,-H/2)},0.26,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
-end
-Bub.MouseButton1Click:Connect(doRes); Bub.TouchTap:Connect(doRes)
-
--- ── HEADER ─────────────────────────────────────────────────
-local Hdr=frame(Main,UDim2.new(1,0,0,46),UDim2.new(0,0,0,0),C.BG2,0.12)
-rnd(Hdr,14)
-local HFix=frame(Hdr,UDim2.new(1,0,0,14),UDim2.new(0,0,1,-14),C.BG2,0.12)
-
--- Icono + título
-local HIco=lbl(Hdr,"🤖",18,C.A1,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-HIco.Size=UDim2.new(0,36,1,0); HIco.Position=UDim2.new(0,4,0,0); HIco.ZIndex=4
-
-local HTitleF=frame(Hdr,UDim2.new(1,-110,0,30),UDim2.new(0,42,0,8),C.BG2,1)
-local HTitle=lbl(HTitleF,"IY ASSISTANT",13,C.T1,Enum.Font.GothamBold)
-HTitle.Size=UDim2.new(1,0,0,16); HTitle.ZIndex=4
-local HGame=lbl(HTitleF,"...",9,C.T2,Enum.Font.GothamSemibold)
-HGame.Size=UDim2.new(1,0,0,13); HGame.Position=UDim2.new(0,0,0,16); HGame.ZIndex=4
-
--- Botón settings
-local function mkHBtn(icon,xOff,bg)
-    local b=Instance.new("TextButton"); b.Size=UDim2.new(0,28,0,28)
-    b.Position=UDim2.new(1,xOff,0.5,-14); b.BackgroundColor3=bg or C.BG3
-    b.BackgroundTransparency=0.2; b.BorderSizePixel=0; b.Text=icon
-    b.TextColor3=C.T2; b.TextSize=14; b.Font=Enum.Font.Gotham
-    b.AutoButtonColor=false; b.ZIndex=5; b.Parent=Hdr; rnd(b,8)
-    str(b,C.B2,1); return b
-end
-local BSet=mkHBtn("⚙",-62,C.BG3)
-local BMin=mkHBtn("—",-30,Color3.fromRGB(18,34,62)); BMin.TextColor3=C.A1
-
-BMin.MouseButton1Click:Connect(doMin); BMin.TouchTap:Connect(doMin)
-
--- ── TABS ───────────────────────────────────────────────────
-local TabF=frame(Main,UDim2.new(1,-12,0,26),UDim2.new(0,6,0,50),C.BG2,0.2)
-rnd(TabF,8); str(TabF,C.B2,1)
-
-local function mkTab(txt,xScale,xOff)
-    local b=Instance.new("TextButton"); b.Size=UDim2.new(xScale,-4,1,-4); b.Position=UDim2.new(0,xOff+2,0,2)
-    b.BackgroundColor3=C.BG3; b.BackgroundTransparency=0.2; b.BorderSizePixel=0
-    b.Text=txt; b.TextColor3=C.T3; b.TextSize=10; b.Font=Enum.Font.GothamBold
-    b.AutoButtonColor=false; b.Parent=TabF; rnd(b,6); return b
-end
-local T1=mkTab("💬 Chat",0.34,0)
-local T2=mkTab("⚡ Cmds",0.33,T1.Size.X.Scale*TabF.AbsoluteSize.X)
-local T3=mkTab("📌 Pos",0.33,0)
-T2.Position=UDim2.new(0.34,2,0,2); T3.Position=UDim2.new(0.67,2,0,2)
-
--- ── CONTENEDORES DE PANELES ────────────────────────────────
-local panelY=80  -- Y donde empiezan los paneles
-local panelH=H-panelY-36  -- alto disponible
-
-local function mkPanel()
-    local f=frame(Main,UDim2.new(1,-12,0,panelH),UDim2.new(0,6,0,panelY),C.BG2,1)
-    f.Visible=false; return f
-end
-local ChatP=mkPanel(); ChatP.Visible=true
-local CmdP=mkPanel()
-local PosP=mkPanel()
-
--- ── HANDLE RESIZE ──────────────────────────────────────────
-local Handle=frame(Main,UDim2.new(1,0,0,12),UDim2.new(0,0,1,-12),C.BG3,0.4)
-rnd(Handle,6); Handle.Active=true; Handle.ZIndex=8
-local HL=frame(Handle,UDim2.new(0,32,0,3),UDim2.new(0.5,-16,0.5,-1),C.A1,0.5)
-rnd(HL,2); HL.ZIndex=9; HL.BackgroundColor3=C.A1
-local resOn=false; local rY0,rH0=0,H
-Handle.InputBegan:Connect(function(i)
-    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
-        resOn=true; rY0=i.Position.Y; rH0=Main.AbsoluteSize.Y
-    end
-end)
-Handle.InputEnded:Connect(function() resOn=false; H=Main.AbsoluteSize.Y end)
-UIS.InputChanged:Connect(function(i)
-    if not resOn then return end
-    if i.UserInputType~=Enum.UserInputType.Touch and i.UserInputType~=Enum.UserInputType.MouseButton1 then return end
-    local nh=math.clamp(rH0+(i.Position.Y-rY0),340,700)
-    Main.Size=UDim2.new(0,W,0,nh); Shadow.Size=UDim2.new(0,W+20,0,nh+20)
-    local ph=nh-panelY-36; ph=math.max(ph,100)
-    ChatP.Size=UDim2.new(1,-12,0,ph); CmdP.Size=UDim2.new(1,-12,0,ph); PosP.Size=UDim2.new(1,-12,0,ph)
-end)
-
--- ============================================================
---  PANEL CHAT
--- ============================================================
-local MsgScroll=Instance.new("ScrollingFrame"); MsgScroll.Size=UDim2.new(1,0,1,-42)
-MsgScroll.BackgroundColor3=C.BG1; MsgScroll.BackgroundTransparency=0.08
-MsgScroll.BorderSizePixel=0; MsgScroll.ScrollBarThickness=3; MsgScroll.ScrollBarImageColor3=C.SCR
-MsgScroll.CanvasSize=UDim2.new(0,0,0,0); MsgScroll.ScrollingDirection=Enum.ScrollingDirection.Y; MsgScroll.Parent=ChatP
-rnd(MsgScroll,10); str(MsgScroll,C.B2,1)
-local ML=Instance.new("UIListLayout"); ML.SortOrder=Enum.SortOrder.LayoutOrder; ML.Padding=UDim.new(0,5); ML.Parent=MsgScroll
-local MP=Instance.new("UIPadding"); MP.PaddingTop=UDim.new(0,5); MP.PaddingLeft=UDim.new(0,5); MP.PaddingRight=UDim.new(0,5); MP.PaddingBottom=UDim.new(0,4); MP.Parent=MsgScroll
-
--- Input bar
-local IBar=frame(ChatP,UDim2.new(1,0,0,38),UDim2.new(0,0,1,-38),C.BG3,0.08)
-rnd(IBar,10); str(IBar,C.B1,1)
-local IIcon=lbl(IBar,"›",16,C.A1,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
-IIcon.Size=UDim2.new(0,26,1,0); IIcon.Position=UDim2.new(0,0,0,0)
-local MBox=Instance.new("TextBox"); MBox.Size=UDim2.new(1,-54,1,-10); MBox.Position=UDim2.new(0,26,0,5)
-MBox.BackgroundTransparency=1; MBox.PlaceholderText="activa fly · guarda como base1 · pregunta algo..."
-MBox.PlaceholderColor3=C.T3; MBox.Text=""; MBox.TextColor3=C.T1
-MBox.TextSize=12; MBox.Font=Enum.Font.Gotham; MBox.ClearTextOnFocus=false
-MBox.TextXAlignment=Enum.TextXAlignment.Left; MBox.Parent=IBar
-local SendBtn=Instance.new("TextButton"); SendBtn.Size=UDim2.new(0,34,0,28)
-SendBtn.Position=UDim2.new(1,-38,0.5,-14); SendBtn.BackgroundColor3=C.A1
-SendBtn.BackgroundTransparency=0.1; SendBtn.BorderSizePixel=0
-SendBtn.Text="➤"; SendBtn.TextColor3=C.T1; SendBtn.TextSize=14; SendBtn.Font=Enum.Font.GothamBold
-SendBtn.AutoButtonColor=false; SendBtn.Parent=IBar; rnd(SendBtn,8)
-grad(SendBtn,C.A1,C.A2,90)
-
--- Añadir burbuja de mensaje
-local msgOrd=0
-local function addMsg(who,text,isUser,isSys)
-    msgOrd=msgOrd+1
-    local bub=Instance.new("Frame"); bub.Size=UDim2.new(1,0,0,10)
-    bub.BackgroundTransparency=1; bub.BorderSizePixel=0; bub.LayoutOrder=msgOrd
-    bub.AutomaticSize=Enum.AutomaticSize.Y; bub.Parent=MsgScroll
-
-    -- Burbuja interna con fondo
-    local inner=frame(bub,UDim2.new(1,0,0,10),UDim2.new(0,0,0,0),
-        isSys and C.BG4 or (isUser and Color3.fromRGB(20,38,74) or Color3.fromRGB(14,19,42)),0.05)
-    inner.AutomaticSize=Enum.AutomaticSize.Y; rnd(inner,9)
-    str(inner, isUser and Color3.fromRGB(44,74,158) or (isSys and C.B1 or Color3.fromRGB(32,40,96)), 1)
-
-    -- Acento izquierdo
-    local accent=frame(inner,UDim2.new(0,2,1,-8),UDim2.new(0,0,0,4),
-        isUser and C.A1 or (isSys and C.YELLOW or C.A2),0)
-    rnd(accent,2)
-
-    -- Who label
-    local wl=lbl(inner, isSys and "⚡ Sistema" or (isUser and "👤 Tú" or "🤖 IA"), 8,
-        isUser and C.A1 or (isSys and C.YELLOW or C.A2), Enum.Font.GothamBold)
-    wl.Size=UDim2.new(1,-12,0,14); wl.Position=UDim2.new(0,8,0,4)
-
-    -- Texto
-    local ml=Instance.new("TextLabel"); ml.BackgroundTransparency=1
-    ml.Size=UDim2.new(1,-14,0,0); ml.Position=UDim2.new(0,8,0,20)
-    ml.Text=text; ml.TextSize=11; ml.Font=Enum.Font.Gotham; ml.TextColor3=C.T1
-    ml.TextWrapped=true; ml.TextXAlignment=Enum.TextXAlignment.Left
-    ml.TextYAlignment=Enum.TextYAlignment.Top; ml.AutomaticSize=Enum.AutomaticSize.Y
-    ml.LineHeight=1.3; ml.Parent=inner
-
-    -- Padding inferior
-    local bot=frame(inner,UDim2.new(1,0,0,6),nil,C.BG4,1); bot.AutomaticSize=Enum.AutomaticSize.None
-    bot.Position=UDim2.new(0,0,1,-2)
-
-    task.wait(); task.wait()
-    local tot=0; for _,c in ipairs(MsgScroll:GetChildren()) do if c:IsA("Frame") then tot=tot+c.AbsoluteSize.Y+6 end end
-    MsgScroll.CanvasSize=UDim2.new(0,0,0,tot+12)
-    MsgScroll.CanvasPosition=Vector2.new(0,math.max(0,tot-MsgScroll.AbsoluteSize.Y+12))
-    return ml
-end
-
--- ============================================================
---  PANEL COMANDOS — toggles + sliders inline
--- ============================================================
-local CmdScroll=Instance.new("ScrollingFrame"); CmdScroll.Size=UDim2.new(1,0,1,0)
-CmdScroll.BackgroundColor3=C.BG1; CmdScroll.BackgroundTransparency=0.08
-CmdScroll.BorderSizePixel=0; CmdScroll.ScrollBarThickness=3; CmdScroll.ScrollBarImageColor3=C.SCR
-CmdScroll.CanvasSize=UDim2.new(0,0,0,0); CmdScroll.Parent=CmdP
-rnd(CmdScroll,10); str(CmdScroll,C.B2,1)
-local CL=Instance.new("UIListLayout"); CL.SortOrder=Enum.SortOrder.LayoutOrder; CL.Padding=UDim.new(0,4); CL.Parent=CmdScroll
-local CPad=Instance.new("UIPadding"); CPad.PaddingTop=UDim.new(0,6); CPad.PaddingLeft=UDim.new(0,6); CPad.PaddingRight=UDim.new(0,6); CPad.Parent=CmdScroll
-
--- Sección header
-local function mkSecHeader(txt,color,order)
-    local f=frame(CmdScroll,UDim2.new(1,0,0,18),nil,C.BG2,1)
-    f.LayoutOrder=order
-    local l=lbl(f,txt,8,color,Enum.Font.GothamBold)
-    l.Size=UDim2.new(1,0,1,0)
-    -- Línea separadora
-    local line=frame(f,UDim2.new(1,0,0,1),UDim2.new(0,0,1,-1),color,0.7)
-    return f
-end
-
--- Toggle macizo con slider opcional
--- Cuando togOn=true → muestra slider abajo
-local function mkToggle(parent, icon, label, color, order, onToggle, sliderCfg)
-    local isOn=false
-    local TOGGLE_H=38
-    local SLIDER_H=sliderCfg and 38 or 0
-
-    local container=frame(parent,UDim2.new(1,0,0,TOGGLE_H),nil,C.BG3,0.08)
-    container.LayoutOrder=order; rnd(container,9); str(container,C.B2,1)
-    container.ClipsDescendants=true
-
-    -- Gradiente de fondo
-    grad(container, Color3.fromRGB(20,24,48), Color3.fromRGB(14,17,34), 90)
-
-    -- Barra de color izquierda
-    local lbar=frame(container,UDim2.new(0,3,1,-10),UDim2.new(0,0,0,5),color,0)
-    rnd(lbar,2)
-
-    -- Icono
-    local ico=lbl(container,icon,16,color,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-    ico.Size=UDim2.new(0,30,0,TOGGLE_H); ico.Position=UDim2.new(0,5,0,0)
-
-    -- Label
-    local lname=lbl(container,label,12,C.T1,Enum.Font.GothamBold)
-    lname.Size=UDim2.new(1,-100,0,TOGGLE_H); lname.Position=UDim2.new(0,36,0,0)
-
-    -- Botón ON/OFF tipo pill
-    local pill=Instance.new("Frame"); pill.Size=UDim2.new(0,52,0,24)
-    pill.Position=UDim2.new(1,-60,0.5,-12); pill.BackgroundColor3=C.OFF
-    pill.BorderSizePixel=0; pill.Parent=container; rnd(pill,12)
-    str(pill,C.B1,1)
-
-    local pillDot=Instance.new("Frame"); pillDot.Size=UDim2.new(0,18,0,18)
-    pillDot.Position=UDim2.new(0,3,0.5,-9); pillDot.BackgroundColor3=C.T3
-    pillDot.BorderSizePixel=0; pillDot.Parent=pill; rnd(pillDot,9)
-
-    local pillTxt=lbl(pill,"OFF",8,C.T3,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
-    pillTxt.Size=UDim2.new(1,-24,1,0); pillTxt.Position=UDim2.new(0,22,0,0)
-
-    -- Slider (se muestra al activar)
-    local sliderFr=nil; local slValLbl=nil
-    if sliderCfg then
-        sliderFr=frame(container,UDim2.new(1,0,0,SLIDER_H),UDim2.new(0,0,0,TOGGLE_H),C.BG4,0.15)
-        rnd(sliderFr,0)
-        local slLbl=lbl(sliderFr," "..sliderCfg.label,8,C.T2,Enum.Font.GothamSemibold)
-        slLbl.Size=UDim2.new(0.58,0,0,16); slLbl.Position=UDim2.new(0,6,0,2)
-        slValLbl=lbl(sliderFr,tostring(sliderCfg.init),10,color,Enum.Font.GothamBold,Enum.TextXAlignment.Right)
-        slValLbl.Size=UDim2.new(0.36,0,0,16); slValLbl.Position=UDim2.new(0.62,-4,0,2)
-        -- Track
-        local track=frame(sliderFr,UDim2.new(1,-12,0,5),UDim2.new(0,6,0,22),Color3.fromRGB(20,24,50),0)
-        rnd(track,3); track.Active=true
-        local fill=frame(track,UDim2.new((sliderCfg.init-sliderCfg.min)/(sliderCfg.max-sliderCfg.min),0,1,0),nil,color,0)
-        rnd(fill,3); grad(fill,color, Color3.fromRGB(math.max(color.R*255-40,0),math.max(color.G*255-20,0),math.min(color.B*255+40,255)),0)
-        local thumb=frame(track,UDim2.new(0,14,0,14),UDim2.new(fill.Size.X.Scale,-7,0.5,-7),C.T1,0)
-        rnd(thumb,7); thumb.ZIndex=3; str(thumb,color,1.5)
-
-        local dragging=false
-        local function updSlider(ax)
-            local rel=math.clamp((ax-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
-            local val=math.floor(sliderCfg.min+(sliderCfg.max-sliderCfg.min)*rel)
-            fill.Size=UDim2.new(rel,0,1,0); thumb.Position=UDim2.new(rel,-7,0.5,-7)
-            slValLbl.Text=tostring(val); if sliderCfg.onChange then sliderCfg.onChange(val) end
-        end
-        track.InputBegan:Connect(function(i)
-            if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
-                dragging=true; updSlider(i.Position.X)
-            end
         end)
-        track.InputEnded:Connect(function() dragging=false end)
-        UIS.InputChanged:Connect(function(i)
-            if not dragging then return end
-            if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
-                updSlider(i.Position.X)
-            end
-        end)
-    end
-
-    -- Toggle logic
-    local function toggle()
-        isOn=not isOn
-        if isOn then
-            -- ON
-            tw(pill,{BackgroundColor3=color},0.15); tw(pillDot,{Position=UDim2.new(1,-21,0.5,-9),BackgroundColor3=C.T1},0.15)
-            pillTxt.Text="ON"; pillTxt.TextColor3=C.T1; pillTxt.Position=UDim2.new(0,2,0,0)
-            lbar.BackgroundTransparency=0
-            if sliderFr then
-                tw(container,{Size=UDim2.new(1,0,0,TOGGLE_H+SLIDER_H)},0.18)
-            end
-        else
-            -- OFF
-            tw(pill,{BackgroundColor3=C.OFF},0.15); tw(pillDot,{Position=UDim2.new(0,3,0.5,-9),BackgroundColor3=C.T3},0.15)
-            pillTxt.Text="OFF"; pillTxt.TextColor3=C.T3; pillTxt.Position=UDim2.new(0,22,0,0)
-            lbar.BackgroundTransparency=1
-            if sliderFr then
-                tw(container,{Size=UDim2.new(1,0,0,TOGGLE_H)},0.18)
-            end
-        end
-        if onToggle then onToggle(isOn) end
-    end
-
-    -- Clickable area = toda la fila superior
-    local hitbox=Instance.new("TextButton"); hitbox.Size=UDim2.new(1,0,0,TOGGLE_H)
-    hitbox.BackgroundTransparency=1; hitbox.Text=""; hitbox.BorderSizePixel=0; hitbox.Parent=container; hitbox.ZIndex=4
-    hitbox.MouseButton1Click:Connect(toggle); hitbox.TouchTap:Connect(toggle)
-
-    return container
-end
-
--- SLIDER STANDALONE (para speed, jump, etc.)
-local function mkSlider(parent, icon, label, color, order, minV, maxV, initV, onChange)
-    local f=frame(parent,UDim2.new(1,0,0,50),nil,C.BG3,0.08)
-    f.LayoutOrder=order; rnd(f,9); str(f,C.B2,1)
-    grad(f, Color3.fromRGB(20,24,48), Color3.fromRGB(14,17,34), 90)
-
-    local lbar=frame(f,UDim2.new(0,3,1,-10),UDim2.new(0,0,0,5),color,0.3); rnd(lbar,2)
-    local ico=lbl(f,icon,15,color,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-    ico.Size=UDim2.new(0,30,0,24); ico.Position=UDim2.new(0,5,0,2)
-    local lname=lbl(f,label,11,C.T1,Enum.Font.GothamBold)
-    lname.Size=UDim2.new(0.6,0,0,24); lname.Position=UDim2.new(0,36,0,2)
-    local valL=lbl(f,tostring(initV),11,color,Enum.Font.GothamBold,Enum.TextXAlignment.Right)
-    valL.Size=UDim2.new(0.32,0,0,24); valL.Position=UDim2.new(0.66,-4,0,2)
-
-    local track=frame(f,UDim2.new(1,-12,0,6),UDim2.new(0,6,0,34),Color3.fromRGB(18,22,46),0)
-    rnd(track,4); track.Active=true
-    local fill=frame(track,UDim2.new((initV-minV)/(maxV-minV),0,1,0),nil,color,0)
-    rnd(fill,4); grad(fill,C.A3,color,0)
-    local thumb=frame(track,UDim2.new(0,14,0,14),UDim2.new(fill.Size.X.Scale,-7,0.5,-7),C.T1,0)
-    rnd(thumb,7); thumb.ZIndex=4; str(thumb,color,1.5)
-
-    local drag=false
-    local function upd(ax)
-        local rel=math.clamp((ax-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
-        local val=math.floor(minV+(maxV-minV)*rel)
-        fill.Size=UDim2.new(rel,0,1,0); thumb.Position=UDim2.new(rel,-7,0.5,-7)
-        valL.Text=tostring(val); onChange(val)
-    end
-    track.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then
-            drag=true; upd(i.Position.X)
-        end
-    end)
-    track.InputEnded:Connect(function() drag=false end)
-    UIS.InputChanged:Connect(function(i)
-        if not drag then return end
-        if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then upd(i.Position.X) end
-    end)
-    return f
-end
-
--- BOTÓN DE ACCIÓN SIMPLE
-local function mkAction(parent, icon, label, color, order, onClick)
-    local f=frame(parent,UDim2.new(1,0,0,36),nil,C.BG3,0.08)
-    f.LayoutOrder=order; rnd(f,9); str(f,C.B2,1)
-    grad(f, Color3.fromRGB(20,24,48), Color3.fromRGB(14,17,34), 90)
-
-    local lbar=frame(f,UDim2.new(0,3,1,-10),UDim2.new(0,0,0,5),color,0.5); rnd(lbar,2)
-    local ico=lbl(f,icon,15,color,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-    ico.Size=UDim2.new(0,30,0,1); ico.Size=UDim2.new(0,30,1,0); ico.Position=UDim2.new(0,5,0,0)
-    local lname=lbl(f,label,11,C.T1,Enum.Font.GothamBold)
-    lname.Size=UDim2.new(1,-80,1,0); lname.Position=UDim2.new(0,36,0,0)
-
-    local runBtn=Instance.new("TextButton"); runBtn.Size=UDim2.new(0,36,0,26)
-    runBtn.Position=UDim2.new(1,-40,0.5,-13); runBtn.BackgroundColor3=color
-    runBtn.BackgroundTransparency=0.2; runBtn.BorderSizePixel=0
-    runBtn.Text="▶"; runBtn.TextColor3=C.T1; runBtn.TextSize=11; runBtn.Font=Enum.Font.GothamBold
-    runBtn.AutoButtonColor=false; runBtn.Parent=f; rnd(runBtn,7); str(runBtn,color,1)
-
-    local function run()
-        tw(runBtn,{BackgroundColor3=C.T1},0.08)
-        task.delay(0.12,function() tw(runBtn,{BackgroundColor3=color},0.12) end)
-        onClick()
-    end
-    runBtn.MouseButton1Click:Connect(run); runBtn.TouchTap:Connect(run)
-    return f
-end
-
--- CONSTRUYE EL PANEL DE COMANDOS
-local function buildCmds()
-    for _,c in ipairs(CmdScroll:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end end
-    local o=0; local function nx() o=o+1; return o end
-
-    -- MOVIMIENTO
-    mkSecHeader("  ✈️   MOVIMIENTO",C.A1,nx())
-
-    mkToggle(CmdScroll,"✈️","Fly",C.A1,nx(),function(on)
-        if on then IY.fly(state.flySpeed) else IY.unfly() end
-    end, {
-        label="Velocidad (" ..0 .."–300)",
-        min=0,max=300,init=60,
-        onChange=function(v) IY.setFlySpeed(v) end
-    })
-
-    mkToggle(CmdScroll,"👻","Noclip",C.A2,nx(),function(on)
-        if on then IY.noclip() else IY.clip() end
-    end)
-
-    mkSlider(CmdScroll,"⚡","Speed",C.ORANGE,nx(),0,250,16,function(v)
-        IY.speed(v)
-    end)
-
-    mkSlider(CmdScroll,"🦘","Jump Power",C.YELLOW,nx(),0,400,50,function(v)
-        IY.jump(v)
-    end)
-
-    mkSlider(CmdScroll,"🌍","Gravity",C.A3,nx(),0,600,196,function(v)
-        IY.gravity(v)
-    end)
-
-    -- COMBATE
-    mkSecHeader("  🛡️   COMBATE & ESTADO",C.ON,nx())
-
-    mkToggle(CmdScroll,"🛡️","God Mode",C.ON,nx(),function(on)
-        if on then IY.god() else IY.ungod() end
-    end)
-
-    mkToggle(CmdScroll,"👁️","Invisible",Color3.fromRGB(160,100,255),nx(),function(on)
-        if on then IY.invisible() else IY.visible() end
-    end)
-
-    mkAction(CmdScroll,"🔄","Reset",C.RED,nx(),function() IY.reset() end)
-    mkAction(CmdScroll,"🌀","Spin",C.A2,nx(),function() IY.spin() end)
-
-    -- MUNDO
-    mkSecHeader("  🌍   MUNDO",C.A3,nx())
-
-    mkSlider(CmdScroll,"🎥","FOV",C.A3,nx(),30,120,70,function(v)
-        IY.fov(v)
-    end)
-
-    mkSlider(CmdScroll,"🕐","Hora",C.YELLOW,nx(),0,23,14,function(v)
-        IY.time(v)
-    end)
-
-    mkAction(CmdScroll,"📷","Fix Cámara",C.A1,nx(),function()
-        workspace.CurrentCamera.CameraType=Enum.CameraType.Custom
-    end)
-
-    -- JUGADORES
-    mkSecHeader("  👥   JUGADORES",C.A4,nx())
-
-    mkAction(CmdScroll,"🚀","Flight a TODOS",C.RED,nx(),function()
-        IY.flight("all",150)
-    end)
-    mkAction(CmdScroll,"🧊","Freeze a TODOS",Color3.fromRGB(80,160,255),nx(),function()
-        for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LP and p.Character then IY.freeze(p.Name) end
-        end
-    end)
-    mkAction(CmdScroll,"👥","Ver jugadores",C.T2,nx(),function()
-        local lines={"👥 En sala:"}
-        for _,p in ipairs(Players:GetPlayers()) do lines[#lines+1]=" · "..p.Name..(p==LP and " (tú)" or "") end
-        addMsg("sys",table.concat(lines,"\n"),false,true); setTab and setTab(1)
-    end)
-
-    -- Calcula canvas
-    task.wait(0.1); local h=0
-    for _,c in ipairs(CmdScroll:GetChildren()) do if c:IsA("Frame") then h=h+c.AbsoluteSize.Y+5 end end
-    CmdScroll.CanvasSize=UDim2.new(0,0,0,h+10)
-end
-
--- ============================================================
---  PANEL POSICIONES
--- ============================================================
-local PosScroll=Instance.new("ScrollingFrame"); PosScroll.Size=UDim2.new(1,0,1,-38)
-PosScroll.BackgroundColor3=C.BG1; PosScroll.BackgroundTransparency=0.08
-PosScroll.BorderSizePixel=0; PosScroll.ScrollBarThickness=3; PosScroll.ScrollBarImageColor3=C.SCR
-PosScroll.CanvasSize=UDim2.new(0,0,0,0); PosScroll.Parent=PosP; rnd(PosScroll,10); str(PosScroll,C.B2,1)
-local PL=Instance.new("UIListLayout"); PL.SortOrder=Enum.SortOrder.LayoutOrder; PL.Padding=UDim.new(0,4); PL.Parent=PosScroll
-local PP=Instance.new("UIPadding"); PP.PaddingTop=UDim.new(0,5); PP.PaddingLeft=UDim.new(0,5); PP.PaddingRight=UDim.new(0,5); PP.Parent=PosScroll
-
-local PosEmpty=lbl(PosP,"Sin posiciones guardadas\n\nEscríbele a la IA:\n\"guarda como camino1\"",10,C.T3,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-PosEmpty.Size=UDim2.new(1,0,0,80); PosEmpty.Position=UDim2.new(0,0,0.2,0); PosEmpty.TextWrapped=true
-
--- Botón guardar + input
-local SaveRow=frame(PosP,UDim2.new(1,0,0,34),UDim2.new(0,0,1,-34),C.BG3,0.1)
-rnd(SaveRow,9)
-local SaveBtn=Instance.new("TextButton"); SaveBtn.Size=UDim2.new(0.55,-2,1,-4); SaveBtn.Position=UDim2.new(0,2,0,2)
-SaveBtn.BackgroundColor3=C.A1; SaveBtn.BackgroundTransparency=0.2; SaveBtn.BorderSizePixel=0
-SaveBtn.Text="📌 Guardar posición"; SaveBtn.TextColor3=C.T1; SaveBtn.TextSize=10; SaveBtn.Font=Enum.Font.GothamBold
-SaveBtn.AutoButtonColor=false; SaveBtn.Parent=SaveRow; rnd(SaveBtn,7)
-
-local NameBox=Instance.new("TextBox"); NameBox.Size=UDim2.new(0.45,-4,1,-4); NameBox.Position=UDim2.new(0.55,2,0,2)
-NameBox.BackgroundColor3=C.BG4; NameBox.BackgroundTransparency=0.1; NameBox.BorderSizePixel=0
-NameBox.PlaceholderText="Nombre..."; NameBox.PlaceholderColor3=C.T3; NameBox.Text=""
-NameBox.TextColor3=C.T1; NameBox.TextSize=11; NameBox.Font=Enum.Font.Gotham
-NameBox.ClearTextOnFocus=false; NameBox.TextXAlignment=Enum.TextXAlignment.Center; NameBox.Parent=SaveRow; rnd(NameBox,7)
-str(NameBox,C.B1,1)
-
-local posConns={}
-local function renderPos()
-    for _,c in ipairs(PosScroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
-    for _,c in ipairs(posConns) do pcall(function() c:Disconnect() end) end; posConns={}
-    local list={}; for k,v in pairs(savedPos) do list[#list+1]=v end
-    table.sort(list,function(a,b) return a.name<b.name end)
-    PosEmpty.Visible=(#list==0)
-    for i,v in ipairs(list) do
-        local row=frame(PosScroll,UDim2.new(1,0,0,44),nil,C.BG3,0.08)
-        row.LayoutOrder=i; rnd(row,9); str(row,C.B1,1)
-        grad(row, Color3.fromRGB(20,24,48), Color3.fromRGB(14,17,34), 90)
-
-        local dot=frame(row,UDim2.new(0,3,1,-10),UDim2.new(0,0,0,5),C.ON,0); rnd(dot,2)
-        local nl=lbl(row,"📌 "..v.name,12,C.A1,Enum.Font.GothamBold)
-        nl.Size=UDim2.new(1,-82,0,18); nl.Position=UDim2.new(0,8,0,4)
-        local cl=lbl(row,"("..v.x..", "..v.y..", "..v.z..")",8,C.T2,Enum.Font.GothamSemibold)
-        cl.Size=UDim2.new(1,-82,0,14); cl.Position=UDim2.new(0,8,0,24)
-
-        local function mkPosBtn(txt,bg,xOff)
-            local b=Instance.new("TextButton"); b.Size=UDim2.new(0,34,0,30)
-            b.Position=UDim2.new(1,xOff,0.5,-15); b.BackgroundColor3=bg; b.BackgroundTransparency=0.2
-            b.BorderSizePixel=0; b.Text=txt; b.TextColor3=C.T1; b.TextSize=11; b.Font=Enum.Font.GothamBold
-            b.AutoButtonColor=false; b.Parent=row; rnd(b,7); str(b,bg,1); return b
-        end
-        local tp=mkPosBtn("📍",C.A1,-74)
-        local del=mkPosBtn("🗑",C.RED,-36)
-
-        local function doTP()
-            local r,n=IY.tppos(v.name)
-            addMsg("sys","📍 → "..v.name.." ("..v.x..","..v.y..","..v.z..")",false,true)
-        end
-        local function doDel() savedPos[v.name:lower()]=nil; renderPos() end
-        posConns[#posConns+1]=tp.MouseButton1Click:Connect(doTP); posConns[#posConns+1]=tp.TouchTap:Connect(doTP)
-        posConns[#posConns+1]=del.MouseButton1Click:Connect(doDel); posConns[#posConns+1]=del.TouchTap:Connect(doDel)
-    end
-    PosScroll.CanvasSize=UDim2.new(0,0,0,#list*48+10)
-end
-
-local function doSavePos()
-    local name=(NameBox.Text or ""):match("^%s*(.-)%s*$") or ""
-    if #name==0 then name="pos"..os.time() end
-    IY.savepos(name); NameBox.Text=""; renderPos()
-    addMsg("sys","📌 Guardada: \""..name.."\"",false,true)
-end
-SaveBtn.MouseButton1Click:Connect(doSavePos); SaveBtn.TouchTap:Connect(doSavePos)
-NameBox.FocusLost:Connect(function(e) if e then doSavePos() end end)
-
--- ============================================================
---  SETTINGS
--- ============================================================
-local SetP=frame(Main,UDim2.new(1,0,1,0),UDim2.new(0,0,0,0),C.BG0,0.03)
-SetP.Visible=false; SetP.ZIndex=20; rnd(SetP,14); str(SetP,C.B1,1.5)
-grad(SetP,Color3.fromRGB(10,12,26),Color3.fromRGB(6,7,16),135)
-
-local StLbl=lbl(SetP,"⚙  Configuración",14,C.T1,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
-StLbl.Size=UDim2.new(1,0,0,40); StLbl.ZIndex=21
-
-local KF=frame(SetP,UDim2.new(1,-20,0,38),UDim2.new(0,10,0,48),C.BG3,0.1)
-rnd(KF,10); str(KF,C.B1,1); KF.ZIndex=21
-local KBox=Instance.new("TextBox"); KBox.Size=UDim2.new(1,-10,1,-8); KBox.Position=UDim2.new(0,5,0,4)
-KBox.BackgroundTransparency=1; KBox.PlaceholderText="sk-or-v1-..."
-KBox.PlaceholderColor3=C.T3; KBox.Text=""; KBox.TextColor3=C.T1
-KBox.TextSize=11; KBox.Font=Enum.Font.Gotham; KBox.ClearTextOnFocus=false
-KBox.TextXAlignment=Enum.TextXAlignment.Left; KBox.ZIndex=22; KBox.Parent=KF
-
-local KStat=lbl(SetP,"Sin API Key · los comandos IY funcionan igual",9,C.T2,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-KStat.Size=UDim2.new(1,-20,0,14); KStat.Position=UDim2.new(0,10,0,92); KStat.ZIndex=21
-
-local function mkSetBtn(txt,x,bg,tc)
-    local b=Instance.new("TextButton"); b.Size=UDim2.new(0.44,0,0,34); b.Position=UDim2.new(x,0,0,110)
-    b.BackgroundColor3=bg; b.BackgroundTransparency=0.15; b.BorderSizePixel=0
-    b.Text=txt; b.TextColor3=tc; b.TextSize=11; b.Font=Enum.Font.GothamBold
-    b.AutoButtonColor=false; b.ZIndex=21; b.Parent=SetP; rnd(b,9); str(b,bg,1); return b
-end
-local KSave=mkSetBtn("✓ Guardar",0.04,C.A1,C.T1)
-local KClose=mkSetBtn("✕ Cerrar",0.52,C.RED,C.T1)
-
-local KInfo=lbl(SetP,"openrouter.ai → cuenta gratis → API Keys\nModelo: meta-llama/llama-3.3-70b-instruct:free\n\n💡 Sin key: comandos IY funcionan normalmente.\nCon key: la IA entiende lenguaje natural.",9,C.T2,Enum.Font.Gotham,Enum.TextXAlignment.Center)
-KInfo.Size=UDim2.new(1,-20,0,60); KInfo.Position=UDim2.new(0,10,0,152); KInfo.TextWrapped=true; KInfo.ZIndex=21
-
-local function saveKey()
-    local k=(KBox.Text or ""):match("^%s*(.-)%s*$") or ""; apiKey=k
-    if #k>8 then
-        KStat.Text="✓ API Key activada · IA lista"; KStat.TextColor3=C.ON
+        TrackConn(ENV.QOS_NoclipConn)
+        PushNotification("Noclip ON","Colisiones desactivadas","SUCCESS",3)
     else
-        KStat.Text="⚠ Key inválida"; KStat.TextColor3=C.ORANGE
+        if ENV.QOS_NoclipConn then pcall(function() ENV.QOS_NoclipConn:Disconnect() end) end
+        PushNotification("Noclip OFF","Colisiones restauradas","INFO",3)
     end
-    task.delay(1.5,function() SetP.Visible=false end)
-end
-KSave.MouseButton1Click:Connect(saveKey); KSave.TouchTap:Connect(saveKey)
-KClose.MouseButton1Click:Connect(function() SetP.Visible=false end); KClose.TouchTap:Connect(function() SetP.Visible=false end)
-BSet.MouseButton1Click:Connect(function() KBox.Text=apiKey; SetP.Visible=true end)
-BSet.TouchTap:Connect(function() KBox.Text=apiKey; SetP.Visible=true end)
-
--- ============================================================
---  TABS LOGIC
--- ============================================================
-local curTab=1
-local function setTab(t)
-    curTab=t; ChatP.Visible=(t==1); CmdP.Visible=(t==2); PosP.Visible=(t==3)
-    local cols={C.A1,C.ORANGE,C.ON}; local tabs={T1,T2,T3}
-    for i,tb in ipairs(tabs) do
-        if i==t then
-            tw(tb,{BackgroundColor3=cols[i]},0.14); tb.TextColor3=Color3.fromRGB(0,0,0)
-        else
-            tw(tb,{BackgroundColor3=Color3.fromRGB(16,20,40)},0.14); tb.TextColor3=C.T3
-        end
-    end
-end
-
--- Referencia setTab antes de buildCmds (los botones de comandos la usan)
-T1.MouseButton1Click:Connect(function() setTab(1) end); T1.TouchTap:Connect(function() setTab(1) end)
-T2.MouseButton1Click:Connect(function() setTab(2) end); T2.TouchTap:Connect(function() setTab(2) end)
-T3.MouseButton1Click:Connect(function() setTab(3) end); T3.TouchTap:Connect(function() setTab(3) end)
-
--- ============================================================
---  ENVIAR MENSAJE
--- ============================================================
-local aiLoading=false
-
-local function sendMsg()
-    if aiLoading then return end
-    local msg=(MBox.Text or ""):match("^%s*(.-)%s*$") or ""
-    if #msg=="" then return end
-    MBox.Text=""; addMsg(LP.Name,msg,true,false)
-
-    -- 1. Quick match sin IA
-    local cmd,result=quickMatch(msg)
-    if result then
-        addMsg("ia",result,false,false); renderPos(); return
-    end
-
-    -- 2. IA
-    aiLoading=true; SendBtn.Text="⏳"; SendBtn.BackgroundTransparency=0.4
-    local think=addMsg("ia","✦ Pensando...",false,false)
-    callAI(msg,function(content,err)
-        aiLoading=false; SendBtn.Text="➤"; SendBtn.BackgroundTransparency=0.1
-        if err then
-            local msgs={
-                no_key="⚠️ Configura tu API Key en ⚙\n(openrouter.ai → cuenta gratis → API Keys)",
-                no_connection="❌ Sin conexión HTTP\nVerifica que Delta tiene HTTP habilitado",
-                provider_error="⚠️ El proveedor del modelo tuvo un error.\nEsto pasa con cuentas free — vuelve a intentar",
-                rate_limit="⏱️ Rate limit alcanzado\nEspera 30 segundos e intenta de nuevo",
-                auth_error="🔑 API Key inválida\nVerifica tu key en openrouter.ai → API Keys",
-            }
-            local m=msgs[err] or ("❌ Error: "..tostring(err):sub(1,80))
-            if think and think.Parent then think.Text=m end; return
-        end
-        local clean,cmds=execAICmds(content)
-        local finalText=clean
-        if #cmds>0 and #clean>0 then finalText=clean end
-        if #cmds>0 and #clean==0 then finalText="⚡ Ejecutado: "..table.concat(cmds,", ") end
-        if think and think.Parent then think.Text=finalText end
-        renderPos()
-    end)
-end
-
-SendBtn.MouseButton1Click:Connect(sendMsg); SendBtn.TouchTap:Connect(sendMsg)
-MBox.FocusLost:Connect(function(e) if e then sendMsg() end end)
-
--- ============================================================
---  ANIMACIÓN ENTRADA
--- ============================================================
-setTab(1)
-buildCmds()
-renderPos()
-
-tw(Main,{Size=UDim2.new(0,W,0,H),Position=UDim2.new(0.5,-W/2,0.5,-H/2)},
-    0.3,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
-tw(Shadow,{Position=UDim2.new(0.5,-(W+20)/2,0.5,-(H+20)/2+6),Size=UDim2.new(0,W+20,0,H+20)},0.3)
-
-task.spawn(function()
-    pcall(function()
-        gameCtx.name=game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
-    end)
-    if gameCtx.name=="" then pcall(function() gameCtx.name=game.Name end) end
-    HGame.Text=(gameCtx.name~="" and gameCtx.name or "Roblox").." · "..#Players:GetPlayers().."p"
-    task.wait(0.35)
-    addMsg("ia",
-        "¡Hola! 🤖\n\n"..
-        "Tab ⚡ Cmds → toggles ON/OFF con sliders\n"..
-        "Tab 📌 Pos → guarda y teleporta\n"..
-        "Aquí abajo → lenguaje natural\n\n"..
-        "Sin API Key los comandos IY funcionan igual.\n"..
-        "Con key (⚙): IA entiende cualquier frase.\n\n"..
-        "Errores comunes:\n"..
-        "• provider_error = modelo free saturado, reintenta\n"..
-        "• no_connection = activa HTTP en Delta",
-        false,false)
 end)
+
+AddCommand({"tp", "teleport"}, "Teleporta a un jugador", {"jugador"}, function(args)
+    local target = GetPlayerFromArg(args[1])
+    if type(target) == "table" then PushNotification("Error","No uses 'all' para tp","ERROR",3); return end
+    if not target then PushNotification("Error","Jugador no encontrado","ERROR",3); return end
+    local char    = GetCharacter()
+    local tChar   = target.Character
+    local root    = GetRootPart()
+    local tRoot   = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
+    if root and tRoot then
+        root.CFrame = tRoot.CFrame + Vector3.new(0, 3, 0)
+        PushNotification("Teleport","Teleportado a " .. target.DisplayName,"SUCCESS",3)
+    else
+        PushNotification("Error","No se pudo teleportar","ERROR",3)
+    end
+end)
+
+AddCommand({"bringtp", "btp"}, "Trae un jugador hacia ti", {"jugador"}, function(args)
+    local target = GetPlayerFromArg(args[1])
+    if type(target) == "table" then PushNotification("Error","No uses 'all' con bringtp","ERROR",3); return end
+    if not target then PushNotification("Error","Jugador no encontrado","ERROR",3); return end
+    local root  = GetRootPart()
+    local tChar = target.Character
+    local tRoot = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
+    if root and tRoot then
+        tRoot.CFrame = root.CFrame + Vector3.new(3, 0, 0)
+        PushNotification("BringTP","Traje a " .. target.DisplayName,"SUCCESS",3)
+    end
+end)
+
+-- VISUAL / JUGADOR
+AddCommand({"invisible", "invis", "inv"}, "Activa/desactiva invisibilidad local", {}, function()
+    local char = GetCharacter()
+    if not char then return end
+    ENV.QOS_InvisActive = not ENV.QOS_InvisActive
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.LocalTransparencyModifier = ENV.QOS_InvisActive and 1 or 0
+        end
+    end
+    PushNotification("Invisible", ENV.QOS_InvisActive and "Activado" or "Desactivado",
+        ENV.QOS_InvisActive and "SUCCESS" or "INFO", 3)
+end)
+
+AddCommand({"esp", "wallhack"}, "Activa/desactiva ESP de jugadores", {"color (opcional)"}, function(args)
+    if ENV.QOS_EspActive then
+        ENV.QOS_EspActive = false
+        -- Remover highlights
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local h = p.Character:FindFirstChild("QOS_ESP_Highlight")
+                if h then h:Destroy() end
+            end
+        end
+        PushNotification("ESP OFF","ESP desactivado","INFO",3)
+        return
+    end
+    ENV.QOS_EspActive = true
+    local function ApplyEsp(player)
+        if player == LocalPlayer then return end
+        local function OnChar(char)
+            if not ENV.QOS_EspActive then return end
+            local existing = char:FindFirstChild("QOS_ESP_Highlight")
+            if existing then existing:Destroy() end
+            local h = Instance.new("SelectionBox")
+            h.Name = "QOS_ESP_Highlight"
+            h.Adornee = char
+            h.Color3 = C.PURPLE_NEON
+            h.LineThickness = 0.05
+            h.SurfaceTransparency = 0.8
+            h.SurfaceColor3 = Color3.fromRGB(80,0,160)
+            h.Parent = char
+        end
+        if player.Character then OnChar(player.Character) end
+        player.CharacterAdded:Connect(function(c) if ENV.QOS_EspActive then OnChar(c) end end)
+    end
+    for _, p in pairs(Players:GetPlayers()) do ApplyEsp(p) end
+    Players.PlayerAdded:Connect(ApplyEsp)
+    PushNotification("ESP ON","ESP de jugadores activado","SUCCESS",3)
+end)
+
+AddCommand({"godmode", "god"}, "Activa modo dios (requiere permisos del juego)", {}, function()
+    local hum = GetHumanoid()
+    if hum then
+        hum.MaxHealth = math.huge
+        hum.Health    = math.huge
+        PushNotification("God Mode","MaxHealth = Infinito","SUCCESS",3)
+    else
+        PushNotification("Error","No se encontro Humanoid","ERROR",3)
+    end
+end)
+
+AddCommand({"antiaim", "aa"}, "Activa/desactiva anti-aim de cabeza", {}, function()
+    ENV.QOS_AntiAim = not ENV.QOS_AntiAim
+    local char = GetCharacter()
+    if char then
+        local head = char:FindFirstChild("Head")
+        if head then
+            if ENV.QOS_AntiAim then
+                local bg = Instance.new("BodyGyro", head)
+                bg.Name  = "QOS_AntiAimGyro"
+                bg.MaxTorque = Vector3.new(1e9,1e9,1e9)
+                bg.D = 50
+                task.spawn(function()
+                    while ENV.QOS_AntiAim and head and head.Parent do
+                        bg.CFrame = CFrame.new(head.Position) * CFrame.Angles(0, tick() * 8, 0)
+                        task.wait()
+                    end
+                    pcall(function() bg:Destroy() end)
+                end)
+            else
+                local bg = head:FindFirstChild("QOS_AntiAimGyro")
+                if bg then bg:Destroy() end
+            end
+        end
+    end
+    PushNotification("Anti-Aim", ENV.QOS_AntiAim and "Activado" or "Desactivado",
+        ENV.QOS_AntiAim and "SUCCESS" or "INFO", 3)
+end)
+
+AddCommand({"fov", "setfov"}, "Cambia el FOV de la camara", {"valor"}, function(args)
+    local val = tonumber(args[1]) or 70
+    local cam = workspace.CurrentCamera
+    if cam then
+        cam.FieldOfView = math.clamp(val, 1, 120)
+        PushNotification("FOV","FieldOfView = " .. cam.FieldOfView,"SUCCESS",3)
+    end
+end)
+
+AddCommand({"zoom", "maxzoom"}, "Cambia el zoom maximo de camara", {"valor"}, function(args)
+    local val = tonumber(args[1]) or 50
+    pcall(function()
+        local StarterPlayer = Services.StarterPlayer
+        StarterPlayer.CameraMaxZoomDistance = val
+    end)
+    PushNotification("Zoom","Max zoom = " .. val,"SUCCESS",3)
+end)
+
+-- UTILIDADES
+AddCommand({"rejoin", "rj"}, "Vuelve a unirte a este servidor", {}, function()
+    if queueteleport then
+        queueteleport(string.format(
+            'game:GetService("TeleportService"):TeleportToPlaceInstance(%d, "%s")',
+            PlaceId, JobId
+        ))
+        TeleportService:TeleportToPlaceInstance(PlaceId, JobId)
+    else
+        TeleportService:TeleportToPlaceInstance(PlaceId, JobId)
+    end
+end)
+
+AddCommand({"server", "newserver", "ns"}, "Te une a un servidor nuevo/random", {}, function()
+    TeleportService:Teleport(PlaceId)
+    PushNotification("Server Hop","Cambiando de servidor...","INFO",3)
+end)
+
+AddCommand({"copy", "copyname"}, "Copia el nombre de un jugador", {"jugador"}, function(args)
+    local target = GetPlayerFromArg(args[1])
+    if not target then PushNotification("Error","Jugador no encontrado","ERROR",3); return end
+    if everyClipboard then
+        everyClipboard(target.Name)
+        PushNotification("Copiado",target.Name .. " copiado al portapapeles","SUCCESS",3)
+    end
+end)
+
+AddCommand({"players", "listplayers", "lp"}, "Muestra la lista de jugadores", {}, function()
+    local list = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        table.insert(list, (p == LocalPlayer and "[TU] " or "") .. p.DisplayName .. " (@" .. p.Name .. ")")
+    end
+    PushNotification("Jugadores (" .. #list .. ")", table.concat(list, " | "), "INFO", 6)
+end)
+
+AddCommand({"time", "gametime"}, "Muestra la hora del juego", {}, function()
+    local t = Lighting.TimeOfDay
+    PushNotification("Hora del Juego", tostring(t), "INFO", 3)
+end)
+
+AddCommand({"settime"}, "Cambia la hora del juego", {"hora (0-24)"}, function(args)
+    local val = tonumber(args[1]) or 12
+    Lighting.TimeOfDay = string.format("%02d:00:00", math.clamp(math.floor(val), 0, 23))
+    PushNotification("Hora","Hora ajustada a " .. val .. ":00","SUCCESS",3)
+end)
+
+AddCommand({"fog", "setfog"}, "Cambia la niebla del ambiente", {"distancia"}, function(args)
+    local val = tonumber(args[1]) or 1000
+    Lighting.FogEnd   = val
+    Lighting.FogStart = 0
+    PushNotification("Fog","FogEnd = " .. val,"SUCCESS",3)
+end)
+
+AddCommand({"brightness", "br"}, "Cambia el brillo del mapa", {"valor"}, function(args)
+    Lighting.Brightness = tonumber(args[1]) or 2
+    PushNotification("Brightness","Brillo = " .. Lighting.Brightness,"SUCCESS",3)
+end)
+
+AddCommand({"gravity", "grav"}, "Cambia la gravedad", {"valor"}, function(args)
+    workspace.Gravity = tonumber(args[1]) or 196.2
+    PushNotification("Gravity","Gravedad = " .. workspace.Gravity,"SUCCESS",3)
+end)
+
+AddCommand({"chat"}, "Envia un mensaje de chat como tu personaje", {"mensaje..."}, function(args)
+    if #args == 0 then return end
+    local msg = table.concat(args, " ")
+    local ok, err = pcall(function()
+        Services.Players.LocalPlayer:Chat(msg)
+    end)
+    if not ok then
+        PushNotification("Chat","No se pudo enviar: " .. tostring(err),"ERROR",3)
+    else
+        PushNotification("Chat","Enviado: " .. msg,"SUCCESS",3)
+    end
+end)
+
+AddCommand({"prefix"}, "Cambia el prefijo de comandos", {"prefijo"}, function(args)
+    if args[1] and #args[1] == 1 then
+        ENV.QOS_Prefix = args[1]
+        PushNotification("Prefijo","Prefijo cambiado a: " .. args[1],"SUCCESS",3)
+    else
+        PushNotification("Prefijo","Prefijo actual: " .. ENV.QOS_Prefix,"INFO",3)
+    end
+end)
+
+AddCommand({"alias"}, "Crea un alias para un comando", {"alias", "comando"}, function(args)
+    if #args < 2 then PushNotification("Alias","Uso: alias <nombre> <comando>","WARNING",3); return end
+    ENV.QOS_Aliases[args[1]] = args[2]
+    CommandAliases[args[1]] = args[2]
+    PushNotification("Alias","Alias '" .. args[1] .. "' -> '" .. args[2] .. "' creado","SUCCESS",3)
+end)
+
+AddCommand({"help", "h", "cmds"}, "Muestra la lista de comandos", {"busqueda (opcional)"}, function(args)
+    local search = args[1] and args[1]:lower() or nil
+    local found = {}
+    for name, cmd in pairs(Commands) do
+        if not search or name:find(search, 1, true) or cmd.description:lower():find(search, 1, true) then
+            table.insert(found, name .. " - " .. cmd.description)
+        end
+    end
+    table.sort(found)
+    PushNotification("Comandos (" .. #found .. ")", table.concat(found, " | "), "INFO", 8)
+end)
+
+AddCommand({"reset"}, "Resetea tu personaje", {}, function()
+    local hum = GetHumanoid()
+    if hum then hum.Health = 0 end
+end)
+
+AddCommand({"kill"}, "Mata a un jugador (solo local)", {"jugador"}, function(args)
+    local target = GetPlayerFromArg(args[1])
+    if not target then PushNotification("Error","Jugador no encontrado","ERROR",3); return end
+    if type(target) == "table" then
+        for _, p in pairs(target) do
+            if p.Character then
+                local h = p.Character:FindFirstChildOfClass("Humanoid")
+                if h then h.Health = 0 end
+            end
+        end
+        PushNotification("Kill","Todos eliminados (local)","SUCCESS",3)
+    else
+        if target.Character then
+            local h = target.Character:FindFirstChildOfClass("Humanoid")
+            if h then h.Health = 0 end
+        end
+        PushNotification("Kill","Eliminado a " .. target.DisplayName .. " (local)","SUCCESS",3)
+    end
+end)
+
+AddCommand({"size", "charsize"}, "Cambia el tamanio de tu personaje", {"escala"}, function(args)
+    local scale = tonumber(args[1]) or 1
+    local char  = GetCharacter()
+    if not char then return end
+    for _, obj in pairs(char:GetDescendants()) do
+        if obj:IsA("NumberValue") and obj.Parent:IsA("BodyColors") == false then
+            if obj.Name == "HeadScale" or obj.Name == "BodyHeightScale"
+                or obj.Name == "BodyWidthScale" or obj.Name == "BodyDepthScale" then
+                pcall(function() obj.Value = scale end)
+            end
+        end
+    end
+    PushNotification("Tamano","Escala = " .. scale,"SUCCESS",3)
+end)
+
+AddCommand({"walkto", "walktp"}, "Camina hacia un jugador", {"jugador"}, function(args)
+    local target = GetPlayerFromArg(args[1])
+    if type(target) == "table" then return end
+    if not target then PushNotification("Error","Jugador no encontrado","ERROR",3); return end
+    local char  = GetCharacter()
+    local tChar = target and target.Character
+    local tRoot = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
+    local hum   = GetHumanoid()
+    if hum and tRoot then
+        hum:MoveTo(tRoot.Position)
+        PushNotification("WalkTo","Caminando hacia " .. target.DisplayName,"INFO",3)
+    end
+end)
+
+-- ==============================================================================
+-- PARSER DE COMANDOS (estilo IY: prefijo+comando arg1 arg2...)
+-- ==============================================================================
+
+local function ParseAndExecute(input)
+    if not input or input == "" then return false end
+    input = input:gsub("^%s+", ""):gsub("%s+$", "")
+
+    -- Verificar prefijo
+    local prefix = ENV.QOS_Prefix or ";"
+    if input:sub(1, #prefix) ~= prefix then return false end
+    input = input:sub(#prefix + 1)
+
+    -- Dividir en tokens
+    local tokens = {}
+    for token in input:gmatch("%S+") do
+        table.insert(tokens, token)
+    end
+    if #tokens == 0 then return false end
+
+    local cmdName = tokens[1]:lower()
+    table.remove(tokens, 1)
+
+    -- Buscar alias de usuario primero
+    if ENV.QOS_Aliases[cmdName] then
+        cmdName = ENV.QOS_Aliases[cmdName]
+    end
+    -- Luego alias registrados
+    if CommandAliases[cmdName] then
+        cmdName = CommandAliases[cmdName]
+    end
+
+    local cmd = Commands[cmdName]
+    if cmd then
+        -- Agregar al historial
+        local hist = ENV.QOS_CommandHistory
+        table.insert(hist, 1, (ENV.QOS_Prefix or ";") .. cmdName .. " " .. table.concat(tokens, " "))
+        if #hist > 50 then table.remove(hist, #hist) end
+
+        task.spawn(function()
+            local ok, err = pcall(cmd.func, tokens)
+            if not ok then
+                PushNotification("Error de Comando", tostring(err), "ERROR", 4)
+            end
+        end)
+        return true
+    end
+    PushNotification("Comando no encontrado", "'" .. cmdName .. "' no existe. Usa ;help","WARNING",3)
+    return false
+end
+
+-- ==============================================================================
+-- SECCION 7 -- SISTEMA DE NOTIFICACIONES PREMIUM
+-- ==============================================================================
+
+local NotifTypes = {
+    INFO    = {icon = "i",  color = C.CYAN_NEON,    bg = Color3.fromRGB(0, 28, 48)},
+    SUCCESS = {icon = "v",  color = C.TEXT_GREEN,    bg = Color3.fromRGB(0, 38, 18)},
+    WARNING = {icon = "!",  color = C.TEXT_YELLOW,   bg = Color3.fromRGB(48, 32, 0)},
+    ERROR   = {icon = "x",  color = C.TEXT_RED,      bg = Color3.fromRGB(58, 0, 0)},
+    ORACLE  = {icon = "*",  color = C.PURPLE_GLOW,   bg = Color3.fromRGB(28, 0, 58)},
+    SYSTEM  = {icon = "#",  color = C.PURPLE_NEON,   bg = Color3.fromRGB(18, 4, 42)},
+    AI      = {icon = "AI", color = C.GOLD_NEON,     bg = Color3.fromRGB(40, 30, 0)},
+    CMD     = {icon = ">",  color = C.CYAN_NEON,     bg = Color3.fromRGB(0, 20, 40)},
+}
+
+local notifStack = {}
+local NOTIF_W = 300
+local NOTIF_H = 72
+local NOTIF_M = 6
+
+PushNotification = function(title, body, typeName, duration)
+    typeName = typeName or "INFO"
+    duration = duration or 3.5
+    local t = NotifTypes[typeName] or NotifTypes.INFO
+    if #notifStack >= 5 then return end
+
+    local slot = #notifStack + 1
+    table.insert(notifStack, slot)
+    local yOff = -(slot * (NOTIF_H + NOTIF_M))
+
+    local NFrame = MakeFrame({
+        Name = "Notif_" .. slot,
+        Size = UDim2.new(0, NOTIF_W, 0, NOTIF_H),
+        Position = UDim2.new(1, 16, 1, yOff),
+        BackgroundColor3 = t.bg,
+        ZIndex = 1100 + slot,
+    }, ScreenGui)
+    if not NFrame then return end
+    Corner(14, NFrame)
+    Stroke(1, t.color, NFrame)
+
+    -- Barra de acento
+    local Acc = MakeFrame({
+        Size = UDim2.new(0, 4, 1, -16),
+        Position = UDim2.new(0, 0, 0, 8),
+        BackgroundColor3 = t.color,
+        ZIndex = 1101 + slot,
+    }, NFrame)
+    if Acc then Corner(2, Acc) end
+
+    -- Icono badge
+    local IconBg = MakeFrame({
+        Size = UDim2.new(0, 28, 0, 28),
+        Position = UDim2.new(0, 12, 0.5, -14),
+        BackgroundColor3 = t.color,
+        BackgroundTransparency = 0.7,
+        ZIndex = 1102 + slot,
+    }, NFrame)
+    if IconBg then
+        Corner(8, IconBg)
+        MakeLabel({
+            Size = UDim2.fromScale(1, 1),
+            BackgroundTransparency = 1,
+            Text = t.icon,
+            Font = Enum.Font.GothamBold,
+            TextSize = 13,
+            TextColor3 = t.color,
+            ZIndex = 1103 + slot,
+        }, IconBg)
+    end
+
+    -- Titulo
+    MakeLabel({
+        Size = UDim2.new(1, -56, 0, 22),
+        Position = UDim2.new(0, 50, 0, 8),
+        BackgroundTransparency = 1,
+        Text = title,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        TextColor3 = C.TEXT_WHITE,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 1102 + slot,
+    }, NFrame)
+
+    -- Cuerpo
+    MakeLabel({
+        Size = UDim2.new(1, -56, 0, 30),
+        Position = UDim2.new(0, 50, 0, 32),
+        BackgroundTransparency = 1,
+        Text = body,
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextColor3 = C.TEXT_SOFT,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 1102 + slot,
+    }, NFrame)
+
+    -- Progress bar
+    local PBG = MakeFrame({
+        Size = UDim2.new(1, 0, 0, 2),
+        Position = UDim2.new(0, 0, 1, -2),
+        BackgroundColor3 = C.SLIDER_BG,
+        ZIndex = 1103 + slot,
+    }, NFrame)
+    local PF = MakeFrame({
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = t.color,
+        ZIndex = 1104 + slot,
+    }, PBG)
+    Corner(2, PF)
+
+    -- Boton cerrar
+    local ClN = MakeButton({
+        Size = UDim2.new(0, 22, 0, 22),
+        Position = UDim2.new(1, -26, 0, 4),
+        BackgroundTransparency = 1,
+        Text = "x",
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        TextColor3 = C.TEXT_MUTED,
+        ZIndex = 1105 + slot,
+    }, NFrame)
+
+    -- Animar entrada
+    Tween(NFrame, TI_BOUNCE, {Position = UDim2.new(1, -(NOTIF_W + 10), 1, yOff)})
+    Tween(PF, TweenInfo.new(duration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 1, 0)})
+
+    local dismissed = false
+    local function Dismiss()
+        if dismissed then return end
+        dismissed = true
+        Tween(NFrame, TI_MED, {Position = UDim2.new(1, 16, 1, yOff)})
+        task.delay(0.35, function()
+            pcall(function()
+                local idx = table.find(notifStack, slot)
+                if idx then table.remove(notifStack, idx) end
+                NFrame:Destroy()
+            end)
+        end)
+    end
+
+    if ClN then ClN.MouseButton1Click:Connect(Dismiss) end
+    task.delay(duration, function() pcall(Dismiss) end)
+end
+
+-- Toast rapido
+local toastQueue = {}
+local toastActive = false
+local function ShowToast(title, body, icon, dur)
+    dur = dur or 2.5
+    icon = icon or ">"
+    table.insert(toastQueue, {title = title, body = body, icon = icon, dur = dur})
+    if toastActive then return end
+    toastActive = true
+    task.spawn(function()
+        while #toastQueue > 0 do
+            local t = table.remove(toastQueue, 1)
+            local T = MakeFrame({
+                Size = UDim2.new(0, 280, 0, 62),
+                Position = UDim2.new(0.5, -140, 1, 10),
+                BackgroundColor3 = C.BG_CARD,
+                ZIndex = 1000,
+            }, ScreenGui)
+            if T then
+                Corner(14, T)
+                Stroke(2, C.PURPLE_NEON, T)
+                MakeLabel({
+                    Size = UDim2.new(0, 34, 1, 0),
+                    BackgroundTransparency = 1,
+                    Text = t.icon,
+                    Font = Enum.Font.GothamBold,
+                    TextSize = 18,
+                    TextColor3 = C.PURPLE_GLOW,
+                    ZIndex = 1001,
+                }, T)
+                MakeLabel({
+                    Size = UDim2.new(1, -50, 0, 20),
+                    Position = UDim2.new(0, 40, 0, 8),
+                    BackgroundTransparency = 1,
+                    Text = t.title,
+                    Font = Enum.Font.GothamBold,
+                    TextSize = 13,
+                    TextColor3 = C.TEXT_WHITE,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 1001,
+                }, T)
+                MakeLabel({
+                    Size = UDim2.new(1, -50, 0, 18),
+                    Position = UDim2.new(0, 40, 0, 30),
+                    BackgroundTransparency = 1,
+                    Text = t.body,
+                    Font = Enum.Font.Gotham,
+                    TextSize = 11,
+                    TextColor3 = C.TEXT_SOFT,
+                    TextWrapped = true,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 1001,
+                }, T)
+                Tween(T, TI_MED, {Position = UDim2.new(0.5, -140, 1, -75)})
+                task.wait(t.dur)
+                Tween(T, TI_MED, {Position = UDim2.new(0.5, -140, 1, 10)})
+                task.wait(0.4)
+                T:Destroy()
+            end
+            task.wait(0.2)
+        end
+        toastActive = false
+    end)
+end
+
+-- ==============================================================================
+-- SECCION 8 -- MULTI-AGENT AI SYSTEM (OpenRouter)
+-- ==============================================================================
+
+local AI = {}
+AI.ORCHESTRATOR = "meta-llama/llama-3.3-70b-instruct:free"
+AI.AGENTS = {
+    GAME_ANALYST   = "nvidia/nemotron-3-super-120b-a12b:free",
+    CODE_EXPERT    = "qwen/qwen3-coder:free",
+    STRATEGY_AGENT = "deepseek/deepseek-v4-flash:free",
+    CREATIVE_AGENT = "google/gemma-4-31b-it:free",
+    FAST_AGENT     = "meta-llama/llama-3.2-3b-instruct:free",
+}
+AI.AGENT_META = {
+    GAME_ANALYST   = {icon = "[G]", name = "Game Analyst",   color = Color3.fromRGB(255, 140,   0)},
+    CODE_EXPERT    = {icon = "[C]", name = "Code Expert",    color = Color3.fromRGB(  0, 220, 180)},
+    STRATEGY_AGENT = {icon = "[S]", name = "Strategy Agent", color = Color3.fromRGB(220,  50,  50)},
+    CREATIVE_AGENT = {icon = "[A]", name = "Creative Agent", color = Color3.fromRGB(200, 100, 255)},
+    FAST_AGENT     = {icon = "[F]", name = "Fast Agent",     color = Color3.fromRGB(255, 220,  60)},
+}
+AI.SYSTEM_PROMPTS = {
+    ORCHESTRATOR   = "Eres el Orquestador de Quantum OS para Roblox. Analiza el mensaje y responde SOLO con JSON:\n{\"agent\":\"GAME_ANALYST|CODE_EXPERT|STRATEGY_AGENT|CREATIVE_AGENT|FAST_AGENT\",\"reason\":\"motivo\"}\nReglas: GAME_ANALYST=mecanicas/items/juego, CODE_EXPERT=scripts/Lua/errores, STRATEGY_AGENT=estrategias/builds, CREATIVE_AGENT=ideas/rol, FAST_AGENT=saludos/preguntas simples. Juego: " .. GAME_NAME,
+    GAME_ANALYST   = "Eres un experto analista de '" .. GAME_NAME .. "' en Roblox. Responde en espanol, max 130 palabras.",
+    CODE_EXPERT    = "Eres un experto en Lua y Delta Executor para Roblox. Ayuda con scripts, errores y optimizacion. Responde en espanol con codigo bien comentado, max 160 palabras.",
+    STRATEGY_AGENT = "Eres un estratega experto en '" .. GAME_NAME .. "'. Responde en espanol conciso, max 130 palabras.",
+    CREATIVE_AGENT = "Eres un asistente creativo para Roblox. Responde en espanol con entusiasmo, max 110 palabras.",
+    FAST_AGENT     = "Eres el asistente rapido de Quantum OS para Roblox '" .. GAME_NAME .. "'. Responde breve y amigable en espanol, max 70 palabras.",
+}
+
+local function OR_Call(model, sysPrompt, userMsg, maxTok)
+    maxTok = maxTok or 300
+    local key = ENV.QOS_OpenRouterKey
+    if not key or key == "" then return nil, "Sin API Key" end
+    local ok, result = pcall(function()
+        local body = HttpService:JSONEncode({
+            model = model,
+            max_tokens = maxTok,
+            messages = {
+                {role = "system", content = sysPrompt},
+                {role = "user",   content = userMsg},
+            },
+        })
+        local resp = HttpService:RequestAsync({
+            Url    = "https://openrouter.ai/api/v1/chat/completions",
+            Method = "POST",
+            Headers = {
+                ["Authorization"] = "Bearer " .. key,
+                ["Content-Type"]  = "application/json",
+                ["HTTP-Referer"]  = "https://lxndxn-quantumos.rblx",
+                ["X-Title"]       = "LXNDXN Quantum OS v4.0",
+            },
+            Body = body,
+        })
+        if resp.StatusCode ~= 200 then return nil, "HTTP " .. resp.StatusCode end
+        local data = HttpService:JSONDecode(resp.Body)
+        return data.choices and data.choices[1] and data.choices[1].message and data.choices[1].message.content
+    end)
+    if ok then return result, nil else return nil, tostring(result) end
+end
+
+local function VerifyAPIKey(key, callback)
+    task.spawn(function()
+        local old = ENV.QOS_OpenRouterKey
+        ENV.QOS_OpenRouterKey = key
+        local resp, err = OR_Call(
+            AI.AGENTS.FAST_AGENT,
+            "Eres un verificador. Responde SOLO la palabra: OK",
+            "Verificacion de conexion. Responde: OK", 12
+        )
+        if resp and #resp > 0 then
+            callback(true, resp)
+        else
+            ENV.QOS_OpenRouterKey = old
+            callback(false, err or "Sin respuesta")
+        end
+    end)
+end
+
+local function OracleQuery(userMsg, onThink, onAgent, onResponse, onError)
+    task.spawn(function()
+        if onThink then onThink("Orquestador analizando consulta...") end
+        local orchResp, _ = OR_Call(AI.ORCHESTRATOR, AI.SYSTEM_PROMPTS.ORCHESTRATOR, userMsg, 80)
+        local agentKey = "FAST_AGENT"
+        if orchResp then
+            local ok, decoded = pcall(function() return HttpService:JSONDecode(orchResp) end)
+            if ok and decoded and decoded.agent and AI.AGENTS[decoded.agent] then
+                agentKey = decoded.agent
+            end
+        end
+        local meta = AI.AGENT_META[agentKey] or AI.AGENT_META.FAST_AGENT
+        if onAgent then onAgent(agentKey, meta) end
+        if onThink then onThink(meta.name .. " procesando...") end
+        local resp, err = OR_Call(
+            AI.AGENTS[agentKey] or AI.AGENTS.FAST_AGENT,
+            AI.SYSTEM_PROMPTS[agentKey] or AI.SYSTEM_PROMPTS.FAST_AGENT,
+            userMsg, 350
+        )
+        if resp then
+            if onResponse then onResponse(resp, meta) end
+        else
+            if onError then onError(err or "Error desconocido") end
+        end
+    end)
+end
+
+-- ==============================================================================
+-- SECCION 9 -- BOOT SCREEN ANIMADO
+-- ==============================================================================
+
+local function CreateBootScreen()
+    local Boot = MakeFrame({
+        Name = "BootScreen",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = C.BG_DEEP,
+        ZIndex = 100,
+    }, ScreenGui)
+    Gradient(C.BG_DEEP, Color3.fromRGB(8, 4, 22), 135, Boot)
+
+    local Center = MakeFrame({
+        Size = UDim2.new(0, 360, 0, 430),
+        Position = UDim2.new(0.5, -180, 0.5, -215),
+        BackgroundColor3 = C.BG_GLASS,
+        BackgroundTransparency = 0.25,
+        ZIndex = 101,
+    }, Boot)
+    Corner(28, Center)
+    local cs = Stroke(2, C.PURPLE_NEON, Center)
+    PulseStroke(cs, C.PURPLE_DIM, C.PURPLE_GLOW)
+
+    SpawnParticles(Center, 8, 102)
+
+    -- Logo central
+    local LogoFrame = MakeFrame({
+        Size = UDim2.new(0, 80, 0, 80),
+        Position = UDim2.new(0.5, -40, 0, 22),
+        BackgroundColor3 = C.PURPLE_DIM,
+        BackgroundTransparency = 0.25,
+        ZIndex = 102,
+    }, Center)
+    Corner(40, LogoFrame)
+    Stroke(3, C.PURPLE_NEON, LogoFrame)
+    Gradient(Color3.fromRGB(60,10,110), C.PURPLE_DIM, 135, LogoFrame)
+
+    local LogoLabel = MakeLabel({
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Text = "Q",
+        Font = Enum.Font.GothamBold,
+        TextSize = 48,
+        TextColor3 = C.PURPLE_NEON,
+        ZIndex = 103,
+    }, LogoFrame)
+    task.spawn(function()
+        while LogoLabel and LogoLabel.Parent do
+            Tween(LogoLabel, TI_SINE, {TextColor3 = C.CYAN_NEON}); task.wait(1.2)
+            Tween(LogoLabel, TI_SINE, {TextColor3 = C.PURPLE_NEON}); task.wait(1.2)
+        end
+    end)
+
+    MakeLabel({
+        Size = UDim2.new(1, 0, 0, 30),
+        Position = UDim2.new(0, 0, 0, 114),
+        BackgroundTransparency = 1,
+        Text = "QUANTUM OS  v4.0",
+        Font = Enum.Font.GothamBold,
+        TextSize = 22,
+        TextColor3 = C.TEXT_WHITE,
+        ZIndex = 102,
+    }, Center)
+
+    -- Badge
+    local Badge = MakeLabel({
+        Size = UDim2.new(0, 240, 0, 24),
+        Position = UDim2.new(0.5, -120, 0, 150),
+        BackgroundColor3 = C.PURPLE_DIM,
+        BackgroundTransparency = 0.2,
+        Text = "DELTA EDITION  |  MULTI-AGENT AI",
+        Font = Enum.Font.GothamSemibold,
+        TextSize = 11,
+        TextColor3 = C.CYAN_NEON,
+        ZIndex = 102,
+    }, Center)
+    Corner(12, Badge)
+
+    local WelcomeLabel = MakeLabel({
+        Size = UDim2.new(1, -40, 0, 50),
+        Position = UDim2.new(0, 20, 0, 188),
+        BackgroundTransparency = 1,
+        Text = "",
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = C.TEXT_WHITE,
+        TextWrapped = true,
+        ZIndex = 102,
+    }, Center)
+
+    local SubLabel = MakeLabel({
+        Size = UDim2.new(1, -40, 0, 44),
+        Position = UDim2.new(0, 20, 0, 244),
+        BackgroundTransparency = 1,
+        Text = "",
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextColor3 = C.TEXT_SOFT,
+        TextWrapped = true,
+        ZIndex = 102,
+    }, Center)
+
+    -- Barra de progreso
+    local ProgressBG = MakeFrame({
+        Size = UDim2.new(1, -40, 0, 6),
+        Position = UDim2.new(0, 20, 0, 318),
+        BackgroundColor3 = C.SLIDER_BG,
+        ZIndex = 102,
+    }, Center)
+    Corner(3, ProgressBG)
+    local ProgressFill = MakeFrame({Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = C.PURPLE_NEON, ZIndex = 103}, ProgressBG)
+    Corner(3, ProgressFill)
+    Gradient(C.PURPLE_NEON, C.CYAN_NEON, 0, ProgressFill)
+
+    local ProgressLabel = MakeLabel({
+        Size = UDim2.new(1, 0, 0, 16),
+        Position = UDim2.new(0, 0, 1, 5),
+        BackgroundTransparency = 1,
+        Text = "Inicializando sistema...",
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextColor3 = C.TEXT_MUTED,
+        ZIndex = 102,
+    }, ProgressBG)
+
+    MakeLabel({
+        Size = UDim2.new(1, 0, 0, 16),
+        Position = UDim2.new(0, 0, 1, -22),
+        BackgroundTransparency = 1,
+        Text = "LXNDXN  |  Delta Edition  |  Infinite Yield Engine  |  v4.0",
+        Font = Enum.Font.Gotham,
+        TextSize = 10,
+        TextColor3 = C.TEXT_MUTED,
+        ZIndex = 102,
+    }, Center)
+
+    -- Animacion de boot
+    task.spawn(function()
+        task.wait(0.5)
+        Typewriter(WelcomeLabel, "Hola, " .. DISPLAY_NAME .. ". Iniciando Quantum OS v4.0...", 0.04)
+        task.wait(1.8)
+        Typewriter(SubLabel, "Sistema Multi-Agente AI iniciando...\nInfinite Yield Engine | 5 Agentes listos.", 0.03)
+        task.wait(1.4)
+        local steps = {
+            {0.12, "Cargando kernel del OS..."},
+            {0.28, "Verificando Delta Executor..."},
+            {0.44, "Cargando comandos Infinite Yield..."},
+            {0.60, "Conectando Orquestador AI..."},
+            {0.76, "Activando agentes especializados..."},
+            {0.90, "Estableciendo sesion segura..."},
+            {1.00, "Listo. Se requiere autenticacion."},
+        }
+        for _, step in ipairs(steps) do
+            Tween(ProgressFill, TI_MED, {Size = UDim2.new(step[1], 0, 1, 0)})
+            ProgressLabel.Text = step[2]
+            task.wait(0.38)
+        end
+        task.wait(0.5)
+        Tween(Boot, TI_SLOW, {BackgroundTransparency = 1})
+        task.wait(0.65)
+        pcall(function() Boot:Destroy() end)
+    end)
+    return Boot
+end
+
+-- ==============================================================================
+-- SECCION 10 -- LOGIN SCREEN PREMIUM
+-- ==============================================================================
+
+local function CreateLoginScreen(onSuccess)
+    local Login = MakeFrame({
+        Name = "LoginScreen",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = C.BG_DEEP,
+        ZIndex = 90,
+    }, ScreenGui)
+    Gradient(Color3.fromRGB(4, 2, 14), Color3.fromRGB(14, 6, 38), 135, Login)
+
+    -- Scan lines animadas
+    local function SpawnScanLine()
+        task.spawn(function()
+            while Login and Login.Parent do
+                local line = MakeFrame({
+                    Size = UDim2.new(1, 0, 0, 1),
+                    Position = UDim2.new(0, 0, 0, 0),
+                    BackgroundColor3 = C.PURPLE_NEON,
+                    BackgroundTransparency = 0.88,
+                    ZIndex = 91,
+                }, Login)
+                Tween(line, TweenInfo.new(3 + math.random() * 2, Enum.EasingStyle.Linear), {
+                    Position = UDim2.new(0, 0, 1, 0)
+                })
+                task.wait(3 + math.random() * 3)
+                pcall(function() line:Destroy() end)
+            end
+        end)
+    end
+    for i = 1, 4 do task.delay(i * 0.8, SpawnScanLine) end
+
+    SpawnParticles(Login, 20, 91)
+
+    -- Panel principal adaptado a movil
+    local Panel = MakeFrame({
+        Name = "LoginPanel",
+        Size = UDim2.new(0.92, 0, 0, 620),
+        Position = UDim2.new(0.04, 0, 0.5, -310),
+        BackgroundColor3 = Color3.fromRGB(12, 10, 32),
+        BackgroundTransparency = 0.1,
+        ZIndex = 92,
+    }, Login)
+    Corner(28, Panel)
+    local panelS = Stroke(2, C.BORDER_BRIGHT, Panel)
+    PulseStroke(panelS, C.PURPLE_DIM, C.PURPLE_GLOW)
+
+    SpawnParticles(Panel, 8, 93)
+
+    -- Logo en panel
+    local LogoF = MakeFrame({
+        Size = UDim2.new(0, 80, 0, 80),
+        Position = UDim2.new(0.5, -40, 0, 22),
+        BackgroundColor3 = C.PURPLE_DIM,
+        BackgroundTransparency = 0.25,
+        ZIndex = 94,
+    }, Panel)
+    Corner(40, LogoF)
+    Stroke(3, C.PURPLE_NEON, LogoF)
+    Gradient(Color3.fromRGB(60,10,110), C.PURPLE_DIM, 135, LogoF)
+    local LIcon = MakeLabel({
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Text = "Q",
+        Font = Enum.Font.GothamBold,
+        TextSize = 46,
+        TextColor3 = C.PURPLE_NEON,
+        ZIndex = 95,
+    }, LogoF)
+    task.spawn(function()
+        while LIcon and LIcon.Parent do
+            Tween(LIcon, TI_SINE, {TextColor3 = C.CYAN_NEON}); task.wait(1.2)
+            Tween(LIcon, TI_SINE, {TextColor3 = C.PURPLE_NEON}); task.wait(1.2)
+        end
+    end)
+
+    MakeLabel({
+        Size = UDim2.new(1, 0, 0, 34),
+        Position = UDim2.new(0, 0, 0, 114),
+        BackgroundTransparency = 1,
+        Text = "QUANTUM OS",
+        Font = Enum.Font.GothamBold,
+        TextSize = 28,
+        TextColor3 = C.TEXT_WHITE,
+        ZIndex = 94,
+    }, Panel)
+
+    MakeLabel({
+        Size = UDim2.new(1, 0, 0, 18),
+        Position = UDim2.new(0, 0, 0, 150),
+        BackgroundTransparency = 1,
+        Text = "Multi-Agent AI  |  Delta Edition  |  v4.0",
+        Font = Enum.Font.GothamSemibold,
+        TextSize = 12,
+        TextColor3 = C.CYAN_NEON,
+        ZIndex = 94,
+    }, Panel)
+
+    -- Badges de agentes
+    local BadgeRow = MakeFrame({
+        Size = UDim2.new(1, -40, 0, 26),
+        Position = UDim2.new(0, 20, 0, 178),
+        BackgroundTransparency = 1,
+        ZIndex = 94,
+    }, Panel)
+    ListLayout({
+        FillDirection = Enum.FillDirection.Horizontal,
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        Padding = UDim.new(0, 4),
+    }, BadgeRow)
+    for _, ab in ipairs({{"[G]", "Game"}, {"[C]", "Code"}, {"[S]", "Strat"}, {"[A]", "Art"}, {"[F]", "Fast"}}) do
+        local B = MakeLabel({
+            Size = UDim2.new(0, 0, 1, 0),
+            AutomaticSize = Enum.AutomaticSize.X,
+            BackgroundColor3 = Color3.fromRGB(20, 8, 50),
+            Text = ab[1] .. " " .. ab[2],
+            Font = Enum.Font.Gotham,
+            TextSize = 10,
+            TextColor3 = C.TEXT_SOFT,
+            ZIndex = 95,
+        }, BadgeRow)
+        Corner(10, B)
+        Stroke(1, C.PURPLE_DIM, B)
+        Padding(0, 7, 0, 7, B)
+    end
+
+    -- Separador
+    MakeFrame({
+        Size = UDim2.new(0.8, 0, 0, 1),
+        Position = UDim2.new(0.1, 0, 0, 218),
+        BackgroundColor3 = C.BORDER,
+        ZIndex = 94,
+    }, Panel)
+
+    -- Label API Key
+    MakeLabel({
+        Size = UDim2.new(1, -40, 0, 18),
+        Position = UDim2.new(0, 20, 0, 228),
+        BackgroundTransparency = 1,
+        Text = "OPENROUTER API KEY",
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextColor3 = C.PURPLE_GLOW,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 94,
+    }, Panel)
+
+    -- TextBox API Key
+    local KeyBox = MakeBox({
+        Size = UDim2.new(1, -40, 0, 50),
+        Position = UDim2.new(0, 20, 0, 250),
+        BackgroundColor3 = Color3.fromRGB(10, 8, 28),
+        BorderSizePixel = 0,
+        Text = "",
+        PlaceholderText = "sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx",
+        Font = Enum.Font.Code,
+        TextSize = 13,
+        TextColor3 = C.TEXT_WHITE,
+        PlaceholderColor3 = C.TEXT_MUTED,
+        ClearTextOnFocus = false,
+        ZIndex = 95,
+    }, Panel)
+    Corner(12, KeyBox)
+    local kbs = Stroke(2, C.BORDER, KeyBox)
+    Padding(0, 14, 0, 14, KeyBox)
+    KeyBox.Focused:Connect(function()   Tween(kbs, TI_FAST, {Color = C.PURPLE_NEON}) end)
+    KeyBox.FocusLost:Connect(function() Tween(kbs, TI_FAST, {Color = C.BORDER}) end)
+
+    -- Status label
+    local StatusLabel = MakeLabel({
+        Size = UDim2.new(1, -40, 0, 22),
+        Position = UDim2.new(0, 20, 0, 308),
+        BackgroundTransparency = 1,
+        Text = "",
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextColor3 = C.TEXT_MUTED,
+        TextWrapped = true,
+        ZIndex = 94,
+    }, Panel)
+
+    -- Spinner
+    local Spinner = MakeLabel({
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(0.5, -15, 0, 320),
+        BackgroundTransparency = 1,
+        Text = "o",
+        Font = Enum.Font.GothamBold,
+        TextSize = 24,
+        TextColor3 = C.CYAN_NEON,
+        Visible = false,
+        ZIndex = 96,
+    }, Panel)
+
+    -- Boton VERIFICAR
+    local LoginBtn = MakeButton({
+        Size = UDim2.new(1, -40, 0, 50),
+        Position = UDim2.new(0, 20, 0, 338),
+        BackgroundColor3 = C.PURPLE_NEON,
+        BorderSizePixel = 0,
+        Text = ">> VERIFICAR API KEY <<",
+        Font = Enum.Font.GothamBold,
+        TextSize = 15,
+        TextColor3 = Color3.new(1, 1, 1),
+        ZIndex = 95,
+    }, Panel)
+    Corner(14, LoginBtn)
+    Gradient(Color3.fromRGB(130, 20, 210), Color3.fromRGB(70, 0, 170), 135, LoginBtn)
+    LoginBtn.MouseEnter:Connect(function()
+        Tween(LoginBtn, TI_FAST, {Size = UDim2.new(1, -30, 0, 50), Position = UDim2.new(0, 15, 0, 338)})
+    end)
+    LoginBtn.MouseLeave:Connect(function()
+        Tween(LoginBtn, TI_FAST, {Size = UDim2.new(1, -40, 0, 50), Position = UDim2.new(0, 20, 0, 338)})
+    end)
+
+    -- Separador 2
+    MakeFrame({
+        Size = UDim2.new(0.7, 0, 0, 1),
+        Position = UDim2.new(0.15, 0, 0, 402),
+        BackgroundColor3 = C.BORDER,
+        ZIndex = 94,
+    }, Panel)
+
+    -- Boton Obtener API Key
+    local GetKeyBtn = MakeButton({
+        Size = UDim2.new(1, -40, 0, 44),
+        Position = UDim2.new(0, 20, 0, 410),
+        BackgroundColor3 = Color3.fromRGB(12, 10, 32),
+        BorderSizePixel = 0,
+        Text = "[KEY] Obtener API Key -> openrouter.ai/keys",
+        Font = Enum.Font.GothamSemibold,
+        TextSize = 12,
+        TextColor3 = C.CYAN_NEON,
+        ZIndex = 95,
+    }, Panel)
+    Corner(12, GetKeyBtn)
+    Stroke(1, C.CYAN_DIM, GetKeyBtn)
+    HoverGlow(GetKeyBtn, Color3.fromRGB(12,10,32), Color3.fromRGB(0,28,48))
+    GetKeyBtn.MouseButton1Click:Connect(function()
+        if everyClipboard then
+            pcall(function() everyClipboard("https://openrouter.ai/keys") end)
+        end
+        StatusLabel.Text = "Link copiado: openrouter.ai/keys"
+        StatusLabel.TextColor3 = C.CYAN_NEON
+    end)
+
+    -- Hint seguridad
+    MakeLabel({
+        Size = UDim2.new(1, -40, 0, 16),
+        Position = UDim2.new(0, 20, 0, 462),
+        BackgroundTransparency = 1,
+        Text = "[i] Tu key solo se usa en llamadas de IA - No se almacena",
+        Font = Enum.Font.Gotham,
+        TextSize = 10,
+        TextColor3 = C.TEXT_MUTED,
+        ZIndex = 94,
+    }, Panel)
+
+    -- Footer
+    MakeLabel({
+        Size = UDim2.new(1, 0, 0, 16),
+        Position = UDim2.new(0, 0, 0, 596),
+        BackgroundTransparency = 1,
+        Text = "LXNDXN Quantum OS  |  Delta Edition  |  v4.0  |  Infinite Yield Engine",
+        Font = Enum.Font.Gotham,
+        TextSize = 10,
+        TextColor3 = C.TEXT_MUTED,
+        ZIndex = 94,
+    }, Panel)
+
+    -- Logica de verificacion
+    local function DoVerify()
+        local key = KeyBox.Text:gsub("%s+", "")
+        if key == "" then
+            StatusLabel.Text = "[!] Introduce tu API Key de OpenRouter."
+            StatusLabel.TextColor3 = C.TEXT_YELLOW
+            Tween(KeyBox, TI_FAST, {BackgroundColor3 = Color3.fromRGB(30, 14, 8)})
+            task.wait(0.7)
+            Tween(KeyBox, TI_FAST, {BackgroundColor3 = Color3.fromRGB(10, 8, 28)})
+            return
+        end
+        LoginBtn.Visible = false
+        Spinner.Visible = true
+        StatusLabel.Text = "Verificando con OpenRouter AI..."
+        StatusLabel.TextColor3 = C.CYAN_NEON
+        local spinOK = true
+        task.spawn(function()
+            local icons = {"o", "0", "O", "Q", "O", "0"}
+            local i = 1
+            while spinOK do
+                Spinner.Text = icons[i]
+                i = i % #icons + 1
+                task.wait(0.12)
+            end
+        end)
+        VerifyAPIKey(key, function(success, resp)
+            spinOK = false
+            Spinner.Visible = false
+            LoginBtn.Visible = true
+            if success then
+                ENV.QOS_OpenRouterKey = key
+                StatusLabel.Text = "[v] API Key verificada | Conexion establecida"
+                StatusLabel.TextColor3 = C.TEXT_GREEN
+                Tween(LoginBtn, TI_FAST, {BackgroundColor3 = C.TOGGLE_ON})
+                LoginBtn.Text = "[v]  CONECTADO"
+                task.wait(1.0)
+                Tween(Login, TI_MED, {BackgroundTransparency = 1})
+                task.wait(0.4)
+                pcall(function() Login:Destroy() end)
+                onSuccess()
+            else
+                StatusLabel.Text = "[x] API Key invalida. Verifica en openrouter.ai/keys"
+                StatusLabel.TextColor3 = C.TEXT_RED
+                -- Shake animation
+                for _ = 1, 6 do
+                    local ox = Panel.Position.X.Scale
+                    local oy = Panel.Position.Y.Scale
+                    Tween(Panel, TI_FAST, {Position = UDim2.new(ox + 0.006, 0, oy, 0)}); task.wait(0.05)
+                    Tween(Panel, TI_FAST, {Position = UDim2.new(ox - 0.006, 0, oy, 0)}); task.wait(0.05)
+                end
+                Tween(Panel, TI_FAST, {Position = UDim2.new(0.04, 0, 0.5, -310)})
+            end
+        end)
+    end
+    LoginBtn.MouseButton1Click:Connect(DoVerify)
+    KeyBox.FocusLost:Connect(function(enter) if enter then DoVerify() end end)
+    return Login
+end
+
+-- ==============================================================================
+-- SECCION 11 -- VENTANA PRINCIPAL
+-- ==============================================================================
+
+local MainWindow  = nil
+local Sidebar     = nil
+local ContentArea = nil
+local CurrentTabFrame = nil
+local SidebarButtons  = {}
+
+local function ClearContent()
+    if CurrentTabFrame then
+        pcall(function() CurrentTabFrame:Destroy() end)
+        CurrentTabFrame = nil
+    end
+end
+
+local function SetActiveTab(name)
+    for tabName, btn in pairs(SidebarButtons) do
+        local active = (tabName == name)
+        Tween(btn, TI_FAST, {
+            BackgroundColor3    = active and C.PURPLE_DIM or Color3.fromRGB(0, 0, 0),
+            BackgroundTransparency = active and 0 or 1,
+        })
+        local ind = btn:FindFirstChild("Indicator")
+        if ind then ind.Visible = active end
+    end
+end
+
+local function SectionHeader(parent, title, subtitle)
+    local H = MakeFrame({
+        Size = UDim2.new(1, 0, 0, 60),
+        BackgroundColor3 = C.BG_HEADER,
+        ZIndex = 19,
+    }, parent)
+    Stroke(1, C.BORDER, H)
+    local AL = MakeFrame({
+        Size = UDim2.new(0, 3, 0, 36),
+        Position = UDim2.new(0, 10, 0, 12),
+        BackgroundColor3 = C.PURPLE_NEON,
+        ZIndex = 20,
+    }, H)
+    Corner(2, AL)
+    MakeLabel({
+        Size = UDim2.new(1, -26, 0, 26),
+        Position = UDim2.new(0, 22, 0, 8),
+        BackgroundTransparency = 1,
+        Text = title,
+        Font = Enum.Font.GothamBold,
+        TextSize = 17,
+        TextColor3 = C.TEXT_WHITE,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 20,
+    }, H)
+    if subtitle then
+        MakeLabel({
+            Size = UDim2.new(1, -26, 0, 15),
+            Position = UDim2.new(0, 22, 0, 36),
+            BackgroundTransparency = 1,
+            Text = subtitle,
+            Font = Enum.Font.Gotham,
+            TextSize = 11,
+            TextColor3 = C.TEXT_MUTED,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 20,
+        }, H)
+    end
+    return H
+end
+
+local function CreateToggleWidget(parent, label, defaultState, onChange)
+    local Row = MakeFrame({
+        Size = UDim2.new(1, 0, 0, 42),
+        BackgroundColor3 = C.BG_CARD,
+        ZIndex = 20,
+    }, parent)
+    Corner(10, Row)
+    MakeLabel({
+        Size = UDim2.new(1, -70, 1, 0),
+        Position = UDim2.new(0, 14, 0, 0),
+        BackgroundTransparency = 1,
+        Text = label,
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        TextColor3 = C.TEXT_WHITE,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 21,
+    }, Row)
+    local Track = MakeFrame({
+        Size = UDim2.new(0, 46, 0, 24),
+        Position = UDim2.new(1, -58, 0.5, -12),
+        BackgroundColor3 = defaultState and C.TOGGLE_ON or C.TOGGLE_OFF,
+        ZIndex = 21,
+    }, Row)
+    Corner(12, Track)
+    local Thumb = MakeFrame({
+        Size = UDim2.new(0, 18, 0, 18),
+        Position = defaultState and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        ZIndex = 22,
+    }, Track)
+    Corner(9, Thumb)
+    local state = defaultState
+    local TB = MakeButton({Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, Text = "", ZIndex = 23}, Track)
+    TB.MouseButton1Click:Connect(function()
+        state = not state
+        Tween(Track, TI_FAST, {BackgroundColor3 = state and C.TOGGLE_ON or C.TOGGLE_OFF})
+        Tween(Thumb, TI_FAST, {
+            Position = state and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+        })
+        if onChange then onChange(state) end
+    end)
+    return Row, function() return state end
+end
+
+local function CreateSliderWidget(parent, label, minV, maxV, defV, suffix, onChange)
+    local Row = MakeFrame({Size = UDim2.new(1, 0, 0, 60), BackgroundColor3 = C.BG_CARD, ZIndex = 20}, parent)
+    Corner(10, Row)
+    MakeLabel({
+        Size = UDim2.new(1, -60, 0, 22),
+        Position = UDim2.new(0, 14, 0, 6),
+        BackgroundTransparency = 1,
+        Text = label,
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        TextColor3 = C.TEXT_WHITE,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 21,
+    }, Row)
+    local VL = MakeLabel({
+        Size = UDim2.new(0, 55, 0, 22),
+        Position = UDim2.new(1, -65, 0, 6),
+        BackgroundTransparency = 1,
+        Text = tostring(defV) .. (suffix or ""),
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        TextColor3 = C.PURPLE_GLOW,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        ZIndex = 21,
+    }, Row)
+    local TRK = MakeFrame({
+        Size = UDim2.new(1, -28, 0, 6),
+        Position = UDim2.new(0, 14, 0, 40),
+        BackgroundColor3 = C.SLIDER_BG,
+        ZIndex = 21,
+    }, Row)
+    Corner(3, TRK)
+    local ratio = (defV - minV) / (maxV - minV)
+    local Fill = MakeFrame({Size = UDim2.new(ratio, 0, 1, 0), BackgroundColor3 = C.SLIDER_FILL, ZIndex = 22}, TRK)
+    Corner(3, Fill)
+    Gradient(C.PURPLE_NEON, C.CYAN_NEON, 0, Fill)
+    local Knob = MakeFrame({
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = UDim2.new(ratio, -8, 0.5, -8),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        ZIndex = 23,
+    }, TRK)
+    Corner(8, Knob)
+    Stroke(2, C.PURPLE_NEON, Knob)
+    local dragging = false
+    local function UpdSlider(inputX)
+        local t = math.clamp((inputX - TRK.AbsolutePosition.X) / TRK.AbsoluteSize.X, 0, 1)
+        local value = math.floor(minV + t * (maxV - minV))
+        Tween(Fill, TI_FAST, {Size = UDim2.new(t, 0, 1, 0)})
+        Tween(Knob, TI_FAST, {Position = UDim2.new(t, -8, 0.5, -8)})
+        VL.Text = tostring(value) .. (suffix or "")
+        if onChange then onChange(value) end
+    end
+    TRK.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; UpdSlider(i.Position.X)
+        end
+    end)
+    TrackConn(UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            UpdSlider(i.Position.X)
+        end
+    end))
+    TrackConn(UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end))
+    return Row
+end
+
+-- ==============================================================================
+-- SECCION 12 -- VENTANA PRINCIPAL + SIDEBAR
+-- ==============================================================================
+
+local function CreateMainWindow()
+    MainWindow = MakeFrame({
+        Name = "MainWindow",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        ZIndex = 10,
+    }, ScreenGui)
+
+    -- HEADER
+    local Header = MakeFrame({
+        Name = "Header",
+        Size = UDim2.new(1, 0, 0, 54),
+        BackgroundColor3 = C.BG_HEADER,
+        ZIndex = 12,
+    }, MainWindow)
+    Stroke(1, C.BORDER, Header)
+    Gradient(C.BG_HEADER, Color3.fromRGB(8, 6, 20), 90, Header)
+
+    local HLogo = MakeLabel({
+        Size = UDim2.new(0, 36, 0, 36),
+        Position = UDim2.new(0, 12, 0.5, -18),
+        BackgroundTransparency = 1,
+        Text = "Q",
+        Font = Enum.Font.GothamBold,
+        TextSize = 28,
+        TextColor3 = C.PURPLE_NEON,
+        ZIndex = 13,
+    }, Header)
+    task.spawn(function()
+        while HLogo and HLogo.Parent do
+            Tween(HLogo, TI_SINE, {TextColor3 = C.CYAN_NEON}); task.wait(1.5)
+            Tween(HLogo, TI_SINE, {TextColor3 = C.PURPLE_NEON}); task.wait(1.5)
+        end
+    end)
+
+    MakeLabel({
+        Size = UDim2.new(0, 180, 0, 20),
+        Position = UDim2.new(0, 52, 0, 8),
+        BackgroundTransparency = 1,
+        Text = "QUANTUM OS  v4.0",
+        Font = Enum.Font.GothamBold,
+        TextSize = 15,
+        TextColor3 = C.TEXT_WHITE,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 13,
+    }, Header)
+    MakeLabel({
+        Size = UDim2.new(0, 180, 0, 14),
+        Position = UDim2.new(0, 52, 0, 30),
+        BackgroundTransparency = 1,
+        Text = "IY Engine  |  Delta Executor",
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextColor3 = C.CYAN_NEON,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 13,
+    }, Header)
+
+    local GameBadge = MakeLabel({
+        Size = UDim2.new(0, 200, 0, 28),
+        Position = UDim2.new(0.5, -100, 0.5, -14),
+        BackgroundColor3 = C.BG_CARD,
+        Text = "[G]  " .. GAME_NAME:sub(1, 18),
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextColor3 = C.TEXT_SOFT,
+        ZIndex = 13,
+    }, Header)
+    Corner(14, GameBadge)
+    Stroke(1, C.BORDER, GameBadge)
+
+    -- Botones sistema
+    local SysF = MakeFrame({
+        Size = UDim2.new(0, 140, 0, 38),
+        Position = UDim2.new(1, -150, 0.5, -19),
+        BackgroundTransparency = 1,
+        ZIndex = 13,
+    }, Header)
+    local function SysBtn(label, color, xOff)
+        local b = MakeButton({
+            Size = UDim2.new(0, 32, 0, 32),
+            Position = UDim2.new(0, xOff, 0.5, -16),
+            BackgroundColor3 = Color3.fromRGB(18, 15, 38),
+            Text = label,
+            Font = Enum.Font.GothamBold,
+            TextSize = 12,
+            TextColor3 = color,
+            ZIndex = 14,
+        }, SysF)
+        Corner(10, b)
+        HoverGlow(b, Color3.fromRGB(18, 15, 38), Color3.fromRGB(38, 28, 68))
+        return b
+    end
+    SysBtn("W", C.TEXT_GREEN, 0)  -- WiFi/Status
+    SysBtn("N", C.TEXT_YELLOW, 36) -- Notif
+    local MinBtn   = SysBtn("-", C.TEXT_SOFT, 72)
+    local CloseBtn = SysBtn("X", C.TEXT_RED,  108)
+
+    CloseBtn.MouseButton1Click:Connect(function()
+        Tween(MainWindow, TI_MED, {Size = UDim2.new(0, 0, 0, 0)})
+        task.wait(0.35)
+        pcall(function() ScreenGui:Destroy() end)
+    end)
+    local minimized = false
+    MinBtn.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        if minimized then
+            Tween(MainWindow, TI_MED, {Size = UDim2.new(1, 0, 0, 54)})
+        else
+            Tween(MainWindow, TI_MED, {Size = UDim2.fromScale(1, 1)})
+        end
+    end)
+
+    -- SIDEBAR
+    Sidebar = MakeFrame({
+        Name = "Sidebar",
+        Size = UDim2.new(0, 204, 1, -54),
+        Position = UDim2.new(0, 0, 0, 54),
+        BackgroundColor3 = C.BG_SIDEBAR,
+        ZIndex = 11,
+    }, MainWindow)
+    Stroke(1, C.BORDER, Sidebar)
+
+    -- Perfil de usuario
+    local SbP = MakeFrame({
+        Size = UDim2.new(1, -16, 0, 70),
+        Position = UDim2.new(0, 8, 0, 8),
+        BackgroundColor3 = C.BG_CARD,
+        ZIndex = 12,
+    }, Sidebar)
+    Corner(14, SbP)
+    Stroke(1, C.PURPLE_DIM, SbP)
+    Gradient(C.BG_CARD, Color3.fromRGB(20, 10, 50), 135, SbP)
+
+    local Av = MakeLabel({
+        Size = UDim2.new(0, 44, 0, 44),
+        Position = UDim2.new(0, 10, 0.5, -22),
+        BackgroundColor3 = C.PURPLE_DIM,
+        Text = string.upper(string.sub(DISPLAY_NAME, 1, 2)),
+        Font = Enum.Font.GothamBold,
+        TextSize = 17,
+        TextColor3 = C.TEXT_WHITE,
+        ZIndex = 13,
+    }, SbP)
+    Corner(22, Av)
+    Stroke(2, C.PURPLE_NEON, Av)
+
+    MakeLabel({
+        Size = UDim2.new(1, -64, 0, 18),
+        Position = UDim2.new(0, 62, 0, 10),
+        BackgroundTransparency = 1,
+        Text = DISPLAY_NAME,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        TextColor3 = C.TEXT_WHITE,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 13,
+    }, SbP)
+    MakeLabel({
+        Size = UDim2.new(1, -64, 0, 14),
+        Position = UDim2.new(0, 62, 0, 30),
+        BackgroundTransparency = 1,
+        Text = "@" .. USERNAME,
+        Font = Enum.Font.Gotham,
+        TextSize = 11,
+        TextColor3 = C.CYAN_NEON,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 13,
+    }, SbP)
+    local OnB = MakeLabel({
+        Size = UDim2.new(0, 70, 0, 14),
+        Position = UDim2.new(0, 62, 0, 48),
+        BackgroundColor3 = Color3.fromRGB(0, 50, 25),
+        Text = "* AI Online",
+        Font = Enum.Font.Gotham,
+        TextSize = 10,
+        TextColor3 = C.TEXT_GREEN,
+        ZIndex = 13,
+    }, SbP)
+    Corner(7, OnB)
+
+    -- Tabs del Sidebar
+    local SbScroll = MakeScroll({
+        Size = UDim2.new(1, 0, 1, -90),
+        Position = UDim2.new(0, 0, 0, 88),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 0,
+        ZIndex = 12,
+    }, Sidebar)
+    local SbList = MakeFrame({
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 12,
+    }, SbScroll)
+    ListLayout({Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder}, SbList)
+
+    local TABS = {
+        {name = "START",            icon = "#",  label = "Inicio",         order = 1},
+        {name = "CMD_BAR",          icon = ">",  label = "Comandos IY",    order = 2},
+        {name = "SCRIPT_HUB",       icon = "!",  label = "Script Hub",     order = 3},
+        {name = "QUANTUM_ORACLE",   icon = "*",  label = "Oracle AI",      order = 4},
+        {name = "PLAYER_MODS",      icon = "P",  label = "Player Mods",    order = 5},
+        {name = "WORLD_MODS",       icon = "W",  label = "World Mods",     order = 6},
+        {name = "ESP_VISUALS",      icon = "E",  label = "ESP & Visuals",  order = 7},
+        {name = "TELEPORT",         icon = "T",  label = "Teleport",       order = 8},
+        {name = "GAME_BOOSTER",     icon = "B",  label = "Game Booster",   order = 9},
+        {name = "SYSTEM_SETTINGS",  icon = "S",  label = "Ajustes",        order = 10},
+        {name = "POWER",            icon = "O",  label = "Power",          order = 11},
+    }
+
+    for _, tab in ipairs(TABS) do
+        local Btn = MakeButton({
+            Name = tab.name,
+            Size = UDim2.new(1, -12, 0, 40),
+            BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            LayoutOrder = tab.order,
+            ZIndex = 13,
+        }, SbList)
+        Corner(10, Btn)
+        Padding(0, 8, 0, 8, Btn)
+
+        local Ind = MakeFrame({
+            Name = "Indicator",
+            Size = UDim2.new(0, 3, 0.6, 0),
+            Position = UDim2.new(0, 0, 0.2, 0),
+            BackgroundColor3 = C.PURPLE_NEON,
+            Visible = false,
+            ZIndex = 14,
+        }, Btn)
+        Corner(2, Ind)
+
+        MakeLabel({
+            Size = UDim2.new(0, 24, 1, 0),
+            Position = UDim2.new(0, 10, 0, 0),
+            BackgroundTransparency = 1,
+            Text = tab.icon,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            TextColor3 = C.TEXT_MUTED,
+            ZIndex = 14,
+        }, Btn)
+        MakeLabel({
+            Size = UDim2.new(1, -40, 1, 0),
+            Position = UDim2.new(0, 38, 0, 0),
+            BackgroundTransparency = 1,
+            Text = tab.label,
+            Font = Enum.Font.GothamSemibold,
+            TextSize = 12,
+            TextColor3 = C.TEXT_SOFT,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 14,
+        }, Btn)
+
+        SidebarButtons[tab.name] = Btn
+        Btn.MouseButton1Click:Connect(function()
+            ClearContent()
+            SetActiveTab(tab.name)
+            ENV.QOS_ActiveTab = tab.name
+            local fnKey = "QOS_Tab_" .. tab.name
+            if _G[fnKey] then pcall(_G[fnKey]) end
+        end)
+        HoverGlow(Btn, Color3.fromRGB(0,0,0), C.BG_GLASS)
+    end
+
+    local SbLL = SbList:FindFirstChildWhichIsA("UIListLayout")
+    if SbLL then
+        SbLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            SbList.Size = UDim2.new(1, 0, 0, SbLL.AbsoluteContentSize.Y + 8)
+        end)
+    end
+
+    -- CONTENT AREA
+    ContentArea = MakeFrame({
+        Name = "ContentArea",
+        Size = UDim2.new(1, -204, 1, -54),
+        Position = UDim2.new(0, 204, 0, 54),
+        BackgroundColor3 = C.BG_PANEL,
+        ZIndex = 11,
+    }, MainWindow)
+
+    -- Entrada animada
+    MainWindow.Size = UDim2.new(0, 0, 0, 0)
+    MainWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
+    Tween(MainWindow, TI_BOUNCE, {
+        Size = UDim2.fromScale(1, 1),
+        Position = UDim2.fromScale(0, 0),
+    })
+end
+
+-- ==============================================================================
+-- SECCION 13 -- TAB: START
+-- ==============================================================================
+
+_G["QOS_Tab_START"] = function()
+    local Tab = MakeFrame({Name="Tab_START", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    local Scroll = MakeScroll({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local List = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Scroll)
+    ListLayout({Padding=UDim.new(0,0)}, List)
+    Padding(0, 0, 20, 0, List)
+
+    SectionHeader(List, "[Q] START  |  Quantum OS v4.0", "Panel de inicio - Infinite Yield Engine - Delta Edition")
+
+    -- Stats Cards
+    local StatsRow = MakeFrame({Size=UDim2.new(1,0,0,88), BackgroundTransparency=1, ZIndex=15}, List)
+    local SGrid = MakeFrame({Size=UDim2.new(1,-24,1,-16), Position=UDim2.new(0,12,0,8), BackgroundTransparency=1, ZIndex=15}, StatsRow)
+    Make("UIGridLayout", {CellSize=UDim2.new(0.25,-4,1,-4), CellPadding=UDim2.new(0,4,0,4)}, SGrid)
+    local statsItems = {
+        {label="Jugador",   val=DISPLAY_NAME:sub(1,12), icon="P", color=C.PURPLE_GLOW},
+        {label="Juego",     val=GAME_NAME:sub(1,12),    icon="G", color=C.CYAN_NEON},
+        {label="AI Status", val="Online",                 icon="A", color=C.TEXT_GREEN},
+        {label="Comandos",  val=tostring(#(function() local t={} for k in pairs(Commands) do t[#t+1]=k end return t end())), icon="C", color=C.GOLD_NEON},
+    }
+    for _, s in ipairs(statsItems) do
+        local Card = MakeFrame({BackgroundColor3=C.BG_CARD, ZIndex=16}, SGrid)
+        Corner(12, Card)
+        Stroke(1, C.BORDER, Card)
+        MakeLabel({Size=UDim2.new(1,0,0,26), Position=UDim2.new(0,0,0,6), BackgroundTransparency=1,
+            Text="[" .. s.icon .. "]", TextSize=14, Font=Enum.Font.GothamBold, TextColor3=s.color, ZIndex=17}, Card)
+        MakeLabel({Size=UDim2.new(1,-8,0,18), Position=UDim2.new(0,4,0,32), BackgroundTransparency=1,
+            Text=s.val, Font=Enum.Font.GothamBold, TextSize=12, TextColor3=s.color, TextTruncate=Enum.TextTruncate.AtEnd, ZIndex=17}, Card)
+        MakeLabel({Size=UDim2.new(1,-8,0,13), Position=UDim2.new(0,4,0,52), BackgroundTransparency=1,
+            Text=s.label, Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_MUTED, ZIndex=17}, Card)
+    end
+
+    -- Agentes activos
+    local agents = {
+        {icon="[O]", name="Orquestador",     model="llama-3.3-70b",   desc="Dirige el flujo multi-agente"},
+        {icon="[G]", name="Game Analyst",    model="nemotron-120b",   desc="Analisis de mecanicas de juego"},
+        {icon="[C]", name="Code Expert",     model="qwen3-coder",     desc="Scripts Lua y errores Delta"},
+        {icon="[S]", name="Strategy Agent",  model="deepseek-v4",     desc="Estrategias optimas y builds"},
+        {icon="[A]", name="Creative Agent",  model="gemma-4-31b",     desc="Ideas y personalizacion"},
+        {icon="[F]", name="Fast Agent",      model="llama-3.2-3b",    desc="Respuestas rapidas"},
+    }
+    local AgTitle = MakeFrame({Size=UDim2.new(1,0,0,30), BackgroundTransparency=1, ZIndex=15}, List)
+    MakeLabel({Size=UDim2.new(1,-24,1,0), Position=UDim2.new(0,12,0,0), BackgroundTransparency=1,
+        Text="SISTEMA MULTI-AGENTE ACTIVO", Font=Enum.Font.GothamBold, TextSize=12,
+        TextColor3=C.PURPLE_GLOW, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=15}, AgTitle)
+
+    local AgList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, List)
+    ListLayout({Padding=UDim.new(0,4)}, AgList)
+    Padding(0, 12, 0, 12, AgList)
+
+    for _, ag in ipairs(agents) do
+        local AC = MakeFrame({Size=UDim2.new(1,0,0,48), BackgroundColor3=C.BG_CARD, ZIndex=16}, AgList)
+        Corner(10, AC)
+        Stroke(1, C.BORDER, AC)
+        local IconF = MakeFrame({Size=UDim2.new(0,34,0,34), Position=UDim2.new(0,10,0.5,-17),
+            BackgroundColor3=C.PURPLE_DIM, BackgroundTransparency=0.4, ZIndex=17}, AC)
+        Corner(8, IconF)
+        MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text=ag.icon,
+            Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.PURPLE_GLOW, ZIndex=18}, IconF)
+        MakeLabel({Size=UDim2.new(1,-180,0,18), Position=UDim2.new(0,52,0,7), BackgroundTransparency=1,
+            Text=ag.name, Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.TEXT_WHITE,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, AC)
+        MakeLabel({Size=UDim2.new(1,-180,0,14), Position=UDim2.new(0,52,0,26), BackgroundTransparency=1,
+            Text=ag.desc, Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_MUTED,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, AC)
+        local StB = MakeLabel({Size=UDim2.new(0,100,0,20), Position=UDim2.new(1,-108,0.5,-10),
+            BackgroundColor3=Color3.fromRGB(0,40,20), Text="* " .. ag.model,
+            Font=Enum.Font.Gotham, TextSize=9, TextColor3=C.TEXT_GREEN, ZIndex=17}, AC)
+        Corner(10, StB)
+    end
+
+    local LL = List:FindFirstChildWhichIsA("UIListLayout")
+    if LL then
+        LL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            Scroll.CanvasSize = UDim2.new(0, 0, 0, LL.AbsoluteContentSize.Y + 20)
+        end)
+    end
+end
+
+-- ==============================================================================
+-- SECCION 14 -- TAB: CMD BAR (Barra de Comandos Estilo Infinite Yield)
+-- ==============================================================================
+
+_G["QOS_Tab_CMD_BAR"] = function()
+    local Tab = MakeFrame({Name="Tab_CMD", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+
+    SectionHeader(Tab, "[>] BARRA DE COMANDOS", "Infinite Yield Engine - Prefijo: " .. (ENV.QOS_Prefix or ";") .. " - Escribe un comando")
+
+    -- Instruccion del prefijo
+    local InfoBar = MakeFrame({Size=UDim2.new(1,-32,0,36), Position=UDim2.new(0,16,0,68),
+        BackgroundColor3=C.BG_GLASS, ZIndex=15}, Tab)
+    Corner(10, InfoBar)
+    Stroke(1, C.CYAN_DIM, InfoBar)
+    MakeLabel({Size=UDim2.new(1,-20,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1,
+        Text="Prefijo actual: [" .. (ENV.QOS_Prefix or ";") .. "]  |  Ejemplo: " .. (ENV.QOS_Prefix or ";") .. "fly 80  |  " .. (ENV.QOS_Prefix or ";") .. "help  |  " .. (ENV.QOS_Prefix or ";") .. "speed 200",
+        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.CYAN_NEON,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=16}, InfoBar)
+
+    -- Command bar GRANDE estilo IY
+    local CmdFrame = MakeFrame({Size=UDim2.new(1,-32,0,56), Position=UDim2.new(0,16,0,112),
+        BackgroundColor3=C.CMDBAR_BG, ZIndex=15}, Tab)
+    Corner(14, CmdFrame)
+    local cmdStroke = Stroke(2, C.PURPLE_DIM, CmdFrame)
+    local CmdInput = MakeBox({Size=UDim2.new(1,-106,1,0), Position=UDim2.new(0,14,0,0),
+        BackgroundTransparency=1, Text="",
+        PlaceholderText=";comando arg1 arg2...",
+        Font=Enum.Font.Code, TextSize=15, TextColor3=C.TEXT_WHITE,
+        PlaceholderColor3=C.TEXT_MUTED, ClearTextOnFocus=false, ZIndex=16}, CmdFrame)
+    CmdInput.Focused:Connect(function()   Tween(cmdStroke, TI_FAST, {Color=C.PURPLE_NEON}) end)
+    CmdInput.FocusLost:Connect(function() Tween(cmdStroke, TI_FAST, {Color=C.PURPLE_DIM}) end)
+
+    local ExecBtn = MakeButton({Size=UDim2.new(0,80,0,38), Position=UDim2.new(1,-90,0.5,-19),
+        BackgroundColor3=C.PURPLE_NEON, BorderSizePixel=0,
+        Text="EXEC", Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Color3.new(1,1,1), ZIndex=16}, CmdFrame)
+    Corner(10, ExecBtn)
+    Gradient(Color3.fromRGB(130,20,210), Color3.fromRGB(70,0,170), 135, ExecBtn)
+
+    -- Historial de comandos
+    local HistTitle = MakeFrame({Size=UDim2.new(1,-32,0,26), Position=UDim2.new(0,16,0,176),
+        BackgroundTransparency=1, ZIndex=15}, Tab)
+    MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text="HISTORIAL DE COMANDOS",
+        Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.PURPLE_GLOW,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=16}, HistTitle)
+
+    local HistScroll = MakeScroll({Size=UDim2.new(1,-32,1,-208), Position=UDim2.new(0,16,0,204),
+        BackgroundColor3=Color3.fromRGB(5,5,14), ScrollBarThickness=3, ZIndex=15}, Tab)
+    Corner(10, HistScroll)
+    Stroke(1, C.BORDER, HistScroll)
+    local HistList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1, ZIndex=15}, HistScroll)
+    ListLayout({Padding=UDim.new(0,2)}, HistList)
+    Padding(6,8,6,8, HistList)
+
+    local function RefreshHistory()
+        for _, c in pairs(HistList:GetChildren()) do
+            if c:IsA("Frame") or c:IsA("TextButton") then c:Destroy() end
+        end
+        for i, entry in ipairs(ENV.QOS_CommandHistory) do
+            local Row = MakeButton({Size=UDim2.new(1,0,0,32), BackgroundColor3=C.BG_CARD, ZIndex=16}, HistList)
+            Corner(8, Row)
+            MakeLabel({Size=UDim2.new(0,16,1,0), BackgroundTransparency=1, Text=">",
+                Font=Enum.Font.Code, TextSize=12, TextColor3=C.PURPLE_NEON, ZIndex=17}, Row)
+            MakeLabel({Size=UDim2.new(1,-36,1,0), Position=UDim2.new(0,20,0,0), BackgroundTransparency=1,
+                Text=entry, Font=Enum.Font.Code, TextSize=12, TextColor3=C.CYAN_NEON,
+                TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Row)
+            Row.MouseButton1Click:Connect(function()
+                CmdInput.Text = entry
+                CmdInput:CaptureFocus()
+            end)
+        end
+        local hl = HistList:FindFirstChildWhichIsA("UIListLayout")
+        if hl then HistScroll.CanvasSize = UDim2.new(0,0,0,hl.AbsoluteContentSize.Y+12) end
+    end
+    RefreshHistory()
+
+    -- Listado de todos los comandos disponibles
+    local AllCmdsTitle = MakeFrame({Size=UDim2.new(1,-32,0,26), Position=UDim2.new(0,16,1,-200),
+        BackgroundTransparency=1, ZIndex=15}, Tab)
+    -- (se muestra en scroll de historial; para ver todos: ;help)
+
+    local function Execute()
+        local input = CmdInput.Text
+        if input == "" then return end
+        Tween(ExecBtn, TI_FAST, {BackgroundColor3 = C.TOGGLE_ON})
+        ParseAndExecute(input)
+        CmdInput.Text = ""
+        RefreshHistory()
+        task.wait(0.3)
+        Tween(ExecBtn, TI_FAST, {BackgroundColor3 = C.PURPLE_NEON})
+    end
+    ExecBtn.MouseButton1Click:Connect(Execute)
+    CmdInput.FocusLost:Connect(function(enter) if enter then Execute() end end)
+
+    -- Comandos rapidos
+    local QuickTitle = MakeFrame({Size=UDim2.new(1,-32,0,26), Position=UDim2.new(0,16,1,-174),
+        BackgroundTransparency=1, ZIndex=15}, Tab)
+    MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text="COMANDOS RAPIDOS",
+        Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.PURPLE_GLOW,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=16}, QuickTitle)
+
+    local QScroll = MakeScroll({Size=UDim2.new(1,-32,0,88), Position=UDim2.new(0,16,1,-148),
+        BackgroundTransparency=1, ScrollBarThickness=0,
+        ScrollingDirection=Enum.ScrollingDirection.X, ZIndex=15}, Tab)
+    local QRow = MakeFrame({Size=UDim2.new(0,0,1,0), AutomaticSize=Enum.AutomaticSize.X,
+        BackgroundTransparency=1, ZIndex=15}, QScroll)
+    local QL = ListLayout({FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,6)}, QRow)
+
+    local quickCmds = {
+        {label="Fly ON",        cmd=";fly 60"},
+        {label="Speed 200",     cmd=";speed 200"},
+        {label="NoClip",        cmd=";noclip"},
+        {label="God Mode",      cmd=";godmode"},
+        {label="ESP ON",        cmd=";esp"},
+        {label="Anti-Aim",      cmd=";antiaim"},
+        {label="Inf Jump",      cmd=";jump 100"},
+        {label="Speed Reset",   cmd=";speed 16"},
+        {label="Gravity 50",    cmd=";gravity 50"},
+        {label="Time 12",       cmd=";settime 12"},
+        {label="Lista Players", cmd=";players"},
+        {label="Rejoin",        cmd=";rejoin"},
+    }
+    for _, qc in ipairs(quickCmds) do
+        local QB = MakeButton({Size=UDim2.new(0,110,0,36), BackgroundColor3=C.BG_CARD,
+            BorderSizePixel=0, Text="", ZIndex=16}, QRow)
+        Corner(10, QB)
+        Stroke(1, C.BORDER, QB)
+        MakeLabel({Size=UDim2.new(1,-16,0,16), Position=UDim2.new(0,8,0,4), BackgroundTransparency=1,
+            Text=qc.label, Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.CYAN_NEON,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, QB)
+        MakeLabel({Size=UDim2.new(1,-16,0,14), Position=UDim2.new(0,8,0,20), BackgroundTransparency=1,
+            Text=qc.cmd, Font=Enum.Font.Code, TextSize=10, TextColor3=C.TEXT_MUTED,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, QB)
+        QB.MouseButton1Click:Connect(function()
+            CmdInput.Text = qc.cmd
+            Tween(QB, TI_FAST, {BackgroundColor3=C.PURPLE_DIM})
+            task.wait(0.2)
+            Tween(QB, TI_FAST, {BackgroundColor3=C.BG_CARD})
+        end)
+        HoverGlow(QB, C.BG_CARD, C.BG_GLASS)
+    end
+    QL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        QScroll.CanvasSize = UDim2.new(0, QL.AbsoluteContentSize.X + 12, 0, 0)
+    end)
+end
+
+-- ==============================================================================
+-- SECCION 15 -- TAB: QUANTUM ORACLE (Chat Multi-Agente)
+-- ==============================================================================
+
+_G["QOS_Tab_QUANTUM_ORACLE"] = function()
+    local Tab = MakeFrame({Name="Tab_ORACLE", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+
+    SectionHeader(Tab, "[*] QUANTUM ORACLE", "Multi-Agent AI | Orquestador: llama-3.3-70b | Juego: " .. GAME_NAME)
+
+    -- Info del orbe
+    local OrbFrame = MakeFrame({Size=UDim2.new(1,-32,0,100), Position=UDim2.new(0,16,0,68),
+        BackgroundColor3=C.BG_GLASS, ZIndex=16}, Tab)
+    Corner(16, OrbFrame)
+    Gradient(C.BG_GLASS, Color3.fromRGB(40,0,80), 135, OrbFrame)
+    Stroke(1, C.BORDER_BRIGHT, OrbFrame)
+
+    local OrbBadge = MakeFrame({Size=UDim2.new(0,64,0,64), Position=UDim2.new(0,14,0.5,-32),
+        BackgroundColor3=C.PURPLE_DIM, ZIndex=17}, OrbFrame)
+    Corner(32, OrbBadge)
+    Stroke(3, C.PURPLE_NEON, OrbBadge)
+    MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text="AI",
+        Font=Enum.Font.GothamBold, TextSize=22, TextColor3=C.PURPLE_GLOW, ZIndex=18}, OrbBadge)
+    task.spawn(function()
+        while OrbBadge and OrbBadge.Parent do
+            Tween(OrbBadge, TI_SINE, {BackgroundColor3=C.PURPLE_GLOW}); task.wait(1.2)
+            Tween(OrbBadge, TI_SINE, {BackgroundColor3=C.PURPLE_DIM}); task.wait(1.2)
+        end
+    end)
+
+    MakeLabel({Size=UDim2.new(1,-106,0,22), Position=UDim2.new(0,90,0,12), BackgroundTransparency=1,
+        Text="QUANTUM ORACLE  |  Multi-Agent AI",
+        Font=Enum.Font.GothamBold, TextSize=14, TextColor3=C.TEXT_WHITE,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, OrbFrame)
+    local AgentBadge = MakeLabel({Size=UDim2.new(1,-106,0,16), Position=UDim2.new(0,90,0,36),
+        BackgroundTransparency=1, Text="[O] Orquestador: llama-3.3-70b  |  5 Agentes listos",
+        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.CYAN_NEON,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, OrbFrame)
+    local ActiveAg = MakeLabel({Size=UDim2.new(1,-106,0,16), Position=UDim2.new(0,90,0,58),
+        BackgroundTransparency=1, Text="Juego: '" .. GAME_NAME .. "'  |  En espera",
+        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_SOFT, TextWrapped=true,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, OrbFrame)
+
+    -- Sugerencias rapidas
+    local SugFrame = MakeFrame({Size=UDim2.new(1,-32,0,28), Position=UDim2.new(0,16,0,176),
+        BackgroundTransparency=1, ZIndex=16}, Tab)
+    ListLayout({FillDirection=Enum.FillDirection.Horizontal, Padding=UDim.new(0,5)}, SugFrame)
+    local sugs = {"Mejores scripts?", "Error Lua fix", "Como farmear?", "Script anti-ban", "Build optimo"}
+    for _, sug in ipairs(sugs) do
+        local SB = MakeButton({Size=UDim2.new(0,0,1,0), AutomaticSize=Enum.AutomaticSize.X,
+            BackgroundColor3=C.BG_CARD, Text=sug, Font=Enum.Font.Gotham,
+            TextSize=11, TextColor3=C.CYAN_NEON, ZIndex=17}, SugFrame)
+        Corner(10, SB)
+        Padding(0,10,0,10,SB)
+        Stroke(1, C.CYAN_DIM, SB)
+    end
+
+    -- Chat scroll
+    local ChatScroll = MakeScroll({Size=UDim2.new(1,-32,1,-242), Position=UDim2.new(0,16,0,212),
+        BackgroundColor3=Color3.fromRGB(5,5,14), ScrollBarThickness=3, ZIndex=15}, Tab)
+    Corner(12, ChatScroll)
+    Stroke(1, C.BORDER, ChatScroll)
+    local ChatList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1, ZIndex=15}, ChatScroll)
+    ListLayout({Padding=UDim.new(0,8)}, ChatList)
+    Padding(10,10,10,10, ChatList)
+
+    local function ScrollBot()
+        task.wait(0.05)
+        local ll = ChatList:FindFirstChildWhichIsA("UIListLayout")
+        local sz = ll and ll.AbsoluteContentSize.Y or 0
+        ChatScroll.CanvasSize = UDim2.new(0,0,0,sz+20)
+        ChatScroll.CanvasPosition = Vector2.new(0, sz)
+    end
+
+    local function AddMsg(text, isUser, meta)
+        local col = isUser and C.PURPLE_DIM or (meta and meta.color or C.BG_CARD)
+        local Bubble = MakeFrame({
+            Size = UDim2.new(0.86,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+            Position = isUser and UDim2.new(0.14,0,0,0) or UDim2.new(0,0,0,0),
+            BackgroundColor3 = col,
+            BackgroundTransparency = isUser and 0 or 0.25,
+            ZIndex = 16,
+        }, ChatList)
+        Corner(12, Bubble)
+        Padding(10,14,10,14, Bubble)
+        if not isUser and meta then
+            MakeLabel({Size=UDim2.new(1,0,0,18), BackgroundTransparency=1,
+                Text=meta.icon .. " " .. meta.name, Font=Enum.Font.GothamBold, TextSize=10,
+                TextColor3=meta.color, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Bubble)
+        end
+        local yOff = (not isUser and meta) and 18 or 0
+        MakeLabel({
+            Size=UDim2.new(1,0,0,0), Position=UDim2.new(0,0,0,yOff),
+            AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1,
+            Text=text, Font=Enum.Font.Gotham, TextSize=12, TextColor3=C.TEXT_WHITE,
+            TextWrapped=true,
+            TextXAlignment = isUser and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left,
+            ZIndex=17,
+        }, Bubble)
+        ScrollBot()
+    end
+
+    local ThinkBubble = nil
+    local function ShowThinking(text)
+        if ThinkBubble then pcall(function() ThinkBubble:Destroy() end) end
+        ThinkBubble = MakeFrame({
+            Size=UDim2.new(0.55,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+            BackgroundColor3=C.BG_CARD, BackgroundTransparency=0.3, ZIndex=16,
+        }, ChatList)
+        Corner(12, ThinkBubble)
+        Padding(8,12,8,12, ThinkBubble)
+        MakeLabel({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+            BackgroundTransparency=1, Text="... " .. text, Font=Enum.Font.Gotham,
+            TextSize=11, TextColor3=C.TEXT_MUTED, TextWrapped=true, ZIndex=17}, ThinkBubble)
+        ScrollBot()
+    end
+    local function HideThinking()
+        if ThinkBubble then pcall(function() ThinkBubble:Destroy() end); ThinkBubble = nil end
+    end
+
+    AddMsg("[AI] Hola, " .. DISPLAY_NAME .. "! Soy el Quantum Oracle.\n\nMi sistema Multi-Agente detecto el juego: '" .. GAME_NAME .. "'.\nEl Orquestador dirigira tu consulta al agente mas adecuado:\n[G] Game Analyst | [C] Code Expert | [S] Strategy | [A] Creative | [F] Fast\n\nEn que te puedo ayudar hoy?",
+        false, {icon="[AI]", name="Quantum Oracle", color=C.PURPLE_GLOW})
+
+    -- Conectar sugerencias
+    for _, sb in pairs(SugFrame:GetChildren()) do
+        if sb:IsA("TextButton") then
+            local txt = sb.Text
+            sb.MouseButton1Click:Connect(function()
+                for _, d in pairs(Tab:GetDescendants()) do
+                    if d.Name == "OracleChatInput" then d.Text = txt end
+                end
+            end)
+        end
+    end
+
+    -- Input row
+    local InputRow = MakeFrame({Size=UDim2.new(1,-32,0,46), Position=UDim2.new(0,16,1,-60),
+        BackgroundColor3=C.BG_CARD, ZIndex=16}, Tab)
+    Corner(13, InputRow)
+    Stroke(1, C.BORDER, InputRow)
+    local ChatInput = MakeBox({Name="OracleChatInput",
+        Size=UDim2.new(1,-58,1,0), Position=UDim2.new(0,12,0,0),
+        BackgroundTransparency=1, Text="",
+        PlaceholderText="Pregunta algo al Oracle...",
+        Font=Enum.Font.Gotham, TextSize=13, TextColor3=C.TEXT_WHITE,
+        PlaceholderColor3=C.TEXT_MUTED, ClearTextOnFocus=false, ZIndex=17}, InputRow)
+    local SendBtn = MakeButton({Size=UDim2.new(0,42,0,34), Position=UDim2.new(1,-48,0.5,-17),
+        BackgroundColor3=C.PURPLE_NEON, Text=">", Font=Enum.Font.GothamBold,
+        TextSize=16, TextColor3=Color3.new(1,1,1), ZIndex=17}, InputRow)
+    Corner(10, SendBtn)
+
+    local isWaiting = false
+    local function SendMessage()
+        if isWaiting then return end
+        local msg = ChatInput.Text:gsub("^%s+",""):gsub("%s+$","")
+        if msg == "" then return end
+        ChatInput.Text = ""
+        isWaiting = true
+        SendBtn.Text = "."
+        AddMsg(msg, true)
+        OracleQuery(msg,
+            function(thinkText)
+                ShowThinking(thinkText)
+                ActiveAg.Text = "[O] " .. thinkText
+            end,
+            function(agentKey, meta)
+                ShowThinking(meta.name .. " respondiendo...")
+                ActiveAg.Text = meta.icon .. " Agente activo: " .. meta.name
+                AgentBadge.Text = meta.icon .. " Usando: " .. meta.name .. "  |  OpenRouter AI"
+            end,
+            function(response, meta)
+                HideThinking()
+                AddMsg(response, false, meta)
+                isWaiting = false
+                SendBtn.Text = ">"
+                ActiveAg.Text = "En espera de consulta"
+                AgentBadge.Text = "[O] Orquestador: llama-3.3-70b  |  5 Agentes listos"
+            end,
+            function(errMsg)
+                HideThinking()
+                AddMsg("[ERROR] " .. tostring(errMsg) .. "\nVerifica tu API Key en Ajustes.", false,
+                    {icon="[X]", name="Sistema", color=C.TEXT_RED})
+                isWaiting = false
+                SendBtn.Text = ">"
+                ActiveAg.Text = "Error | Verifica conexion"
+            end
+        )
+    end
+    SendBtn.MouseButton1Click:Connect(SendMessage)
+    ChatInput.FocusLost:Connect(function(enter) if enter then SendMessage() end end)
+end
+
+-- ==============================================================================
+-- SECCION 16 -- TAB: SCRIPT HUB
+-- ==============================================================================
+
+_G["QOS_Tab_SCRIPT_HUB"] = function()
+    local Tab = MakeFrame({Name="Tab_HUB", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    SectionHeader(Tab, "[!] SCRIPT HUB", "Scripts verificados para Delta Executor | " .. GAME_NAME)
+
+    local SRow = MakeFrame({Size=UDim2.new(1,-32,0,38), Position=UDim2.new(0,16,0,68),
+        BackgroundColor3=C.BG_CARD, ZIndex=15}, Tab)
+    Corner(12, SRow)
+    Stroke(1, C.BORDER, SRow)
+    MakeBox({Size=UDim2.new(1,-20,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1,
+        Text="", PlaceholderText="[S] Buscar scripts...", Font=Enum.Font.Gotham, TextSize=13,
+        TextColor3=C.TEXT_WHITE, PlaceholderColor3=C.TEXT_MUTED, ZIndex=16}, SRow)
+
+    local ScScroll = MakeScroll({Size=UDim2.new(1,-32,1,-116), Position=UDim2.new(0,16,0,114),
+        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local ScList = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1, ZIndex=15}, ScScroll)
+    ListLayout({Padding=UDim.new(0,8)}, ScList)
+
+    local scripts = {
+        {title="Auto Farm Pro v5.2",    author="LXNDXN",     verified=true,  icon="F", desc="Auto farm optimizado",      script='print("[QOS] Auto Farm activado")'},
+        {title="ESP Pro - All Players", author="QuantumDev", verified=true,  icon="E", desc="ESP con highlight color",    script='print("[QOS] ESP activo")'},
+        {title="Infinite Jump v2",      author="DeltaFarm",  verified=false, icon="J", desc="Salta infinitamente",       script='print("[QOS] InfJump activo")'},
+        {title="Speed Hack x10",        author="LXNDXN",     verified=true,  icon="S", desc="Velocidad x10 suave",       script='print("[QOS] Speed x10")'},
+        {title="God Mode Bypass",       author="NullSec",    verified=false, icon="G", desc="Salud infinita bypass",     script='print("[QOS] God Mode")'},
+        {title="Auto Collect Items",    author="QuantumDev", verified=true,  icon="C", desc="Recoleccion automatica",    script='print("[QOS] AutoCollect activo")'},
+        {title="Teleport Players",      author="LXNDXN",     verified=true,  icon="T", desc="Teleport rapido a players", script='print("[QOS] TeleportTP activo")'},
+        {title="Anti-AFK Pro",          author="QuantumDev", verified=true,  icon="A", desc="Evita el kick de AFK",     script='print("[QOS] AntiAFK activo")'},
+    }
+
+    for _, s in ipairs(scripts) do
+        local Card = MakeFrame({Size=UDim2.new(1,0,0,78), BackgroundColor3=C.BG_CARD, ZIndex=16}, ScList)
+        Corner(14, Card)
+        Stroke(1, C.BORDER, Card)
+
+        local Thumb = MakeFrame({Size=UDim2.new(0,52,0,52), Position=UDim2.new(0,10,0.5,-26),
+            BackgroundColor3=C.PURPLE_DIM, ZIndex=17}, Card)
+        Corner(12, Thumb)
+        MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1,
+            Text="[" .. s.icon .. "]", Font=Enum.Font.GothamBold, TextSize=16,
+            TextColor3=C.PURPLE_GLOW, ZIndex=18}, Thumb)
+
+        MakeLabel({Size=UDim2.new(1,-200,0,20), Position=UDim2.new(0,72,0,10), BackgroundTransparency=1,
+            Text=s.title, Font=Enum.Font.GothamBold, TextSize=14, TextColor3=C.TEXT_WHITE,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Card)
+        MakeLabel({Size=UDim2.new(1,-200,0,14), Position=UDim2.new(0,72,0,32), BackgroundTransparency=1,
+            Text="by " .. s.author .. "  |  " .. s.desc, Font=Enum.Font.Gotham, TextSize=11,
+            TextColor3=C.TEXT_SOFT, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Card)
+
+        if s.verified then
+            local VB = MakeLabel({Size=UDim2.new(0,116,0,16), Position=UDim2.new(0,72,0,54),
+                BackgroundColor3=Color3.fromRGB(0,44,22), Text="[v] Verificado Delta",
+                Font=Enum.Font.Gotham, TextSize=10, TextColor3=C.TEXT_GREEN, ZIndex=18}, Card)
+            Corner(8, VB)
+        end
+
+        local ExBtn = MakeButton({Size=UDim2.new(0,88,0,28), Position=UDim2.new(1,-168,0.5,-14),
+            BackgroundColor3=C.PURPLE_NEON, Text="[>] EXEC",
+            Font=Enum.Font.GothamBold, TextSize=11, TextColor3=Color3.new(1,1,1), ZIndex=17}, Card)
+        Corner(8, ExBtn)
+        HoverGlow(ExBtn, C.PURPLE_NEON, C.PURPLE_GLOW)
+        ExBtn.MouseButton1Click:Connect(function()
+            pcall(function() loadstring(s.script)() end)
+            PushNotification("Script Ejecutado", s.title .. " activado.", "SUCCESS", 3)
+        end)
+
+        local SaveBtn = MakeButton({Size=UDim2.new(0,66,0,28), Position=UDim2.new(1,-72,0.5,-14),
+            BackgroundColor3=C.BG_GLASS, Text="[*] SAVE",
+            Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_SOFT, ZIndex=17}, Card)
+        Corner(8, SaveBtn)
+    end
+
+    local SLL = ScList:FindFirstChildWhichIsA("UIListLayout")
+    if SLL then SLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        ScScroll.CanvasSize = UDim2.new(0,0,0,SLL.AbsoluteContentSize.Y+20)
+    end) end
+end
+
+-- ==============================================================================
+-- SECCION 17 -- TAB: PLAYER MODS
+-- ==============================================================================
+
+_G["QOS_Tab_PLAYER_MODS"] = function()
+    local Tab = MakeFrame({Name="Tab_PMODS", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    SectionHeader(Tab, "[P] PLAYER MODS", "Modificaciones del personaje - Infinite Yield Engine")
+    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-62), Position=UDim2.new(0,0,0,62),
+        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local SL = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Scroll)
+    ListLayout({Padding=UDim.new(0,5)}, SL)
+    Padding(12,14,20,14, SL)
+
+    CreateSliderWidget(SL, "WalkSpeed", 0, 500, 16, "", function(v)
+        local hum = GetHumanoid()
+        if hum then hum.WalkSpeed = v end
+    end)
+    CreateSliderWidget(SL, "JumpPower", 0, 500, 50, "", function(v)
+        local hum = GetHumanoid()
+        if hum then hum.JumpPower = v end
+    end)
+    CreateSliderWidget(SL, "Gravedad", 0, 500, 196, "", function(v)
+        workspace.Gravity = v
+    end)
+    CreateSliderWidget(SL, "FOV Camara", 10, 120, 70, "deg", function(v)
+        local cam = workspace.CurrentCamera
+        if cam then cam.FieldOfView = v end
+    end)
+
+    CreateToggleWidget(SL, "No Clip", false, function(state)
+        ENV.QOS_NoclipActive = state
+        if state then
+            ENV.QOS_NoclipConn = RunService.Stepped:Connect(function()
+                local char = GetCharacter()
+                if char then
+                    for _, p in pairs(char:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
+                    end
+                end
+            end)
+            TrackConn(ENV.QOS_NoclipConn)
+        elseif ENV.QOS_NoclipConn then
+            pcall(function() ENV.QOS_NoclipConn:Disconnect() end)
+        end
+    end)
+
+    CreateToggleWidget(SL, "God Mode (local)", false, function(state)
+        local hum = GetHumanoid()
+        if hum then
+            hum.MaxHealth = state and math.huge or 100
+            hum.Health    = state and math.huge or hum.MaxHealth
+        end
+    end)
+
+    CreateToggleWidget(SL, "Anti-AFK", false, function(state)
+        if state then
+            ENV.QOS_AntiAFK = true
+            task.spawn(function()
+                while ENV.QOS_AntiAFK do
+                    local vrs = game:GetService("VirtualInputManager")
+                    pcall(function()
+                        vrs:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                        vrs:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                    end)
+                    task.wait(60)
+                end
+            end)
+        else
+            ENV.QOS_AntiAFK = false
+        end
+    end)
+
+    CreateToggleWidget(SL, "Invisible (local)", false, function(state)
+        local char = GetCharacter()
+        if char then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.LocalTransparencyModifier = state and 1 or 0
+                end
+            end
+        end
+    end)
+
+    CreateToggleWidget(SL, "Vuelo", false, function(state)
+        ParseAndExecute(";fly 60")
+    end)
+
+    local ll = SL:FindFirstChildWhichIsA("UIListLayout")
+    if ll then ll:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Scroll.CanvasSize = UDim2.new(0,0,0,ll.AbsoluteContentSize.Y+20)
+    end) end
+end
+
+-- ==============================================================================
+-- SECCION 18 -- TAB: WORLD MODS
+-- ==============================================================================
+
+_G["QOS_Tab_WORLD_MODS"] = function()
+    local Tab = MakeFrame({Name="Tab_WMODS", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    SectionHeader(Tab, "[W] WORLD MODS", "Modificaciones del mundo - Lighting - Ambiente")
+    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-62), Position=UDim2.new(0,0,0,62),
+        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local SL = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Scroll)
+    ListLayout({Padding=UDim.new(0,5)}, SL)
+    Padding(12,14,20,14, SL)
+
+    CreateSliderWidget(SL, "Hora del Dia (0-24)", 0, 24, 12, "h", function(v)
+        Lighting.TimeOfDay = string.format("%02d:00:00", v)
+    end)
+    CreateSliderWidget(SL, "Brillo", 0, 10, 2, "x", function(v)
+        Lighting.Brightness = v
+    end)
+    CreateSliderWidget(SL, "Niebla (FogEnd)", 0, 10000, 1000, "m", function(v)
+        Lighting.FogEnd = v
+    end)
+    CreateSliderWidget(SL, "Saturacion de Color", -1, 10, 0, "", function(v)
+        local cc = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+        if not cc then cc = Instance.new("ColorCorrectionEffect", Lighting) end
+        cc.Saturation = v
+    end)
+    CreateSliderWidget(SL, "Contraste", -1, 10, 0, "", function(v)
+        local cc = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+        if not cc then cc = Instance.new("ColorCorrectionEffect", Lighting) end
+        cc.Contrast = v
+    end)
+
+    CreateToggleWidget(SL, "Fullbright", false, function(state)
+        Lighting.Brightness = state and 10 or 2
+        Lighting.FogEnd = state and 100000 or 1000
+        Lighting.GlobalShadows = not state
+        if state then
+            local al = Instance.new("AmbientLight", Lighting)
+            al.Name = "QOS_AmbientLight"
+            al.Brightness = 1
+        else
+            local al = Lighting:FindFirstChild("QOS_AmbientLight")
+            if al then al:Destroy() end
+        end
+    end)
+
+    CreateToggleWidget(SL, "Rain Effect", false, function(state)
+        if state then
+            local part = Instance.new("Part", workspace)
+            part.Name = "QOS_RainPart"
+            part.Size = Vector3.new(50,1,50)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Transparency = 1
+            local root = GetRootPart()
+            if root then part.CFrame = root.CFrame + Vector3.new(0,30,0) end
+            local ps = Instance.new("ParticleEmitter", part)
+            ps.Rate = 200
+            ps.Speed = NumberRange.new(40,60)
+            ps.Lifetime = NumberRange.new(2,3)
+            ps.Direction = Vector3.new(0,-1,0)
+            ps.SpreadAngle = Vector2.new(5,5)
+        else
+            local p = workspace:FindFirstChild("QOS_RainPart")
+            if p then p:Destroy() end
+        end
+    end)
+
+    local ll = SL:FindFirstChildWhichIsA("UIListLayout")
+    if ll then ll:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Scroll.CanvasSize = UDim2.new(0,0,0,ll.AbsoluteContentSize.Y+20)
+    end) end
+end
+
+-- ==============================================================================
+-- SECCION 19 -- TAB: ESP & VISUALS
+-- ==============================================================================
+
+_G["QOS_Tab_ESP_VISUALS"] = function()
+    local Tab = MakeFrame({Name="Tab_ESP", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    SectionHeader(Tab, "[E] ESP & VISUALS", "Extra Sensory Perception - Selection Boxes - Tracers")
+    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-62), Position=UDim2.new(0,0,0,62),
+        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local SL = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Scroll)
+    ListLayout({Padding=UDim.new(0,5)}, SL)
+    Padding(12,14,20,14, SL)
+
+    CreateToggleWidget(SL, "ESP Jugadores (SelectionBox)", false, function(state)
+        ParseAndExecute(";esp")
+    end)
+
+    CreateToggleWidget(SL, "Chams - Sin Texturas", false, function(state)
+        local char = GetCharacter()
+        if char then
+            for _, p in pairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    p.Material = state and Enum.Material.Neon or Enum.Material.SmoothPlastic
+                end
+            end
+        end
+    end)
+
+    CreateToggleWidget(SL, "Wireframe Vision", false, function(state)
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and not obj:IsDescendantOf(GetCharacter() or game) then
+                pcall(function()
+                    obj.CastShadow  = not state
+                    obj.Transparency = state and 0.85 or 0
+                end)
+            end
+        end
+    end)
+
+    CreateSliderWidget(SL, "Transparencia del mapa", 0, 100, 0, "%", function(v)
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and not obj:IsDescendantOf(GetCharacter() or workspace) then
+                pcall(function() obj.Transparency = v / 100 end)
+            end
+        end
+    end)
+
+    local ll = SL:FindFirstChildWhichIsA("UIListLayout")
+    if ll then ll:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Scroll.CanvasSize = UDim2.new(0,0,0,ll.AbsoluteContentSize.Y+20)
+    end) end
+end
+
+-- ==============================================================================
+-- SECCION 20 -- TAB: TELEPORT
+-- ==============================================================================
+
+_G["QOS_Tab_TELEPORT"] = function()
+    local Tab = MakeFrame({Name="Tab_TP", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    SectionHeader(Tab, "[T] TELEPORT", "Teleportacion de jugadores - Waypoints - Coordenadas")
+    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-62), Position=UDim2.new(0,0,0,62),
+        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local SL = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Scroll)
+    ListLayout({Padding=UDim.new(0,6)}, SL)
+    Padding(12,14,20,14, SL)
+
+    -- Lista de jugadores con botones de TP
+    local PlTitle = MakeFrame({Size=UDim2.new(1,0,0,24), BackgroundTransparency=1, ZIndex=15}, SL)
+    MakeLabel({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, Text="JUGADORES EN EL SERVIDOR",
+        Font=Enum.Font.GothamBold, TextSize=11, TextColor3=C.PURPLE_GLOW,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=16}, PlTitle)
+
+    local function RefreshPlayers()
+        -- Limpiar previos
+        for _, c in pairs(SL:GetChildren()) do
+            if c.Name == "PlayerTPCard" then c:Destroy() end
+        end
+        for _, p in pairs(Players:GetPlayers()) do
+            local Card = MakeFrame({Name="PlayerTPCard", Size=UDim2.new(1,0,0,56),
+                BackgroundColor3=C.BG_CARD, ZIndex=16}, SL)
+            Corner(12, Card)
+            Stroke(1, p == LocalPlayer and C.PURPLE_NEON or C.BORDER, Card)
+
+            local Av2 = MakeLabel({Size=UDim2.new(0,36,0,36), Position=UDim2.new(0,10,0.5,-18),
+                BackgroundColor3=p == LocalPlayer and C.PURPLE_DIM or Color3.fromRGB(30,28,60),
+                Text=string.upper(string.sub(p.DisplayName,1,2)),
+                Font=Enum.Font.GothamBold, TextSize=14, TextColor3=C.TEXT_WHITE, ZIndex=17}, Card)
+            Corner(18, Av2)
+
+            MakeLabel({Size=UDim2.new(1,-180,0,18), Position=UDim2.new(0,56,0,9), BackgroundTransparency=1,
+                Text=p.DisplayName .. (p == LocalPlayer and " [TU]" or ""),
+                Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.TEXT_WHITE,
+                TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Card)
+            MakeLabel({Size=UDim2.new(1,-180,0,14), Position=UDim2.new(0,56,0,29), BackgroundTransparency=1,
+                Text="@" .. p.Name,
+                Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_MUTED,
+                TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Card)
+
+            if p ~= LocalPlayer then
+                local TPBtn = MakeButton({Size=UDim2.new(0,72,0,28), Position=UDim2.new(1,-152,0.5,-14),
+                    BackgroundColor3=C.PURPLE_NEON, Text="[T] Ir",
+                    Font=Enum.Font.GothamBold, TextSize=11, TextColor3=Color3.new(1,1,1), ZIndex=17}, Card)
+                Corner(8, TPBtn)
+                TPBtn.MouseButton1Click:Connect(function()
+                    ParseAndExecute(";" .. "tp " .. p.Name)
+                end)
+
+                local BringBtn = MakeButton({Size=UDim2.new(0,72,0,28), Position=UDim2.new(1,-72,0.5,-14),
+                    BackgroundColor3=C.BG_GLASS, Text="[B] Traer",
+                    Font=Enum.Font.GothamSemibold, TextSize=11, TextColor3=C.TEXT_SOFT, ZIndex=17}, Card)
+                Corner(8, BringBtn)
+                Stroke(1, C.BORDER, BringBtn)
+                BringBtn.MouseButton1Click:Connect(function()
+                    ParseAndExecute(";" .. "bringtp " .. p.Name)
+                end)
+            end
+        end
+    end
+    RefreshPlayers()
+
+    -- Boton Refresh
+    local RefBtn = MakeButton({Size=UDim2.new(1,0,0,38), BackgroundColor3=C.BG_GLASS,
+        BorderSizePixel=0, Text="[R] Actualizar lista de jugadores",
+        Font=Enum.Font.GothamSemibold, TextSize=13, TextColor3=C.CYAN_NEON, ZIndex=15}, SL)
+    Corner(10, RefBtn)
+    Stroke(1, C.CYAN_DIM, RefBtn)
+    RefBtn.MouseButton1Click:Connect(RefreshPlayers)
+
+    local ll = SL:FindFirstChildWhichIsA("UIListLayout")
+    if ll then ll:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Scroll.CanvasSize = UDim2.new(0,0,0,ll.AbsoluteContentSize.Y+20)
+    end) end
+end
+
+-- ==============================================================================
+-- SECCION 21 -- TAB: SYSTEM SETTINGS
+-- ==============================================================================
+
+_G["QOS_Tab_SYSTEM_SETTINGS"] = function()
+    local Tab = MakeFrame({Name="Tab_SETTINGS", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    SectionHeader(Tab, "[S] AJUSTES DEL SISTEMA", "Configuracion - AI - Executor - Preferencias")
+    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-62), Position=UDim2.new(0,0,0,62),
+        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local SL = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Scroll)
+    ListLayout({Padding=UDim.new(0,5)}, SL)
+    Padding(12,14,20,14, SL)
+
+    -- API Key Card
+    local KC = MakeFrame({Size=UDim2.new(1,0,0,100), BackgroundColor3=C.BG_CARD, ZIndex=16}, SL)
+    Corner(14, KC)
+    Stroke(1, C.BORDER, KC)
+    MakeLabel({Size=UDim2.new(1,-160,0,20), Position=UDim2.new(0,14,0,10), BackgroundTransparency=1,
+        Text="OpenRouter API Key", Font=Enum.Font.GothamBold, TextSize=14, TextColor3=C.TEXT_WHITE,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, KC)
+    MakeLabel({Size=UDim2.new(1,-160,0,14), Position=UDim2.new(0,14,0,30), BackgroundTransparency=1,
+        Text="Estado: " .. (ENV.QOS_OpenRouterKey and "[v] Conectado" or "[x] No conectado"),
+        Font=Enum.Font.Gotham, TextSize=12,
+        TextColor3 = ENV.QOS_OpenRouterKey and C.TEXT_GREEN or C.TEXT_RED,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, KC)
+    local ApiBox = MakeBox({Size=UDim2.new(1,-28,0,36), Position=UDim2.new(0,14,0,52),
+        BackgroundColor3=Color3.fromRGB(8,6,20), BorderSizePixel=0,
+        Text=ENV.QOS_OpenRouterKey or "", PlaceholderText="sk-or-v1-...",
+        Font=Enum.Font.Code, TextSize=12, TextColor3=C.TEXT_WHITE,
+        PlaceholderColor3=C.TEXT_MUTED, ClearTextOnFocus=false, ZIndex=17}, KC)
+    Corner(8, ApiBox)
+    Padding(0,10,0,10, ApiBox)
+    Stroke(1, C.BORDER, ApiBox)
+    ApiBox.FocusLost:Connect(function(enter)
+        if enter then
+            ENV.QOS_OpenRouterKey = ApiBox.Text:gsub("%s+","")
+            PushNotification("API Key","Clave guardada en sesion","SUCCESS",3)
+        end
+    end)
+
+    -- Prefijo
+    local PrefixCard = MakeFrame({Size=UDim2.new(1,0,0,60), BackgroundColor3=C.BG_CARD, ZIndex=16}, SL)
+    Corner(14, PrefixCard)
+    Stroke(1, C.BORDER, PrefixCard)
+    MakeLabel({Size=UDim2.new(1,-80,0,20), Position=UDim2.new(0,14,0,8), BackgroundTransparency=1,
+        Text="Prefijo de comandos", Font=Enum.Font.GothamBold, TextSize=13, TextColor3=C.TEXT_WHITE,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, PrefixCard)
+    MakeLabel({Size=UDim2.new(1,-80,0,14), Position=UDim2.new(0,14,0,28), BackgroundTransparency=1,
+        Text="Caracter que activa los comandos (ej: ; . , !)",
+        Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_MUTED,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, PrefixCard)
+    local PBox = MakeBox({Size=UDim2.new(0,50,0,36), Position=UDim2.new(1,-64,0.5,-18),
+        BackgroundColor3=Color3.fromRGB(8,6,20), BorderSizePixel=0,
+        Text=ENV.QOS_Prefix or ";",
+        Font=Enum.Font.GothamBold, TextSize=16, TextColor3=C.PURPLE_GLOW,
+        ClearTextOnFocus=false, ZIndex=17}, PrefixCard)
+    Corner(8, PBox)
+    Stroke(1, C.PURPLE_DIM, PBox)
+    PBox.FocusLost:Connect(function(enter)
+        if enter and #PBox.Text == 1 then
+            ENV.QOS_Prefix = PBox.Text
+            PushNotification("Prefijo","Nuevo prefijo: " .. PBox.Text,"SUCCESS",3)
+        end
+    end)
+
+    CreateToggleWidget(SL, "Particulas de fondo", true, function(state)
+        -- placeholder; se necesitaria reinicio para efecto completo
+    end)
+    CreateToggleWidget(SL, "Notificaciones Toast", true, function(state)
+        ENV.QOS_ToastsEnabled = state
+    end)
+
+    -- Info del sistema
+    local InfoCard = MakeFrame({Size=UDim2.new(1,0,0,80), BackgroundColor3=C.BG_CARD, ZIndex=16}, SL)
+    Corner(14, InfoCard)
+    Stroke(1, C.BORDER, InfoCard)
+    local infoLines = {
+        "[Q] Quantum OS v4.0 - Delta Edition",
+        "[I] Jugador: " .. DISPLAY_NAME .. " (@" .. USERNAME .. ")",
+        "[G] Juego: " .. GAME_NAME,
+        "[J] PlaceId: " .. PlaceId,
+    }
+    local ifl = ListLayout({Padding=UDim.new(0,2)}, InfoCard)
+    Padding(8,12,8,12, InfoCard)
+    for _, line in ipairs(infoLines) do
+        MakeLabel({Size=UDim2.new(1,0,0,14), BackgroundTransparency=1, Text=line,
+            Font=Enum.Font.Code, TextSize=11, TextColor3=C.TEXT_SOFT,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, InfoCard)
+    end
+
+    local ll = SL:FindFirstChildWhichIsA("UIListLayout")
+    if ll then ll:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Scroll.CanvasSize = UDim2.new(0,0,0,ll.AbsoluteContentSize.Y+20)
+    end) end
+end
+
+-- ==============================================================================
+-- SECCION 22 -- TAB: POWER
+-- ==============================================================================
+
+_G["QOS_Tab_POWER"] = function()
+    local Tab = MakeFrame({Name="Tab_POWER", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    SectionHeader(Tab, "[O] POWER", "Opciones de sesion y conexion")
+
+    local Center = MakeFrame({Size=UDim2.new(0,320,0,300), Position=UDim2.new(0.5,-160,0.5,-150),
+        BackgroundTransparency=1, ZIndex=15}, Tab)
+    local PList = MakeFrame({Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, Center)
+    ListLayout({Padding=UDim.new(0,10), HorizontalAlignment=Enum.HorizontalAlignment.Center}, PList)
+
+    local powerOpts = {
+        {label="Rejoin (mismo server)",     desc="Vuelves al mismo servidor", color=C.CYAN_NEON,    cmd=";rejoin"},
+        {label="New Server (hop)",           desc="Saltas a otro servidor",    color=C.GOLD_NEON,   cmd=";server"},
+        {label="Reset Personaje",            desc="Matas tu personaje local",  color=C.TEXT_YELLOW,  cmd=";reset"},
+        {label="Cerrar Quantum OS",          desc="Destruye el GUI",           color=C.TEXT_RED,     cmd="CLOSE"},
+    }
+    for _, opt in ipairs(powerOpts) do
+        local Btn = MakeButton({Size=UDim2.new(1,0,0,58), BackgroundColor3=C.BG_CARD,
+            BorderSizePixel=0, Text="", ZIndex=16}, PList)
+        Corner(14, Btn)
+        Stroke(1, opt.color, Btn)
+        MakeLabel({Size=UDim2.new(1,-20,0,22), Position=UDim2.new(0,14,0,8), BackgroundTransparency=1,
+            Text=opt.label, Font=Enum.Font.GothamBold, TextSize=14, TextColor3=opt.color,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Btn)
+        MakeLabel({Size=UDim2.new(1,-20,0,14), Position=UDim2.new(0,14,0,32), BackgroundTransparency=1,
+            Text=opt.desc, Font=Enum.Font.Gotham, TextSize=11, TextColor3=C.TEXT_MUTED,
+            TextXAlignment=Enum.TextXAlignment.Left, ZIndex=17}, Btn)
+        Btn.MouseButton1Click:Connect(function()
+            if opt.cmd == "CLOSE" then
+                Tween(ScreenGui.MainWindow or ScreenGui:FindFirstChild("QuantumOS_v40"), TI_MED, {Size=UDim2.new(0,0,0,0)})
+                task.wait(0.4)
+                pcall(function() ScreenGui:Destroy() end)
+            else
+                ParseAndExecute(opt.cmd)
+            end
+        end)
+        HoverGlow(Btn, C.BG_CARD, C.BG_GLASS)
+    end
+end
+
+-- ==============================================================================
+-- SECCION 23 -- KEYBINDS (Estilo Infinite Yield, usa InputBegan)
+-- ==============================================================================
+
+local function SetupKeybinds()
+    TrackConn(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        -- F1 = abrir/cerrar
+        if input.KeyCode == Enum.KeyCode.F1 then
+            if MainWindow then
+                local vis = MainWindow.Size.Y.Scale > 0
+                if vis then
+                    Tween(MainWindow, TI_MED, {Size=UDim2.new(1,0,0,54)})
+                else
+                    Tween(MainWindow, TI_MED, {Size=UDim2.fromScale(1,1)})
+                end
+            end
+        end
+        -- F2 = Fly toggle
+        if input.KeyCode == Enum.KeyCode.F2 then
+            ParseAndExecute(";fly 60")
+        end
+        -- F3 = Noclip toggle
+        if input.KeyCode == Enum.KeyCode.F3 then
+            ParseAndExecute(";noclip")
+        end
+        -- F4 = God mode toggle
+        if input.KeyCode == Enum.KeyCode.F4 then
+            ParseAndExecute(";godmode")
+        end
+        -- F5 = ESP toggle
+        if input.KeyCode == Enum.KeyCode.F5 then
+            ParseAndExecute(";esp")
+        end
+        -- RightShift = Speed 200
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            ParseAndExecute(";speed 200")
+        end
+    end))
+end
+
+-- ==============================================================================
+-- SECCION 24 -- CHAT LISTENER (Estilo Infinite Yield)
+-- Escucha el chat de Roblox para ejecutar comandos
+-- ==============================================================================
+
+local function SetupChatListener()
+    local function OnChat(msg)
+        if type(msg) ~= "string" then return end
+        local prefix = ENV.QOS_Prefix or ";"
+        if msg:sub(1, #prefix) == prefix then
+            ParseAndExecute(msg)
+        end
+    end
+
+    -- TextChatService listener
+    local ok1 = pcall(function()
+        local TextChatService = Services.TextChatService
+        if TextChatService and TextChatService.MessageReceived then
+            TrackConn(TextChatService.MessageReceived:Connect(function(msg)
+                if msg.TextSource and msg.TextSource.UserId == LocalPlayer.UserId then
+                    OnChat(msg.Text or "")
+                end
+            end))
+        end
+    end)
+
+    -- Legacy chat listener
+    if not ok1 then
+        pcall(function()
+            local ok2, SpeakingConns = pcall(function()
+                local LSG = StarterGui:FindFirstChildWhichIsA("LocalScript", true)
+                return LSG
+            end)
+        end)
+    end
+
+    -- Fallback: escuchar Humanoid Chatted
+    pcall(function()
+        if LocalPlayer then
+            LocalPlayer.Chatted:Connect(function(msg)
+                OnChat(msg)
+            end)
+        end
+    end)
+end
+
+-- ==============================================================================
+-- SECCION 25 -- GAME BOOSTER TAB
+-- ==============================================================================
+
+_G["QOS_Tab_GAME_BOOSTER"] = function()
+    local Tab = MakeFrame({Name="Tab_BOOST", Size=UDim2.fromScale(1,1), BackgroundTransparency=1, ZIndex=15}, ContentArea)
+    CurrentTabFrame = Tab
+    SectionHeader(Tab, "[B] GAME BOOSTER", "Optimizaciones de FPS y rendimiento")
+    local Scroll = MakeScroll({Size=UDim2.new(1,0,1,-62), Position=UDim2.new(0,0,0,62),
+        BackgroundTransparency=1, ScrollBarThickness=3, ZIndex=15}, Tab)
+    local SL = MakeFrame({Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1, ZIndex=15}, Scroll)
+    ListLayout({Padding=UDim.new(0,5)}, SL)
+    Padding(12,14,20,14, SL)
+
+    CreateToggleWidget(SL, "Quitar sombras (FPS boost)", false, function(state)
+        Lighting.GlobalShadows = not state
+    end)
+
+    CreateToggleWidget(SL, "Reducir texturas (FPS boost)", false, function(state)
+        if state then
+            pcall(function()
+                for _, p in pairs(workspace:GetDescendants()) do
+                    if p:IsA("BasePart") then p.Material = Enum.Material.SmoothPlastic end
+                end
+            end)
+        end
+    end)
+
+    CreateToggleWidget(SL, "Quitar niebla", false, function(state)
+        Lighting.FogEnd = state and 100000 or 1000
+    end)
+
+    CreateToggleWidget(SL, "Ocultar otros jugadores (FPS)", false, function(state)
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                p.Character:FindFirstChildWhichIsA("Model")
+                for _, part in pairs(p.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.LocalTransparencyModifier = state and 1 or 0
+                    end
+                end
+            end
+        end
+    end)
+
+    CreateSliderWidget(SL, "LOD (calidad grafica)", 0, 4, 2, "", function(v)
+        pcall(function()
+            local SLevel = Enum.StreamingPauseMode[v] or Enum.StreamingPauseMode.Default
+        end)
+    end)
+
+    local ll = SL:FindFirstChildWhichIsA("UIListLayout")
+    if ll then ll:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Scroll.CanvasSize = UDim2.new(0,0,0,ll.AbsoluteContentSize.Y+20)
+    end) end
+end
+
+-- ==============================================================================
+-- SECCION 26 -- FLOW PRINCIPAL
+-- ==============================================================================
+
+local function StartMainOS(deviceMode)
+    CreateMainWindow()
+    SetupKeybinds()
+    SetupChatListener()
+
+    -- Cargar tab START por defecto
+    task.wait(0.55)
+    local startBtn = SidebarButtons["START"]
+    if startBtn then startBtn.MouseButton1Click:Fire() end
+
+    -- Notificacion de bienvenida
+    task.delay(0.9, function()
+        PushNotification(
+            "Quantum OS v4.0 Listo",
+            "IY Engine activo | " .. tostring(#(function() local t={} for k in pairs(Commands) do t[#t+1]=k end return t end())) .. " comandos | Prefijo: " .. (ENV.QOS_Prefix or ";"),
+            "SYSTEM", 5
+        )
+        task.wait(1)
+        ShowToast("Multi-Agent AI", "5 agentes listos | Orquestador conectado", "[AI]", 3)
+        task.wait(1.5)
+        ShowToast("Keybinds activos", "F1=UI  F2=Fly  F3=Noclip  F4=God  F5=ESP", ">", 4)
+    end)
+end
+
+local function Launch()
+    CreateBootScreen()
+    task.wait(5.5)
+    CreateLoginScreen(function()
+        -- Despues del login, seleccion de dispositivo inline (auto-detectado)
+        local mode = IsOnMobile and "mobile" or "pc"
+        ENV.QOS_DeviceMode = mode
+        ENV.QOS_Unlocked   = true
+        StartMainOS(mode)
+    end)
+end
+
+-- ==============================================================================
+-- INICIO
+-- ==============================================================================
+
+Launch()
